@@ -726,3 +726,70 @@ a.tab{text-decoration:none;display:inline-flex;align-items:center}
 .bey-visual.compact .part-art.big{width:96px;height:96px}
 .bey-visual.compact .part-art.mini{width:46px;height:46px}
 .bey-visual.compact .rings{inset:26px 26px 40px}
+
+/* ===========================================================================
+   v11 — sidebar colapsável, topbar shell e menu do avatar
+   =========================================================================== */
+:root{--navw:234px}
+body.nav-collapsed{--navw:68px}
+@media(min-width:901px){body{padding-left:var(--navw);transition:padding-left .18s ease}}
+
+.side-nav{position:fixed;left:0;top:0;bottom:0;width:var(--navw);z-index:130;display:flex;flex-direction:column;background:linear-gradient(180deg,rgba(13,15,22,.99),rgba(9,10,15,.99));border-right:1px solid var(--line);transition:width .18s ease,transform .22s ease;overflow:hidden}
+.side-brand{height:76px;flex:0 0 76px;display:flex;align-items:center;gap:12px;padding:0 15px;border-bottom:1px solid var(--line);text-decoration:none;color:inherit;white-space:nowrap}
+.side-brand .brand-mark{flex:0 0 auto}
+.side-brand-text strong{font:800 20px/1 var(--display);letter-spacing:.06em;display:block}
+.side-brand-text small{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.13em}
+.side-items{flex:1;overflow-y:auto;overflow-x:hidden;padding:10px 0}
+.side-item{display:flex;align-items:center;gap:12px;margin:2px 10px;padding:10px 12px;border-radius:10px;color:var(--muted);text-decoration:none;font-weight:700;font-size:13px;white-space:nowrap;border:0;background:transparent;width:calc(100% - 20px);text-align:left;cursor:pointer}
+.side-item i{font-style:normal;flex:0 0 22px;width:22px;text-align:center;font-size:15px}
+.side-item:hover{color:white;background:#171922}
+.side-item.active{color:white;background:#1e2029;box-shadow:inset 2px 0 0 var(--red)}
+.side-group-title{margin:14px 22px 4px;color:#5a6270;font:800 9px var(--display);text-transform:uppercase;letter-spacing:.14em;white-space:nowrap}
+.side-foot{flex:0 0 auto;padding:8px 0 12px;border-top:1px solid var(--line)}
+.side-collapse i{transition:transform .18s ease}
+.nav-collapsed .side-brand-text,.nav-collapsed .side-item span,.nav-collapsed .side-group-title{display:none}
+.nav-collapsed .side-item{justify-content:center;padding:11px 0}
+.nav-collapsed .side-item i{flex:0 0 auto}
+.nav-collapsed .side-collapse i{transform:rotate(180deg)}
+.side-backdrop{display:none}
+
+.topbar.shell{display:flex;align-items:center;gap:14px;grid-template-columns:none;padding:0 20px}
+.topbar.shell .brand.mini{display:none}
+.topbar.shell .header-status{flex:0 0 auto;display:flex}
+.topbar.shell .header-user{margin-left:auto;position:relative}
+.nav-toggle{width:40px;height:40px;border:1px solid var(--line);border-radius:10px;background:#141720;color:#c4cad3;font-size:16px}
+.nav-toggle:hover{border-color:#4a5160;color:white}
+.user-chip .chev{font-style:normal;color:#828b98;font-size:10px;margin-left:2px}
+button.user-chip{cursor:pointer}
+.user-menu{position:absolute;right:0;top:calc(100% + 8px);min-width:225px;z-index:200;border:1px solid #343b47;border-radius:13px;background:linear-gradient(160deg,#171b23,#0e1015);box-shadow:0 20px 50px rgba(0,0,0,.5);padding:7px;display:flex;flex-direction:column}
+.user-menu a,.user-menu button{display:flex;align-items:center;gap:9px;padding:10px 12px;border-radius:9px;color:#c4cad3;text-decoration:none;font-size:12px;font-weight:700;border:0;background:transparent;text-align:left;cursor:pointer}
+.user-menu a:hover,.user-menu button:hover{background:#1c202a;color:white}
+.user-menu button{border-top:1px solid #262c36;border-radius:0 0 9px 9px;margin-top:5px;color:#ff8da3}
+
+@media(max-width:900px){
+  .side-nav{transform:translateX(-100%);width:250px;box-shadow:0 0 60px rgba(0,0,0,.6)}
+  body.nav-open .side-nav{transform:none}
+  body.nav-open .side-backdrop{display:block;position:fixed;inset:0;left:250px;background:rgba(3,5,8,.6)}
+  body.nav-collapsed .side-brand-text,body.nav-collapsed .side-item span,body.nav-collapsed .side-group-title{display:block}
+  body.nav-collapsed .side-item{justify-content:flex-start;padding:10px 12px}
+  .topbar.shell .brand.mini{display:flex}
+  .side-collapse{display:none}
+  .announcement-bar{padding:9px 16px}
+}
+
+/* Deck Builder: caixa de peças do catálogo */
+.partsbox{margin-top:24px}
+.partsbox .page-toolbar{margin-bottom:12px}
+.partsbox-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:9px}
+.partsbox-card{display:grid;grid-template-columns:52px minmax(0,1fr) 30px;gap:9px;align-items:center;border:1px solid var(--line);border-radius:12px;background:#11141b;padding:9px}
+.partsbox-card.owned{border-color:rgba(84,230,156,.35);background:linear-gradient(150deg,rgba(84,230,156,.05),#11141b)}
+.partsbox-card .part-art{width:50px;height:50px}
+.partsbox-meta{min-width:0}
+.partsbox-meta a{display:block;font:800 14px var(--display);color:white;text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-transform:uppercase}
+.partsbox-meta a:hover{color:var(--cyan)}
+.partsbox-meta small{display:block;color:var(--muted);font-size:9px;text-transform:uppercase}
+.owned-chip{display:inline-flex;align-items:center;gap:4px;margin-top:3px;color:#74eeb0;font:800 9px var(--display);text-transform:uppercase;letter-spacing:.05em}
+.partsbox-add{width:29px;height:29px;border:1px solid #343b47;border-radius:8px;background:#141820;color:var(--cyan);font-size:17px;display:grid;place-items:center;line-height:1}
+.partsbox-add:hover{border-color:var(--cyan);background:rgba(80,231,255,.08)}
+.builder-mode-note{color:var(--muted);font-size:10px;margin-top:6px}
+.user-menu[hidden]{display:none}

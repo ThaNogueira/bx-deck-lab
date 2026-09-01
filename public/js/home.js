@@ -4,8 +4,8 @@
   'use strict';
   const esc = BX.esc;
 
-  // Widget de usuário no header + banner de avisos
-  BX.mountUserWidget();
+  // Shell de navegação (sidebar + topbar + menu do avatar)
+  BX.renderShell().then(() => window.BXApp?.rerenderHeader?.());
 
   // Quando o índice de peças chega, os nomes do meta viram PartTags clicáveis
   BX.partTagReady().then(() => window.BXApp?.rerenderMeta?.()).catch(() => {});

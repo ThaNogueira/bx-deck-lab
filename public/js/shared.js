@@ -232,42 +232,127 @@
   }
 
   // -------------------------------------------------------------------------
-  // Topbar compartilhada (páginas fora do montador) + widget de usuário
+  // Shell de navegação: sidebar colapsável + topbar + menu do avatar
   // -------------------------------------------------------------------------
 
-  const NAV = [
-    ['/', 'Montador'],
-    ['/decks', 'Decks da comunidade'],
-    ['/pecas', 'Peças'],
-    ['/produtos', 'Produtos'],
-    ['/torneios', 'Torneios'],
-    ['/vendas', 'Vendas'],
+  const NAV_MAIN = [
+    ['home', '/#home', '⌂', 'Início'],
+    ['builder', '/#builder', '⚙', 'Deck Builder'],
+    ['weekly', '/#weekly', '📈', 'Meta check'],
+    ['community', '/decks', '🌀', 'Decks da comunidade'],
+    ['popular', '/#popular', '🏆', 'Decks populares'],
+    ['tournaments', '/torneios', '⚔', 'Torneios'],
   ];
+  const NAV_CATALOG = [
+    ['pecas', '/pecas', '🔩', 'Peças'],
+    ['produtos', '/produtos', '📦', 'Produtos'],
+    ['vendas', '/vendas', '💰', 'Vendas'],
+  ];
+  const PATH_KEY = { '/decks': 'community', '/pecas': 'pecas', '/produtos': 'produtos', '/torneios': 'tournaments', '/vendas': 'vendas' };
+  const IS_APP_PAGE = () => location.pathname === '/' || location.pathname === '/index.html';
 
   async function userChipHtml() {
     const user = await me().catch(() => null);
     if (!user) return `<a class="btn secondary chip-login" href="/entrar">Entrar</a>`;
-    const adminLink = ['MOD', 'ADMIN'].includes(user.role) ? `<a class="chip-admin" href="/admin" title="Painel de admin">⚙</a>` : '';
-    return `${adminLink}<a class="user-chip" href="/perfil" title="Meu perfil">${avatarHtml(user, { size: 34 })}<span>${esc(user.name)}</span></a>`;
+    return `<button class="user-chip" id="userMenuBtn" title="Menu da conta">${avatarHtml(user, { size: 34 })}<span>${esc(user.name)}</span><i class="chev">▾</i></button>
+      <div class="user-menu" id="userMenu" hidden>
+        <a href="/perfil">👤 Meu perfil</a>
+        <a href="/#collection">🎒 Minha coleção</a>
+        <a href="/#missing">🧩 Faltam na coleção</a>
+        <a href="/decks?author=${esc(user.slug)}">📜 Meus decks</a>
+        <a href="/#session">🧱 Decks físicos</a>
+        <a href="/#tournament">📋 Organizador local</a>
+        ${['MOD', 'ADMIN'].includes(user.role) ? '<a href="/admin">🛡 Painel de admin</a>' : ''}
+        <button id="logoutMenuBtn">🚪 Sair</button>
+      </div>`;
   }
 
-  async function renderTopbar(activePath) {
+  function setActiveNav(key) {
+    document.querySelectorAll('.side-item[data-key]').forEach((el) => el.classList.toggle('active', el.dataset.key === key));
+  }
+
+  async function renderShell(active) {
     const mount = document.getElementById('topbar');
     if (!mount) return;
+    const key = PATH_KEY[active] ?? active ?? (IS_APP_PAGE() ? (location.hash.slice(1) || 'home') : null);
     const s = await site().catch(() => null);
-    mount.className = 'topbar';
-    mount.innerHTML = `
-      <a class="brand" href="/" style="text-decoration:none">
+
+    if (localStorage.getItem('bx_nav_collapsed') === '1') document.body.classList.add('nav-collapsed');
+
+    // Sidebar
+    let side = document.getElementById('sideNav');
+    if (!side) {
+      side = document.createElement('aside');
+      side.id = 'sideNav';
+      side.className = 'side-nav';
+      document.body.appendChild(side);
+    }
+    const item = ([k, href, icon, label]) => `<a class="side-item${k === key ? ' active' : ''}" data-key="${k}" href="${href}"><i>${icon}</i><span>${label}</span></a>`;
+    side.innerHTML = `
+      <a class="side-brand" href="/#home">
         <div class="brand-mark" aria-hidden="true"><span>X</span></div>
-        <div><strong>${esc(s?.site?.name || 'BX DECK LAB')}</strong><small>${esc(s?.site?.tagline || '3-on-3 deck builder')}</small></div>
+        <div class="side-brand-text"><strong>${esc(s?.site?.name || 'BX DECK LAB')}</strong><small>${esc(s?.site?.tagline || '3-on-3 deck builder')}</small></div>
       </a>
-      <nav class="tabs" aria-label="Navegação principal">
-        ${NAV.map(([href, label]) => `<a class="tab${href === activePath ? ' active' : ''}" href="${href}">${label}</a>`).join('')}
+      <nav class="side-items">
+        ${NAV_MAIN.map(item).join('')}
+        <div class="side-group-title">Catálogo</div>
+        ${NAV_CATALOG.map(item).join('')}
       </nav>
-      <div class="header-status header-user" id="headerUser"></div>`;
+      <div class="side-foot">
+        <a class="side-item" data-key="rules" href="/#rules"><i>📖</i><span>Regras WBO</span></a>
+        <button class="side-item side-collapse" id="navCollapseBtn" title="Recolher menu"><i>«</i><span>Recolher</span></button>
+      </div>
+      <div class="side-backdrop" id="sideBackdrop"></div>`;
+
+    // Topbar
+    mount.className = 'topbar shell';
+    mount.innerHTML = `
+      <button class="nav-toggle" id="navToggle" title="Menu" aria-label="Abrir menu">☰</button>
+      <a class="brand mini" href="/#home" style="text-decoration:none">
+        <div class="brand-mark" aria-hidden="true"><span>X</span></div>
+      </a>
+      <div class="header-status" id="headerStatus"></div>
+      <div class="header-user" id="headerUser"></div>`;
     document.getElementById('headerUser').innerHTML = await userChipHtml();
+
+    // Comportamento: colapsar (desktop) / abrir (mobile)
+    const isMobile = () => matchMedia('(max-width: 900px)').matches;
+    document.getElementById('navToggle').onclick = () => {
+      if (isMobile()) document.body.classList.toggle('nav-open');
+      else {
+        document.body.classList.toggle('nav-collapsed');
+        localStorage.setItem('bx_nav_collapsed', document.body.classList.contains('nav-collapsed') ? '1' : '0');
+      }
+    };
+    document.getElementById('navCollapseBtn').onclick = () => {
+      document.body.classList.toggle('nav-collapsed');
+      localStorage.setItem('bx_nav_collapsed', document.body.classList.contains('nav-collapsed') ? '1' : '0');
+    };
+    document.getElementById('sideBackdrop').onclick = () => document.body.classList.remove('nav-open');
+    side.querySelectorAll('a.side-item').forEach((a) => a.addEventListener('click', () => document.body.classList.remove('nav-open')));
+
+    // Menu do avatar
+    const menuBtn = document.getElementById('userMenuBtn');
+    const menu = document.getElementById('userMenu');
+    if (menuBtn && menu) {
+      menuBtn.onclick = (e) => { e.stopPropagation(); menu.hidden = !menu.hidden; };
+      document.addEventListener('click', (e) => { if (!menu.contains(e.target)) menu.hidden = true; });
+      document.getElementById('logoutMenuBtn')?.addEventListener('click', async () => {
+        await api('/api/auth/logout', { method: 'POST' }).catch(() => {});
+        location.href = '/';
+      });
+    }
+
+    // No montador, o hash controla a view — mantém o item ativo em dia
+    if (IS_APP_PAGE()) {
+      const sync = () => setActiveNav(location.hash.slice(1) || 'home');
+      window.addEventListener('hashchange', sync);
+      sync();
+    }
     renderAnnouncements(s);
   }
+
+  const renderTopbar = renderShell; // compat: páginas antigas chamam renderTopbar('/pecas')
 
   function renderAnnouncements(s) {
     if (!s?.announcements?.length || document.querySelector('.announcement-bar')) return;
@@ -280,16 +365,8 @@
     topbar?.parentNode.insertBefore(bar, topbar.nextSibling);
   }
 
-  /** No montador (index.html), injeta o widget de usuário no header existente. */
-  async function mountUserWidget() {
-    const holder = document.getElementById('headerStatus');
-    if (!holder) return;
-    const chip = document.createElement('div');
-    chip.className = 'header-user inline';
-    chip.innerHTML = await userChipHtml();
-    holder.parentNode.insertBefore(chip, holder);
-    renderAnnouncements(await site().catch(() => null));
-  }
+  /** Compat: o montador agora usa o shell completo. */
+  const mountUserWidget = () => renderShell();
 
   // -------------------------------------------------------------------------
   // Denúncias (2.3)
@@ -324,7 +401,7 @@
   window.BX = {
     api, me, site, esc, norm, toast, money, dateFmt,
     partsIndex, partTagReady, partTag, comboTags, partThumb, KIND_PT, radar, beyVisual,
-    avatarHtml, renderTopbar, mountUserWidget, userChipHtml,
+    avatarHtml, renderTopbar, renderShell, mountUserWidget, userChipHtml, setActiveNav,
     report, requireLogin, qs, pathPart, ytEmbed,
   };
 })();

@@ -798,6 +798,10 @@
     return null;
   }
 
+  // Deck Builder: por padrão o catálogo inteiro fica disponível; o botão
+  // "Só minha coleção" restringe às peças que você possui fisicamente.
+  let builderShowAll = localStorage.getItem('bx_builder_show_all') !== '0';
+
   function currentUsage(exceptSlot=-1) {
     const counts = {};
     deck.forEach((slot,i) => {
@@ -861,7 +865,11 @@
     });
     Object.entries(counts).forEach(([id,n])=>{
       const p=PARTS[id];
-      if (n > (inventory[id]||0)) errors.push(`Você está usando ${n}× ${p.display}, mas possui ${(inventory[id]||0)}×.`);
+      if (n > (inventory[id]||0)) {
+        // No modo catálogo, não ter a peça é só um aviso — não invalida o deck.
+        if (builderShowAll) info.push(`${p.display}: você usa ${n}× mas possui ${(inventory[id]||0)}× (modo catálogo).`);
+        else errors.push(`Você está usando ${n}× ${p.display}, mas possui ${(inventory[id]||0)}×.`);
+      }
       if (n>1 && !p.basicLock) errors.push(`${p.display} se repete no deck. 3-on-3 não permite repetição dessa peça.`);
     });
     const complete = deck.filter(isComplete).length;
@@ -870,17 +878,21 @@
 
   function availableParts(kind, slotIndex) {
     const used = currentUsage(slotIndex);
-    return Object.values(PARTS).filter(p => p.kind===kind && (inventory[p.id]||0)>0).sort((a,b)=>a.display.localeCompare(b.display)).map(p=>{
-      const availableQty=(inventory[p.id]||0)-(used[p.id]||0);
-      const ruleBlocked=(used[p.id]||0)>0 && !p.basicLock;
-      return {p, disabled:availableQty<=0 || ruleBlocked, qty:inventory[p.id]||0};
-    });
+    return Object.values(PARTS)
+      .filter(p => p.kind===kind && (builderShowAll || (inventory[p.id]||0)>0))
+      .sort((a,b)=>((inventory[b.id]||0)>0)-((inventory[a.id]||0)>0) || a.display.localeCompare(b.display))
+      .map(p=>{
+        const owned=inventory[p.id]||0;
+        const availableQty=owned-(used[p.id]||0);
+        const ruleBlocked=(used[p.id]||0)>0 && !p.basicLock;
+        return {p, disabled: builderShowAll ? ruleBlocked : (availableQty<=0 || ruleBlocked), qty:owned};
+      });
   }
 
   function selectHTML(kind, value, slotIndex, dataField, placeholder, extra='') {
     const opts=availableParts(kind,slotIndex);
-    if(value && PARTS[value] && !opts.some(x=>x.p.id===value)) opts.unshift({p:PARTS[value],disabled:false,qty:0,missing:true});
-    return `<select data-slot="${slotIndex}" data-field="${dataField}" ${extra}><option value="">${placeholder}</option>${opts.map(({p,disabled,qty,missing})=>`<option value="${p.id}" ${p.id===value?'selected':''} ${disabled && p.id!==value?'disabled':''}>${escapeHTML(p.display)}${p.abbrev && p.abbrev!==p.display?' ['+p.abbrev+']':''} ×${qty}${missing?' — NÃO POSSUI':''}${p.banned?' — BANIDA':''}</option>`).join('')}</select>`;
+    if(value && PARTS[value] && !opts.some(x=>x.p.id===value)) opts.unshift({p:PARTS[value],disabled:false,qty:inventory[value]||0,missing:!builderShowAll});
+    return `<select data-slot="${slotIndex}" data-field="${dataField}" ${extra}><option value="">${placeholder}</option>${opts.map(({p,disabled,qty,missing})=>`<option value="${p.id}" ${p.id===value?'selected':''} ${disabled && p.id!==value?'disabled':''}>${escapeHTML(p.display)}${p.abbrev && p.abbrev!==p.display?' ['+p.abbrev+']':''}${qty>0?` ✓×${qty}`:builderShowAll?'':' ×0'}${missing?' — NÃO POSSUI':''}${p.banned?' — BANIDA':''}</option>`).join('')}</select>`;
   }
 
 
@@ -1186,7 +1198,7 @@
     modal.hidden=false;
   }
   function closeSlotPicker(){ const modal=document.getElementById('slotPickerModal'); if(modal)modal.hidden=true; slotPickerAction=null; }
-  function goBuilder(){ const tab=document.querySelector('.tab[data-tab="builder"]'); if(tab)tab.click(); }
+  function goBuilder(){ location.hash='builder'; }
   function copyBeyToBuilder(sourceSlot, label='Bey') {
     if(!sourceSlot)return;
     openSlotPicker(`Copiar ${label}`, 'Escolha qual slot do deck em andamento será substituído.', target=>{
@@ -1717,24 +1729,66 @@
   }
 
   function renderHeader() {
+    const el=document.getElementById('headerStatus'); if(!el)return;
     const v=validateDeck();
-    document.getElementById('headerStatus').innerHTML=`<span><strong>${stockOwned.length}</strong> Beys • <strong>${v.complete}/3</strong> no deck</span>`;
+    el.innerHTML=`<span><strong>${stockOwned.length}</strong> Beys • <strong>${v.complete}/3</strong> no deck</span>`;
   }
 
-  function renderAll(){ renderHeader(); renderBuilder(); renderCollection(); renderMissing(); renderPopular(); renderWeekly(); renderSession(); renderTournament(); }
+  // Caixa "Todas as peças" do Deck Builder: catálogo inteiro com filtros,
+  // destaque verde para o que você possui e botão ＋ para usar no deck.
+  function renderPartsBox() {
+    const root=document.getElementById('partsBoxGrid'); if(!root)return;
+    const q=equivalentKey(document.getElementById('partsBoxSearch')?.value||'');
+    const kind=document.getElementById('partsBoxKind')?.value||'';
+    const ownedFilter=document.getElementById('partsBoxOwned')?.value||'';
+    let items=Object.values(PARTS).filter(p=>!kind||p.kind===kind);
+    if(q)items=items.filter(p=>[p.name,p.display,p.abbrev,...(p.aliases||[])].some(x=>x&&equivalentKey(x).includes(q)));
+    if(ownedFilter==='owned')items=items.filter(p=>(inventory[p.id]||0)>0);
+    if(ownedFilter==='missing')items=items.filter(p=>!(inventory[p.id]||0));
+    items.sort((a,b)=>((inventory[b.id]||0)>0)-((inventory[a.id]||0)>0)||a.display.localeCompare(b.display));
+    const count=document.getElementById('partsBoxCount'); if(count)count.textContent=`${items.length} peça(s) no catálogo`;
+    const shown=items.slice(0,140);
+    root.innerHTML=(shown.map(p=>{
+      const owned=inventory[p.id]||0;
+      return `<div class="partsbox-card ${owned?'owned':''}">${partArt(p)}<div class="partsbox-meta"><a href="/peca/${slug(p.display||p.name)}" title="Ver página da peça">${escapeHTML(p.display)}</a><small>${KIND_LABEL[p.kind]||p.kind}${p.abbrev&&p.abbrev!==p.display?` • ${escapeHTML(p.abbrev)}`:''}</small>${owned?`<span class="owned-chip">✓ você tem ×${owned}</span>`:''}${p.banned?'<span class="badge banned">banida</span>':''}</div><button class="partsbox-add" data-kind="${p.kind}" data-name="${escapeAttr(p.display)}" title="Usar esta peça no deck">＋</button></div>`;
+    }).join(''))+(items.length>shown.length?`<div class="empty-state">Mostrando ${shown.length} de ${items.length} — use a busca ou os filtros para achar o resto.</div>`:'')||'<div class="empty-state">Nenhuma peça com esses filtros.</div>';
+    root.querySelectorAll('.partsbox-add').forEach(b=>b.addEventListener('click',()=>openSlotPicker(`Usar ${b.dataset.name}`,'A peça será aplicada ao slot escolhido.',t=>applyPopularPartToSlot(b.dataset.kind,b.dataset.name,t))));
+    hydrateImages(root);
+  }
+
+  function renderAll(){ renderHeader(); renderBuilder(); renderPartsBox(); renderCollection(); renderMissing(); renderPopular(); renderWeekly(); renderSession(); renderTournament(); }
 
   function escapeHTML(s){return String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
   function escapeAttr(s){return escapeHTML(s).replace(/`/g,'&#96;');}
   let toastTimer; function toast(msg){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),2500);}
 
-  // Tabs
-  document.querySelectorAll('.tab').forEach(btn=>btn.addEventListener('click',()=>{
-    document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===btn));
-    document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
-    document.getElementById(`view-${btn.dataset.tab}`).classList.add('active');
-    if(btn.dataset.tab==='collection') hydrateImages(document.getElementById('view-collection'));
-    if(btn.dataset.tab==='missing') renderMissing();
-  }));
+  // Views por hash (#builder, #collection, …) — a sidebar do shell navega por aqui
+  function activateView(name){
+    const target=document.getElementById(`view-${name}`)?name:'home';
+    document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.id===`view-${target}`));
+    if(target==='collection') hydrateImages(document.getElementById('view-collection'));
+    if(target==='builder') hydrateImages(document.getElementById('view-builder'));
+    if(target==='missing') renderMissing();
+    window.scrollTo({top:0});
+  }
+  window.addEventListener('hashchange',()=>activateView(location.hash.slice(1)||'home'));
+  activateView(location.hash.slice(1)||'home');
+
+  // Alternância catálogo inteiro × só minha coleção (Deck Builder)
+  const builderModeBtn=document.getElementById('builderModeBtn');
+  function syncBuilderModeBtn(){
+    if(!builderModeBtn)return;
+    builderModeBtn.textContent=builderShowAll?'🌐 Catálogo inteiro':'🎒 Só minha coleção';
+    builderModeBtn.title=builderShowAll?'Mostrando todas as peças do catálogo — clique para ver só a sua coleção':'Mostrando só peças que você possui — clique para liberar o catálogo inteiro';
+  }
+  builderModeBtn?.addEventListener('click',()=>{
+    builderShowAll=!builderShowAll;
+    localStorage.setItem('bx_builder_show_all',builderShowAll?'1':'0');
+    syncBuilderModeBtn(); renderAll();
+    toast(builderShowAll?'Modo catálogo: monte com qualquer peça, mesmo sem possuir.':'Modo coleção: só peças que você tem.');
+  });
+  syncBuilderModeBtn();
+  ['partsBoxSearch','partsBoxKind','partsBoxOwned'].forEach(id=>document.getElementById(id)?.addEventListener(id==='partsBoxSearch'?'input':'change',renderPartsBox));
 
   document.getElementById('importBtn').addEventListener('click',()=>smartImportInventory(document.getElementById('inventoryText').value));
   document.getElementById('manualAddBtn').addEventListener('click',addManualPart);
@@ -1783,6 +1837,8 @@
     listParts: () => Object.values(PARTS),
     partSlug: (p) => slug(p.display || p.name),
     rerenderMeta: () => { renderPopular(); renderWeekly(); renderCollection(); },
+    rerenderHeader: renderHeader,
+    activateView,
   };
   document.dispatchEvent(new CustomEvent('bxapp-ready'));
   updateCatalogStatus('Conectando ao catálogo online…','live',true);

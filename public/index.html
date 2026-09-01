@@ -14,27 +14,7 @@
 </head>
 <body>
   <div class="noise"></div>
-  <header class="topbar">
-    <div class="brand">
-      <div class="brand-mark" aria-hidden="true"><span>X</span></div>
-      <div>
-        <strong>BX DECK LAB</strong>
-        <small>3-on-3 deck builder</small>
-      </div>
-    </div>
-    <nav class="tabs" aria-label="Navegação principal">
-      <button class="tab active" data-tab="home">Início</button>
-      <button class="tab" data-tab="builder">Montador</button>
-      <button class="tab" data-tab="collection">Minha coleção</button>
-      <button class="tab" data-tab="missing">Faltam na coleção</button>
-      <button class="tab" data-tab="popular">Decks populares</button>
-      <button class="tab" data-tab="weekly">Meta de peças</button>
-      <button class="tab" data-tab="session">Decks físicos</button>
-      <button class="tab" data-tab="tournament">Torneio</button>
-      <button class="tab" data-tab="rules">Regras</button>
-    </nav>
-    <div class="header-status" id="headerStatus"></div>
-  </header>
+  <header class="topbar" id="topbar"></header>
 
   <main>
     <section class="view active" id="view-home">
@@ -60,10 +40,11 @@
       <div class="hero compact">
         <div>
           <p class="eyebrow">DECK COMPETITIVO • WBO</p>
-          <h1>Monte seu deck <em>3-on-3</em></h1>
-          <p>O montador usa somente peças da sua coleção, respeita quantidades físicas e bloqueia repetições proibidas pelo regulamento.</p>
+          <h1>Deck <em>Builder</em></h1>
+          <p>Monte com qualquer peça do catálogo ou alterne para usar só a sua coleção. Repetições proibidas pelo regulamento continuam bloqueadas nos dois modos.</p>
         </div>
         <div class="hero-actions">
+          <button class="btn secondary" id="builderModeBtn" title="Alternar entre o catálogo inteiro e só a sua coleção">🌐 Catálogo inteiro</button>
           <button class="btn secondary" id="randomDeckBtn">🎲 Deck aleatório</button>
           <button class="btn secondary viable" id="viableDeckBtn">✦ Aleatório viável</button>
           <button class="btn secondary" id="clearDeckBtn">Limpar deck</button>
@@ -117,6 +98,34 @@
           </div>
         </aside>
       </div>
+
+      <section class="panel-card partsbox">
+        <div class="section-title-row">
+          <div><p class="eyebrow">CATÁLOGO COMPLETO</p><h2>Todas as peças</h2></div>
+          <small id="partsBoxCount"></small>
+        </div>
+        <div class="page-toolbar" style="margin-top:12px">
+          <input id="partsBoxSearch" placeholder="Buscar peça por nome, apelido ou sigla…" />
+          <select id="partsBoxKind" aria-label="Filtrar por tipo">
+            <option value="">Todos os tipos</option>
+            <option value="blade">Blades</option>
+            <option value="integrated">Blades integradas</option>
+            <option value="lock">Lock Chips</option>
+            <option value="over">Over Blades</option>
+            <option value="main">Main Blades</option>
+            <option value="assist">Assist Blades</option>
+            <option value="ratchet">Ratchets</option>
+            <option value="bit">Bits</option>
+            <option value="rib">Ratchet-Integrated Bits</option>
+          </select>
+          <select id="partsBoxOwned" aria-label="Filtrar por posse">
+            <option value="">Todas as peças</option>
+            <option value="owned">✓ Só o que eu tenho</option>
+            <option value="missing">Só o que me falta</option>
+          </select>
+        </div>
+        <div id="partsBoxGrid" class="partsbox-grid"></div>
+      </section>
     </section>
 
     <section class="view" id="view-collection">
