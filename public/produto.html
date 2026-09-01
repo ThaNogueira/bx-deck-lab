@@ -63,8 +63,9 @@
       const totalWeight = allParts.reduce((acc, x) => acc + (+x.weightGrams || 0), 0);
 
       app.innerHTML = `
-        <div class="hero compact">
-          <div>
+        <div class="hero compact" style="align-items:center">
+          ${p.imageUrl ? `<div class="product-hero-photo"><img src="${BX.esc(p.imageUrl)}" alt="${BX.esc(p.name)}"></div>` : ''}
+          <div style="flex:1">
             <p class="eyebrow">${p.line ? `LINHA ${p.line} • ` : ''}${brandName[p.brand] || p.brand}${p.code ? ` • ${BX.esc(p.code)}` : ''}</p>
             <h1>${BX.esc(p.name)}</h1>
             <p>${p.category ? `${p.category.toLowerCase().replace('_', ' ')}. ` : ''}${p.notes ? BX.esc(p.notes) + '. ' : ''}${p.releaseDate ? `Lançamento: ${new Date(p.releaseDate).toLocaleDateString('pt-BR')}.` : ''}</p>

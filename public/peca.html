@@ -51,9 +51,12 @@
       const productsHtml = products.length
         ? `<div class="card-grid">${products.map((p) => `
             <div class="list-card">
-              <div style="display:flex;justify-content:space-between;gap:8px;align-items:start">
-                <h3 style="font-size:17px"><a href="/produto/${p.slug}" style="text-decoration:none;color:inherit">${BX.esc(p.name)}</a></h3>
-                ${p.code ? `<span class="status-chip">${BX.esc(p.code)}</span>` : ''}
+              <div style="display:flex;gap:12px;align-items:flex-start">
+                ${p.imageUrl ? `<a class="product-mini-photo" href="/produto/${p.slug}"><img loading="lazy" src="${BX.esc(p.imageUrl)}" alt=""></a>` : ''}
+                <div style="min-width:0;flex:1;display:flex;justify-content:space-between;gap:8px;align-items:start">
+                  <h3 style="font-size:17px"><a href="/produto/${p.slug}" style="text-decoration:none;color:inherit">${BX.esc(p.name)}</a></h3>
+                  ${p.code ? `<span class="status-chip">${BX.esc(p.code)}</span>` : ''}
+                </div>
               </div>
               <div class="muted">${brandName[p.brand] || p.brand}${p.category ? ` • ${p.category.toLowerCase().replace('_', ' ')}` : ''}</div>
               <div class="list-card-foot">

@@ -314,15 +314,50 @@ export async function syncBCParts() {
   return { created, updated, linked };
 }
 
+/**
+ * Foto da caixa + data de lançamento: só existem na página individual de cada
+ * produto (og:image e releaseDate no payload). Visita apenas os que ainda não
+ * têm, com 4 requisições em paralelo.
+ */
+export async function syncBCProductDetails({ limit = 400 } = {}) {
+  const pending = await prisma.product.findMany({
+    where: { bcSlug: { not: null }, OR: [{ imageUrl: null }, { releaseDate: null }] },
+    take: limit,
+  });
+  let updated = 0, failed = 0;
+  const queue = [...pending];
+  await Promise.all(Array.from({ length: 4 }, async () => {
+    while (queue.length) {
+      const p = queue.shift();
+      try {
+        const html = await fetchHtml(`${BASE}/products/${p.bcSlug}/`);
+        const og = html.match(/<meta property="og:image" content="([^"]+)"/)?.[1] || null;
+        const rel = html.match(/releaseDate\\?":\\?"(\d{4}-\d{2}-\d{2})/)?.[1] || null;
+        const data = {};
+        if (og && !p.imageUrl) data.imageUrl = og;
+        if (rel && !p.releaseDate) data.releaseDate = new Date(`${rel}T00:00:00Z`);
+        if (Object.keys(data).length) {
+          await prisma.product.update({ where: { id: p.id }, data });
+          updated++;
+        }
+      } catch {
+        failed++;
+      }
+    }
+  }));
+  return { scanned: pending.length, updated, failed };
+}
+
 export async function syncBeyCommunity() {
   const products = await syncBCProducts();
   const parts = await syncBCParts();
+  const details = await syncBCProductDetails();
   await prisma.syncLog.create({
     data: {
       source: 'BeyCommunity (banco completo)',
       ok: true,
-      message: `produtos +${products.created}/${products.updated} • peças +${parts.created}/${parts.updated} • ${parts.linked} vínculos peça↔produto`,
+      message: `produtos +${products.created}/${products.updated} • peças +${parts.created}/${parts.updated} • ${parts.linked} vínculos • fotos/datas de ${details.updated} produtos${details.failed ? ` (${details.failed} falharam)` : ''}`,
     },
   });
-  return { products, parts };
+  return { products, parts, details };
 }
