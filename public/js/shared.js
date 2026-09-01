@@ -121,6 +121,41 @@
     return `<span class="avatar${cls}" style="width:${size}px;height:${size}px">${inner}${frameImg}${badge}</span>`;
   }
 
+  /**
+   * Radar de 5 eixos (ATK/DEF/STA/X-DASH/BURST) em SVG, no estilo do site.
+   * stats: {atk,def,sta,dash,burst}; max é o teto da escala.
+   */
+  function radar(stats, { size = 220, max = null } = {}) {
+    const AXES = [
+      ['atk', 'ATK', 'var(--red)'],
+      ['def', 'DEF', 'var(--green)'],
+      ['sta', 'STA', 'var(--yellow)'],
+      ['burst', 'BURST', 'var(--orange)'],
+      ['dash', 'X-DASH', 'var(--cyan)'],
+    ];
+    const vals = AXES.map(([k]) => Math.max(0, +stats?.[k] || 0));
+    const top = max || Math.max(60, ...vals);
+    const c = size / 2;
+    const r = size / 2 - 34;
+    const pt = (i, frac) => {
+      const ang = -Math.PI / 2 + (i * 2 * Math.PI) / AXES.length;
+      return [c + Math.cos(ang) * r * frac, c + Math.sin(ang) * r * frac];
+    };
+    const ring = (frac) => AXES.map((_, i) => pt(i, frac).map((v) => v.toFixed(1)).join(',')).join(' ');
+    const shape = AXES.map(([k], i) => pt(i, Math.min(1, (+stats?.[k] || 0) / top)).map((v) => v.toFixed(1)).join(',')).join(' ');
+    return `<svg class="radar" viewBox="0 0 ${size} ${size}" role="img" aria-label="Radar de stats">
+      ${[0.25, 0.5, 0.75, 1].map((f) => `<polygon points="${ring(f)}" fill="none" stroke="rgba(255,255,255,.07)"/>`).join('')}
+      ${AXES.map((_, i) => { const [x, y] = pt(i, 1); return `<line x1="${c}" y1="${c}" x2="${x}" y2="${y}" stroke="rgba(255,255,255,.07)"/>`; }).join('')}
+      <polygon points="${shape}" fill="rgba(84,230,156,.16)" stroke="var(--green)" stroke-width="2" stroke-linejoin="round"/>
+      ${AXES.map(([k, , color], i) => { const [x, y] = pt(i, Math.min(1, (+stats?.[k] || 0) / top)); return `<circle cx="${x}" cy="${y}" r="3.2" fill="${color}"/>`; }).join('')}
+      ${AXES.map(([k, label], i) => {
+        const [x, y] = pt(i, 1.24);
+        return `<text x="${x}" y="${y - 4}" text-anchor="middle" class="radar-label">${label}</text>
+                <text x="${x}" y="${y + 8}" text-anchor="middle" class="radar-value">${+stats?.[k] || 0}</text>`;
+      }).join('')}
+    </svg>`;
+  }
+
   const money = (cents) => cents == null ? '' : (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   const dateFmt = (d, opts) => new Date(d).toLocaleString('pt-BR', opts ?? { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 
@@ -225,7 +260,7 @@
 
   window.BX = {
     api, me, site, esc, norm, toast, money, dateFmt,
-    partsIndex, partTagReady, partTag, comboTags, partThumb, KIND_PT,
+    partsIndex, partTagReady, partTag, comboTags, partThumb, KIND_PT, radar,
     avatarHtml, renderTopbar, mountUserWidget, userChipHtml,
     report, requireLogin, qs, pathPart, ytEmbed,
   };

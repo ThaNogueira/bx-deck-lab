@@ -362,17 +362,31 @@ export async function autoLinkProducts() {
   return { linked };
 }
 
-/** Sincronização completa: produtos + peças + vínculos. */
+/** Sincronização completa: BeyCommunity (banco inteiro) + enriquecimento. */
 export async function syncAll(actor = null) {
-  const products = await syncProducts(actor);
+  // 1) BeyCommunity: produtos com código + peças com stats/peso/variantes e
+  //    a relação peça↔produto oficial deles
+  let bc = { products: { created: 0, updated: 0 }, parts: { created: 0, updated: 0, linked: 0 } };
+  try {
+    const { syncBeyCommunity } = await import('./beycommunity.js');
+    bc = await syncBeyCommunity();
+  } catch (e) {
+    await prisma.syncLog.create({ data: { source: 'BeyCommunity (banco completo)', ok: false, message: String(e?.message || e).slice(0, 400) } });
+  }
+  // 2) Enriquecimento: stats do Byyblade HQ + imagens do BeybladeHub para o
+  //    que ficou sem, e apelidos Hasbro
   const parts = await syncParts();
+  // 3) Vínculo heurístico para produtos que ainda ficaram órfãos
   const links = await autoLinkProducts();
   return {
-    products: { created: products.created, updated: products.updated },
-    parts,
-    links,
-    created: products.created + parts.created,
-    updated: products.updated + parts.updated,
+    products: bc.products,
+    parts: {
+      created: bc.parts.created + parts.created,
+      updated: bc.parts.updated + parts.updated,
+    },
+    links: { linked: (bc.parts.linked || 0) + links.linked },
+    created: bc.products.created + bc.parts.created + parts.created,
+    updated: bc.products.updated + bc.parts.updated + parts.updated,
   };
 }
 

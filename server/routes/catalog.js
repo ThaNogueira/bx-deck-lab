@@ -21,6 +21,8 @@ export function partDto(p) {
     note: p.note,
     behavior: p.behavior,
     imageUrl: p.imageUrl,
+    images: json(p.imagesJson, []),
+    weightGrams: p.weightGrams,
     banned: p.banned,
     hidden: p.hidden,
   };

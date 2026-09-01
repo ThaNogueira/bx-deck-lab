@@ -26,47 +26,80 @@
       }
       const { part, products } = data;
       document.title = `${part.displayName} — BX Deck Lab`;
-      const stats = part.stats
-        ? `<div class="stat-chips">${Object.entries({ atk: 'Ataque', def: 'Defesa', sta: 'Stamina', dash: 'Dash' })
-            .filter(([k]) => part.stats[k] != null)
-            .map(([k, label]) => `<span class="badge">${label}: <b style="margin-left:4px">${part.stats[k]}</b></span>`).join('')}</div>`
-        : '';
       const aliases = (part.aliases || []).filter(Boolean);
+      const gallery = [...new Set([part.imageUrl, ...(part.images || [])].filter(Boolean))];
+      const s = part.stats || {};
+      const hasStats = ['atk', 'def', 'sta', 'dash', 'burst'].some((k) => s[k] != null);
+
+      const STAT_ROWS = [
+        ['atk', 'Ataque', 'var(--red)'],
+        ['def', 'Defesa', 'var(--green)'],
+        ['sta', 'Stamina', 'var(--yellow)'],
+        ['dash', 'X-Dash', 'var(--cyan)'],
+        ['burst', 'Resist. Burst', 'var(--orange)'],
+      ];
+      const maxStat = Math.max(60, ...STAT_ROWS.map(([k]) => +s[k] || 0));
+      const bars = STAT_ROWS.filter(([k]) => s[k] != null).map(([k, label, color]) => `
+        <div class="score-row" style="grid-template-columns:90px minmax(0,1fr) 34px">
+          <span>${label}</span>
+          <div><i style="width:${Math.min(100, (s[k] / maxStat) * 100)}%;background:${color}"></i></div>
+          <b>${s[k]}</b>
+        </div>`).join('');
 
       const brandName = { TAKARA_TOMY: 'Takara Tomy', HASBRO: 'Hasbro', OTHER: '—' };
       const productsHtml = products.length
         ? `<div class="card-grid">${products.map((p) => `
             <div class="list-card">
               <div style="display:flex;justify-content:space-between;gap:8px;align-items:start">
-                <h3><a href="/produto/${p.slug}" style="text-decoration:none;color:inherit">${BX.esc(p.name)}</a></h3>
-                ${p.code ? `<span class="product-code">${BX.esc(p.code)}</span>` : ''}
+                <h3 style="font-size:17px"><a href="/produto/${p.slug}" style="text-decoration:none;color:inherit">${BX.esc(p.name)}</a></h3>
+                ${p.code ? `<span class="status-chip">${BX.esc(p.code)}</span>` : ''}
               </div>
-              <div class="muted">${brandName[p.brand] || p.brand}${p.line ? ` • linha ${p.line}` : ''}${p.category ? ` • ${p.category.toLowerCase().replace('_', ' ')}` : ''}</div>
+              <div class="muted">${brandName[p.brand] || p.brand}${p.category ? ` • ${p.category.toLowerCase().replace('_', ' ')}` : ''}</div>
               <div class="list-card-foot">
                 <a class="google-btn" target="_blank" rel="noopener" href="${BX.esc(p.googleUrl)}">🔎 Buscar no Google</a>
-                <a href="/produto/${p.slug}" style="color:var(--cyan);font-size:11px;text-decoration:none">detalhes →</a>
+                <a href="/produto/${p.slug}" style="margin-left:auto;color:var(--cyan);font-size:11px;text-decoration:none">detalhes →</a>
               </div>
             </div>`).join('')}</div>`
-        : `<div class="empty-state">Ainda não mapeamos os produtos desta peça. O admin pode vincular pelo painel.</div>`;
+        : `<div class="empty-state">Ainda não mapeamos os produtos desta peça — a sincronização do catálogo completa isso com o tempo.</div>`;
 
       app.innerHTML = `
-        <div class="hero compact">
-          <div class="part-hero">
-            ${BX.partThumb({ ...part, img: part.imageUrl }, 140)}
-            <div>
-              <p class="eyebrow">${BX.KIND_PT[part.kind]}${part.subKind === 'INTEGRATED' ? ' • RATCHET INTEGRADA' : part.subKind === 'RIB' ? ' • RATCHET-INTEGRATED BIT' : ''}</p>
-              <h1>${BX.esc(part.displayName)}</h1>
-              <p>${part.type ? `<span class="badge ${part.type.toLowerCase()}">${part.type}</span> ` : ''}${part.banned ? '<span class="badge banned">Banida por padrão na WBO</span> ' : ''}${aliases.length ? `Também conhecida como: ${aliases.map(BX.esc).join(', ')}.` : ''}</p>
-              ${stats}
+        <div class="part-page-hero">
+          <div class="part-gallery">
+            <div class="part-main-img" id="mainImg">
+              ${gallery.length ? `<img src="${BX.esc(gallery[0])}" alt="${BX.esc(part.displayName)}">` : `<span class="fallback" style="font:800 42px var(--display);color:#6f7787">${BX.esc((part.abbrev || part.displayName.slice(0, 2)).toUpperCase())}</span>`}
             </div>
+            ${gallery.length > 1 ? `<div class="variant-thumbs">${gallery.map((url, i) => `
+              <button class="variant-thumb ${i === 0 ? 'selected' : ''}" data-img="${BX.esc(url)}"><img loading="lazy" src="${BX.esc(url)}" alt=""></button>`).join('')}</div>` : ''}
           </div>
+          <div>
+            <p class="eyebrow">${BX.KIND_PT[part.kind]}${part.subKind === 'INTEGRATED' ? ' • RATCHET INTEGRADA' : part.subKind === 'RIB' ? ' • RATCHET-INTEGRATED BIT' : ''}</p>
+            <h1 style="font:800 clamp(36px,4.5vw,58px)/.95 var(--display);text-transform:uppercase;margin:2px 0 10px">${BX.esc(part.displayName)}</h1>
+            <div class="stat-chips" style="margin-bottom:12px">
+              ${part.type ? `<span class="badge ${part.type.toLowerCase()}">${part.type}</span>` : ''}
+              ${part.weightGrams != null ? `<span class="badge">⚖ ${part.weightGrams} g</span>` : ''}
+              ${part.abbrev ? `<span class="badge">${BX.esc(part.abbrev)}</span>` : ''}
+              ${part.banned ? '<span class="badge banned">Banida por padrão na WBO</span>' : ''}
+            </div>
+            ${aliases.length ? `<p style="color:var(--muted);font-size:12px;margin:0 0 12px">Também conhecida como: <b style="color:#c4cad3">${aliases.map(BX.esc).join(', ')}</b></p>` : ''}
+            ${part.behavior || part.note ? `<p class="prose" style="font-size:12px;margin:0">${BX.esc(part.behavior || part.note)}</p>` : ''}
+          </div>
+          ${hasStats ? `
+          <div class="panel-card part-stats-card">
+            <p class="eyebrow">PERFORMANCE</p>
+            <div class="radar-wrap">${BX.radar(s, { size: 230, max: maxStat })}</div>
+            <div class="score-list" style="margin-top:8px">${bars}</div>
+          </div>` : ''}
         </div>
-        ${part.behavior || part.note ? `<div class="panel-card" style="margin-bottom:20px"><p class="prose" style="margin:0">${BX.esc(part.behavior || part.note)}</p></div>` : ''}
-        <div class="section-title-row" style="margin-bottom:12px">
-          <div><p class="eyebrow">ONDE ENCONTRAR</p><h2>Vem nesses produtos</h2></div>
+        <div class="section-title-row" style="margin:26px 0 12px">
+          <div><p class="eyebrow">ONDE ENCONTRAR</p><h2>Vem nesses produtos (${products.length})</h2></div>
           <small>Os botões abrem uma busca do Google — confira sempre o vendedor.</small>
         </div>
         ${productsHtml}`;
+
+      document.querySelectorAll('.variant-thumb').forEach((btn) => btn.addEventListener('click', () => {
+        document.querySelectorAll('.variant-thumb').forEach((b) => b.classList.toggle('selected', b === btn));
+        document.getElementById('mainImg').innerHTML = `<img src="${btn.dataset.img}" alt="">`;
+      }));
     })();
   </script>
 </body>

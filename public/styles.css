@@ -686,3 +686,20 @@ a.list-card{text-decoration:none;color:inherit}
 .part-meta strong a.plink:hover{color:var(--cyan);border-bottom-color:var(--cyan)}
 .combo-text strong .combo-tags{row-gap:3px}
 a.tab{text-decoration:none;display:inline-flex;align-items:center}
+
+/* v10 — página de peça estilo database: galeria, radar e stats completos */
+.part-page-hero{display:grid;grid-template-columns:300px minmax(0,1fr) 320px;gap:22px;align-items:start}
+.part-gallery{display:flex;flex-direction:column;gap:10px}
+.part-main-img{aspect-ratio:1;border:1px solid var(--line);border-radius:var(--radius);background:radial-gradient(circle at 50% 40%,#232a38,#12151d 70%);display:grid;place-items:center;overflow:hidden}
+.part-main-img img{width:88%;height:88%;object-fit:contain;filter:drop-shadow(0 14px 24px rgba(0,0,0,.45))}
+.variant-thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));gap:7px}
+.variant-thumb{aspect-ratio:1;border:1px solid var(--line);border-radius:10px;background:#12151d;padding:5px;display:grid;place-items:center;overflow:hidden}
+.variant-thumb img{width:100%;height:100%;object-fit:contain}
+.variant-thumb.selected{border-color:var(--cyan);box-shadow:0 0 0 2px rgba(80,231,255,.15)}
+.variant-thumb:hover{border-color:#4a5160}
+.part-stats-card .radar-wrap{display:grid;place-items:center;margin:6px 0}
+.radar{width:100%;max-width:240px;height:auto}
+.radar-label{fill:#8d95a2;font:800 9px var(--display);letter-spacing:.06em}
+.radar-value{fill:#e3e6eb;font:700 10px var(--body)}
+@media(max-width:1180px){.part-page-hero{grid-template-columns:260px minmax(0,1fr)}.part-stats-card{grid-column:1/-1}}
+@media(max-width:700px){.part-page-hero{grid-template-columns:1fr}}

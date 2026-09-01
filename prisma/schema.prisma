@@ -75,6 +75,9 @@ model Part {
   note        String?
   behavior    String?
   imageUrl    String?
+  imagesJson  String   @default("[]") // variantes de cor (galeria)
+  weightGrams Float?
+  bcSlug      String? // slug na BeyCommunity (casa relações no sync)
   banned      Boolean  @default(false)
   hidden      Boolean  @default(false)
   source      String?
@@ -98,6 +101,7 @@ model Product {
   beyType     String? // Attack | Defense | Stamina | Balance (produto de Bey única)
   imageUrl    String?
   releaseDate DateTime?
+  bcSlug      String? // slug na BeyCommunity
   hidden      Boolean   @default(false)
   notes       String?
   createdAt   DateTime  @default(now())

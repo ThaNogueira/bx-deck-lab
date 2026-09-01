@@ -45,6 +45,22 @@
             </section>`).join('')
         : '<div class="empty-state">As peças deste produto ainda não foram mapeadas.</div>';
 
+      // Radar de composição: soma dos stats das peças (produtos de Bey única)
+      const allParts = partsByKind.flatMap((g) => g.parts);
+      const sum = { atk: 0, def: 0, sta: 0, dash: 0, burst: 0 };
+      let statParts = 0;
+      for (const part of allParts) {
+        if (!part.stats) continue;
+        statParts++;
+        sum.atk += +part.stats.atk || 0;
+        sum.def += +part.stats.def || 0;
+        sum.sta += +part.stats.sta || 0;
+        sum.dash += +part.stats.dash || 0;
+        sum.burst += +part.stats.burst || 0;
+      }
+      const showRadar = statParts >= 2 && p.category !== 'RANDOM_BOOSTER' && p.category !== 'SET';
+      const totalWeight = allParts.reduce((acc, x) => acc + (+x.weightGrams || 0), 0);
+
       app.innerHTML = `
         <div class="hero compact">
           <div>
@@ -56,6 +72,17 @@
             <a class="google-btn" target="_blank" rel="noopener" href="${BX.esc(p.googleUrl)}">🔎 Buscar preços no Google</a>
           </div>
         </div>
+        ${showRadar ? `
+        <div class="panel-card" style="display:grid;grid-template-columns:260px minmax(0,1fr);gap:18px;align-items:center;margin-bottom:18px">
+          <div class="radar-wrap">${BX.radar(sum, { size: 230 })}</div>
+          <div>
+            <p class="eyebrow">COMBO COMPLETO</p>
+            <p style="color:var(--muted);font-size:12px;line-height:1.7;margin:8px 0 0">
+              Soma dos stats das ${statParts} peças mapeadas deste produto${totalWeight ? ` • peso total ≈ <b style="color:#e3e6eb">${totalWeight.toFixed(1)} g</b>` : ''}.
+              Total: <b style="color:#e3e6eb">${sum.atk + sum.def + sum.sta + sum.dash + sum.burst}</b> pontos.
+            </p>
+          </div>
+        </div>` : ''}
         <div class="assembly-note">
           <b>Ordem de montagem</b> (de cima para baixo): Lock Chip → Over Blade → Main Blade → Assist Blade → Ratchet → Bit.
           Nem todo produto tem todas as camadas — a maioria tem só Blade, Ratchet e Bit.
