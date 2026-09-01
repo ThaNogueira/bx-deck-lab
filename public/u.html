@@ -74,11 +74,11 @@
             ${combos.length ? `
               <div class="panel-card">
                 <div class="section-title-row" style="margin-bottom:12px"><div><p class="eyebrow">COMBOS</p><h2>Combos montados</h2></div></div>
-                <div class="card-grid">${combos.map((c) => `
+                <div class="card-grid" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr))">${combos.map((c) => `
                   <div class="list-card">
                     <div style="display:flex;justify-content:space-between;gap:8px"><h3 style="font-size:17px">${BX.esc(c.title)}</h3>${c.forSale ? '<span class="sale-tag">à venda</span>' : ''}</div>
+                    ${BX.beyVisual(c.parts)}
                     ${c.description ? `<p class="muted" style="margin:0">${BX.esc(c.description)}</p>` : ''}
-                    <div class="combo-tags">${c.parts.map((p) => BX.partTag({ ...p, display: p.displayName, img: p.imageUrl }, { size: 22 })).join('')}</div>
                     ${c.forSale ? `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
                       <span class="price">${c.priceCents != null ? BX.money(c.priceCents) : 'a combinar'}</span>
                       ${c.whatsappUrl ? `<a class="wa-btn" target="_blank" rel="noopener" href="${BX.esc(c.whatsappUrl)}">💬 Tenho interesse</a>` : ''}

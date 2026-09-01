@@ -33,9 +33,7 @@
       const beysHtml = deck.beys.map((bey, i) => `
         <div class="list-card">
           <h3>Bey ${i + 1}</h3>
-          <div style="display:flex;flex-direction:column;gap:6px">
-            ${bey.map((id) => BX.partTag(deck.parts?.[id] ? { ...deck.parts[id], display: deck.parts[id].displayName, img: deck.parts[id].imageUrl } : id, { size: 30, block: true })).join('')}
-          </div>
+          ${BX.beyVisual(bey.map((id) => deck.parts?.[id] || id))}
         </div>`).join('');
 
       app.innerHTML = `

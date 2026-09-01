@@ -53,7 +53,7 @@
           ...combos.map((c) => `
             <div class="list-card">
               <div style="display:flex;justify-content:space-between;gap:8px"><h3 style="font-size:17px">${BX.esc(c.title)}</h3><span class="sale-tag">combo</span></div>
-              <div class="combo-tags">${c.parts.map((p) => BX.partTag({ ...p, display: p.displayName, img: p.imageUrl }, { size: 22 })).join('')}</div>
+              ${BX.beyVisual(c.parts, { size: 'sm' })}
               ${c.description ? `<p class="muted" style="margin:0">${BX.esc(c.description.slice(0, 100))}</p>` : ''}
               <div class="author-line">${BX.avatarHtml(c.seller, { size: 24 })}<a href="/u/${c.seller.slug}">${BX.esc(c.seller.name)}</a></div>
               <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:auto">

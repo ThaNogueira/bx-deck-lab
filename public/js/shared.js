@@ -122,6 +122,69 @@
   }
 
   /**
+   * Visual de Bey no estilo do montador: Blade grande no centro com anéis de
+   * órbita, Ratchet/Bit menores embaixo e peças CX nas laterais. Cada peça é
+   * clicável (item 11). Aceita objetos de peça (dto ou índice), ids ou nomes.
+   */
+  function beyVisual(partRefs, { size = 'md' } = {}) {
+    const idx = partTag._idx;
+    const parts = (partRefs || [])
+      .map((ref) => {
+        if (ref && typeof ref === 'object') return ref;
+        return idx ? (idx.byId.get(ref) || idx.byName.get(norm(ref))) : null;
+      })
+      .filter(Boolean)
+      .map((p) => ({
+        kind: p.kind, subKind: p.subKind,
+        name: p.displayName || p.display || p.name,
+        img: p.imageUrl || p.img || null,
+        abbrev: p.abbrev, slug: p.slug,
+      }));
+
+    const used = new Set();
+    const take = (pred) => {
+      const p = parts.find((x) => !used.has(x) && pred(x));
+      if (p) used.add(p);
+      return p || null;
+    };
+    const blade = take((p) => p.kind === 'BLADE');
+    const main = take((p) => p.kind === 'MAIN_BLADE');
+    const lock = take((p) => p.kind === 'LOCK_CHIP');
+    const assist = take((p) => p.kind === 'ASSIST_BLADE');
+    const over = take((p) => p.kind === 'OVER_BLADE');
+    const ratchet = take((p) => p.kind === 'RATCHET');
+    const rib = take((p) => p.kind === 'BIT' && p.subKind === 'RIB');
+    const bit = take((p) => p.kind === 'BIT');
+    const center = blade || main || take(() => true);
+    const centerLabel = center === main ? 'Main Blade' : 'Blade';
+    const extras = parts.filter((p) => !used.has(p));
+
+    const art = (p, cls) => {
+      const inner = p.img
+        ? `<img loading="lazy" src="${esc(p.img)}" alt="${esc(p.name)}">`
+        : `<span class="fallback">${esc((p.abbrev || p.name.slice(0, 2)).toUpperCase())}</span>`;
+      return p.slug
+        ? `<a class="part-art ${cls}" href="/peca/${esc(p.slug)}" title="${esc(p.name)}">${inner}</a>`
+        : `<span class="part-art ${cls}" title="${esc(p.name)}">${inner}</span>`;
+    };
+    const piece = (p, pos, label) => p
+      ? `<div class="visual-piece ${pos}">${art(p, 'mini')}<span>${esc(label)}</span></div>`
+      : '';
+
+    return `<div class="bey-visual standalone ${size === 'sm' ? 'compact' : ''}">
+        <div class="rings"></div>
+        ${center ? `<div class="main-piece">${art(center, 'big')}<span>${esc(center.name)} • ${centerLabel}</span></div>` : ''}
+        ${center === blade && main ? piece(main, 'chip-pos', 'Main') : piece(lock, 'chip-pos', 'Lock Chip')}
+        ${piece(assist, 'assist-pos', 'Assist')}
+        ${piece(over, 'over-pos', 'Over')}
+        ${piece(ratchet, 'ratchet-pos', ratchet?.name || 'Ratchet')}
+        ${piece(bit, 'bit-pos', bit?.name || 'Bit')}
+        ${piece(rib, 'rib-pos', rib?.name || 'RIB')}
+      </div>
+      ${extras.length ? `<div class="combo-tags" style="margin-top:8px">${extras.map((p) => partTag(p, { size: 20, label: p.name })).join('')}</div>` : ''}`;
+  }
+
+  /**
    * Radar de 5 eixos (ATK/DEF/STA/X-DASH/BURST) em SVG, no estilo do site.
    * stats: {atk,def,sta,dash,burst}; max é o teto da escala.
    */
@@ -260,7 +323,7 @@
 
   window.BX = {
     api, me, site, esc, norm, toast, money, dateFmt,
-    partsIndex, partTagReady, partTag, comboTags, partThumb, KIND_PT, radar,
+    partsIndex, partTagReady, partTag, comboTags, partThumb, KIND_PT, radar, beyVisual,
     avatarHtml, renderTopbar, mountUserWidget, userChipHtml,
     report, requireLogin, qs, pathPart, ytEmbed,
   };

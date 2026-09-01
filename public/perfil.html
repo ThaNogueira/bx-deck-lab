@@ -212,10 +212,10 @@
         const el = document.getElementById('combosList');
         const combos = profile?.combos || [];
         el.innerHTML = combos.length
-          ? `<div class="card-grid">${combos.map((c) => `
+          ? `<div class="card-grid" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr))">${combos.map((c) => `
               <div class="list-card">
                 <div style="display:flex;justify-content:space-between;gap:8px"><h3 style="font-size:17px">${BX.esc(c.title)}</h3>${c.forSale ? '<span class="sale-tag">à venda</span>' : ''}</div>
-                <div class="combo-tags">${c.parts.map((p) => BX.partTag({ ...p, display: p.displayName, img: p.imageUrl }, { size: 22 })).join('')}</div>
+                ${BX.beyVisual(c.parts)}
                 ${c.forSale && c.priceCents != null ? `<div class="price">${BX.money(c.priceCents)}</div>` : ''}
                 <div class="inline-actions"><button class="btn danger-outline" data-delcombo="${c.id}">Excluir</button></div>
               </div>`).join('')}</div>`
