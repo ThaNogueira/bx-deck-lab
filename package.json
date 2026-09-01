@@ -1,0 +1,26 @@
+{
+  "name": "bx-deck-lab",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "BX Deck Lab — montador de decks, comunidade, torneios e marketplace de Beyblade X",
+  "scripts": {
+    "dev": "node --env-file=.env --watch server/index.js",
+    "start": "node --env-file=.env server/index.js",
+    "db:migrate": "prisma migrate deploy",
+    "db:seed": "node --env-file=.env server/seed.js",
+    "sync:products": "node --env-file=.env server/sync-cli.js"
+  },
+  "prisma": {
+    "seed": "node --env-file=.env server/seed.js"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.16.0",
+    "express": "^4.21.0",
+    "multer": "^2.0.0",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "prisma": "^6.16.0"
+  }
+}

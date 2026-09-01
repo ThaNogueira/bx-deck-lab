@@ -4,5 +4,13 @@ Thumbs.db
 desktop.ini
 *.log
 
+# Node / servidor
+node_modules/
+.env
+.env.local
+
+# Banco e uploads (dados de runtime — ficam fora do git)
+data/
+
 # Claude Code (config local da sessão)
 .claude/
