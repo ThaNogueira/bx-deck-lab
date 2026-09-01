@@ -4,7 +4,7 @@ import { requireRole, publicUser } from '../auth.js';
 import { audit } from '../audit.js';
 import { getSetting, setSetting, DEFAULTS } from '../settings.js';
 import { upload, uploadedUrl } from '../uploads.js';
-import { syncProducts } from '../sync.js';
+import { syncAll } from '../sync.js';
 import { isValidKind, json, slugify, uniqueSlug } from '../util.js';
 import { invalidatePartsIndex, partDto, productDto } from './catalog.js';
 
@@ -513,8 +513,8 @@ router.post('/api/admin/decks/:id/feature', ADMIN, ah(async (req, res) => {
 }));
 
 router.post('/api/admin/sync/products', ADMIN, ah(async (req, res) => {
-  const result = await syncProducts(req.user);
-  await audit(req.user, 'admin.sync.products', null, null, result);
+  const result = await syncAll(req.user);
+  await audit(req.user, 'admin.sync.catalog', null, null, result);
   res.json(result);
 }));
 

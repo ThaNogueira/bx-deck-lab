@@ -1,11 +1,35 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, scrypt, timingSafeEqual } from 'node:crypto';
+import { promisify } from 'node:util';
 import { prisma } from './db.js';
 import { uniqueSlug } from './util.js';
 
 /**
  * Sessões opacas, portadas do GLC Hub: token aleatório no cookie httpOnly,
- * hash SHA-256 no banco. Sem senhas — login é só via OAuth (Google).
+ * hash SHA-256 no banco. Login por Google OAuth ou e-mail+senha (scrypt).
  */
+
+const scryptAsync = promisify(scrypt);
+
+// ---------------------------------------------------------------------------
+// Senhas (scrypt nativo — sem dependências)
+// ---------------------------------------------------------------------------
+
+export async function hashPassword(password) {
+  const salt = randomBytes(16).toString('hex');
+  const hash = await scryptAsync(password, salt, 64);
+  return `s2:${salt}:${hash.toString('hex')}`;
+}
+
+export async function verifyPassword(password, stored) {
+  try {
+    const [scheme, salt, hex] = String(stored || '').split(':');
+    if (scheme !== 's2' || !salt || !hex) return false;
+    const hash = await scryptAsync(password, salt, 64);
+    return timingSafeEqual(hash, Buffer.from(hex, 'hex'));
+  } catch {
+    return false;
+  }
+}
 
 const SESSION_COOKIE = 'bx_session';
 const SESSION_DAYS = 30;

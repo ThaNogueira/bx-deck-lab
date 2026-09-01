@@ -5,6 +5,7 @@ import { sessionMiddleware, isStaff } from './auth.js';
 import { logError } from './audit.js';
 import { getSetting, setSetting } from './settings.js';
 import { UPLOADS_DIR } from './uploads.js';
+import { scheduleAutoSync } from './sync.js';
 
 import authRoutes from './routes/auth.js';
 import siteRoutes from './routes/site.js';
@@ -129,6 +130,9 @@ app.use((err, req, res, _next) => {
 
 const port = parseInt(process.env.PORT, 10) || 3000;
 app.listen(port, () => console.log(`BX Deck Lab ouvindo em http://localhost:${port}`));
+
+// Catálogo de peças/produtos: sincroniza sozinho no boot (se estiver velho) e periodicamente
+scheduleAutoSync();
 
 process.on('unhandledRejection', (e) => logError(e, 'unhandledRejection'));
 process.on('SIGTERM', async () => {

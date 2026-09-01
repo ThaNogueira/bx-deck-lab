@@ -19,6 +19,28 @@
           Entre para publicar decks, se inscrever em torneios, montar seu perfil e vender peças.
         </p>
         <div id="loginError" class="conflict-banner" hidden style="margin-bottom:14px"></div>
+        <div class="pill-toggle" style="width:100%;margin-bottom:16px">
+          <button type="button" id="modeLogin" class="active" style="flex:1">Entrar</button>
+          <button type="button" id="modeRegister" style="flex:1">Criar conta</button>
+        </div>
+        <form id="pwForm" style="display:grid;gap:10px;text-align:left">
+          <div id="nameField" hidden>
+            <label style="display:block;color:var(--muted);font-size:10px;text-transform:uppercase;font-weight:800;letter-spacing:.1em;margin-bottom:5px">Seu nome</label>
+            <input id="fName" maxlength="40" placeholder="Como quer ser chamado" autocomplete="nickname" />
+          </div>
+          <div>
+            <label style="display:block;color:var(--muted);font-size:10px;text-transform:uppercase;font-weight:800;letter-spacing:.1em;margin-bottom:5px">E-mail</label>
+            <input id="fEmail" type="email" placeholder="seu@email.com" required autocomplete="email" />
+          </div>
+          <div>
+            <label style="display:block;color:var(--muted);font-size:10px;text-transform:uppercase;font-weight:800;letter-spacing:.1em;margin-bottom:5px">Senha</label>
+            <input id="fPassword" type="password" placeholder="mínimo 8 caracteres" required minlength="8" autocomplete="current-password" />
+          </div>
+          <button class="btn primary" type="submit" id="pwSubmit" style="width:100%">Entrar</button>
+        </form>
+        <div style="display:flex;align-items:center;gap:10px;margin:16px 0;color:#626976;font-size:10px">
+          <span style="flex:1;border-top:1px solid var(--line)"></span> OU <span style="flex:1;border-top:1px solid var(--line)"></span>
+        </div>
         <a class="login-btn" id="googleBtn" href="/api/oauth/google">
           <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.5l6.7-6.7C35.7 2.4 30.2 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.8 6.1C12.3 13.4 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.4 5.8c4.4-4.1 7.2-10.1 7.2-17.5z"/><path fill="#FBBC05" d="M10.4 28.7a14.5 14.5 0 0 1 0-9.4l-7.8-6.1a24 24 0 0 0 0 21.6l7.8-6.1z"/><path fill="#34A853" d="M24 48c6.2 0 11.4-2 15.3-5.6l-7.4-5.8c-2.1 1.4-4.8 2.2-7.9 2.2-6.3 0-11.7-3.9-13.6-9.4l-7.8 6.1C6.5 42.6 14.6 48 24 48z"/></svg>
           Entrar com Google
@@ -46,6 +68,37 @@
       }
       const user = await BX.me().catch(() => null);
       if (user) { location.href = '/perfil'; return; }
+
+      // E-mail + senha: alternância entrar/criar conta
+      let mode = 'login';
+      const setMode = (m) => {
+        mode = m;
+        document.getElementById('modeLogin').classList.toggle('active', m === 'login');
+        document.getElementById('modeRegister').classList.toggle('active', m === 'register');
+        document.getElementById('nameField').hidden = m === 'login';
+        document.getElementById('fPassword').autocomplete = m === 'login' ? 'current-password' : 'new-password';
+        document.getElementById('pwSubmit').textContent = m === 'login' ? 'Entrar' : 'Criar conta';
+      };
+      document.getElementById('modeLogin').addEventListener('click', () => setMode('login'));
+      document.getElementById('modeRegister').addEventListener('click', () => setMode('register'));
+      document.getElementById('pwForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const body = {
+          email: document.getElementById('fEmail').value,
+          password: document.getElementById('fPassword').value,
+        };
+        try {
+          if (mode === 'register') {
+            body.name = document.getElementById('fName').value;
+            await BX.api('/api/auth/register', { method: 'POST', body });
+            location.href = '/perfil?bemvindo=1';
+          } else {
+            await BX.api('/api/auth/login', { method: 'POST', body });
+            location.href = '/';
+          }
+        } catch (err) { BX.toast(err.message); }
+      });
+
       const site = await BX.site().catch(() => null);
       if (site && !site.googleLogin) {
         document.getElementById('googleBtn').style.opacity = .4;

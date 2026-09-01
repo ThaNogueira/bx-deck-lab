@@ -1,6 +1,6 @@
 import { prisma } from './db.js';
-import { syncProducts } from './sync.js';
+import { syncAll } from './sync.js';
 
-const result = await syncProducts();
-console.log(`Sync concluído: ${result.created} criados, ${result.updated} atualizados.`);
+const r = await syncAll();
+console.log(`Sync concluído: produtos +${r.products.created}/${r.products.updated} • peças +${r.parts.created}/${r.parts.updated} • ${r.links.linked} produtos vinculados.`);
 await prisma.$disconnect();

@@ -590,7 +590,7 @@
         </div>
         <div class="panel-card" style="margin-bottom:14px">
           <div class="section-title-row">
-            <div><p class="eyebrow">SINCRONIZAÇÃO DE PRODUTOS</p><h2 style="font-size:20px">BeyCommunity (TT + Hasbro)</h2></div>
+            <div><p class="eyebrow">SINCRONIZAÇÃO DO CATÁLOGO</p><h2 style="font-size:20px">Produtos + peças + imagens</h2></div>
             <button class="btn primary" id="syncNow">↻ Sincronizar agora</button>
           </div>
           <div style="margin-top:10px">${logs.map((l) => `
@@ -624,9 +624,9 @@
       on('[data-feat]', 'click', act((el) => BX.api(`/api/admin/decks/${el.dataset.feat}/feature`, { method: 'POST', body: { order: Date.now() % 100000 } })));
       on('[data-unfeat]', 'click', act((el) => BX.api(`/api/admin/decks/${el.dataset.unfeat}/feature`, { method: 'POST', body: { order: null } })));
       box.querySelector('#syncNow').onclick = act(async () => {
-        BX.toast('Sincronizando — pode levar alguns segundos…');
+        BX.toast('Sincronizando produtos + peças + imagens — pode levar ~1 min…');
         const r = await BX.api('/api/admin/sync/products', { method: 'POST' });
-        BX.toast(`Sync: ${r.created} produtos criados, ${r.updated} atualizados.`);
+        BX.toast(`Sync: produtos +${r.products.created} • peças +${r.parts.created} novas / ${r.parts.updated} enriquecidas • ${r.links.linked} produtos vinculados.`);
       });
       box.querySelector('#aCreate').onclick = act(() => BX.api('/api/admin/announcements', {
         method: 'POST',

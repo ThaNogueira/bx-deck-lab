@@ -19,6 +19,7 @@ model User {
   email          String    @unique
   name           String
   slug           String    @unique
+  passwordHash   String? // null = conta só-Google
   avatarUrl      String?
   bannerUrl      String?
   bio            String?
