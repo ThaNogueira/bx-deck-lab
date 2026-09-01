@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="referrer" content="no-referrer" />
   <title>Peças — BX Deck Lab</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
@@ -56,13 +57,20 @@
             if (!parts.length) return '';
             return `<section>
               <div class="part-group-title"><h2>${BX.KIND_PT[k]}s</h2><span>${parts.length} peça(s)</span></div>
-              <div class="parts-grid">${parts.map((p) => `
-                <a class="part-card" href="/peca/${p.slug}" style="text-decoration:none;color:inherit">
-                  ${BX.partThumb({ ...p, img: p.imageUrl }, 54)}
-                  <div class="part-meta">
-                    <strong>${BX.esc(p.displayName)}</strong>
-                    <small>${BX.KIND_PT[p.kind]}${p.abbrev ? ` • ${BX.esc(p.abbrev)}` : ''}</small>
-                    ${typeBadge(p)} ${p.banned ? '<span class="badge banned">Banida WBO</span>' : ''}
+              <div class="pcatalog-grid">${parts.map((p) => `
+                <a class="pcatalog-card" href="/peca/${p.slug}">
+                  <div class="pcatalog-img">
+                    ${p.imageUrl
+                      ? `<img loading="lazy" src="${BX.esc(p.imageUrl)}" alt="${BX.esc(p.displayName)}">`
+                      : `<span class="fallback">${BX.esc((p.abbrev || p.displayName.slice(0, 2)).toUpperCase())}</span>`}
+                    ${(p.images || []).length > 1 ? `<span class="pcatalog-variants" title="${p.images.length} variantes de cor">${p.images.length}</span>` : ''}
+                  </div>
+                  <strong>${BX.esc(p.displayName)}</strong>
+                  <div class="pcatalog-chips">
+                    ${typeBadge(p)}
+                    ${p.weightGrams != null ? `<span class="badge">⚖ ${p.weightGrams}g</span>` : ''}
+                    ${p.abbrev && p.kind === 'BIT' ? `<span class="badge">${BX.esc(p.abbrev)}</span>` : ''}
+                    ${p.banned ? '<span class="badge banned">Banida</span>' : ''}
                   </div>
                 </a>`).join('')}</div>
             </section>`;

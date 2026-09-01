@@ -703,3 +703,16 @@ a.tab{text-decoration:none;display:inline-flex;align-items:center}
 .radar-value{fill:#e3e6eb;font:700 10px var(--body)}
 @media(max-width:1180px){.part-page-hero{grid-template-columns:260px minmax(0,1fr)}.part-stats-card{grid-column:1/-1}}
 @media(max-width:700px){.part-page-hero{grid-template-columns:1fr}}
+
+/* v10.1 — catálogo de peças com cards grandes */
+.pcatalog-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(172px,1fr));gap:12px}
+.pcatalog-card{display:flex;flex-direction:column;gap:8px;border:1px solid var(--line);border-radius:15px;background:linear-gradient(160deg,#151820,#0e1016);padding:12px;text-decoration:none;color:inherit;transition:transform .15s ease,border-color .15s ease}
+.pcatalog-card:hover{transform:translateY(-3px);border-color:var(--cyan)}
+.pcatalog-img{position:relative;aspect-ratio:1;border-radius:11px;background:radial-gradient(circle at 50% 42%,#242b39,#12151d 72%);display:grid;place-items:center;overflow:hidden}
+.pcatalog-img img{width:86%;height:86%;object-fit:contain;filter:drop-shadow(0 10px 16px rgba(0,0,0,.4));transition:transform .25s ease}
+.pcatalog-card:hover .pcatalog-img img{transform:scale(1.07)}
+.pcatalog-img .fallback{font:800 30px var(--display);color:#6f7787}
+.pcatalog-variants{position:absolute;top:7px;right:7px;min-width:20px;height:20px;display:grid;place-items:center;padding:0 5px;border-radius:999px;background:rgba(9,10,15,.75);border:1px solid #3a414d;color:#c4cad3;font:800 10px var(--display)}
+.pcatalog-card>strong{font:800 16px/1.1 var(--display);text-transform:uppercase;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.pcatalog-chips{display:flex;gap:4px;flex-wrap:wrap;margin-top:auto}
+@media(max-width:520px){.pcatalog-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}

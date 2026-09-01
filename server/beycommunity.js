@@ -175,10 +175,12 @@ const JSON_CATEGORIES = [
   ['ratchets', 'RATCHET'],
 ];
 const CARD_CATEGORIES = [
-  ['lock-chips', 'LOCK_CHIP'],
-  ['assist-blades', 'ASSIST_BLADE'],
-  ['main-blades', 'MAIN_BLADE'],
-  ['over-blades', 'OVER_BLADE'],
+  ['lock-chips', 'LOCK_CHIP', null],
+  ['assist-blades', 'ASSIST_BLADE', null],
+  ['main-blades', 'MAIN_BLADE', null],
+  ['metal-blades', 'MAIN_BLADE', null], // Metal Blades CX Expand (Blitz etc.)
+  ['over-blades', 'OVER_BLADE', null],
+  ['ribs', 'BIT', 'RIB'], // Ratchet-Integrated Bits (Turbo, Operate)
 ];
 
 function parseCardCategory(text, path) {
@@ -211,7 +213,8 @@ async function loadPartIndex() {
   return { parts, byKey, byBcSlug, register };
 }
 
-async function upsertBCPart(idx, kind, rec) {
+async function upsertBCPart(idx, kind, rec, subKind = null) {
+  rec.slug = rec.slug || slugify(rec.name); // ratchets não têm slug no payload
   const existing =
     idx.byBcSlug.get(rec.slug) ||
     idx.byKey.get(normKey(rec.name)) ||
@@ -248,6 +251,7 @@ async function upsertBCPart(idx, kind, rec) {
     data: {
       slug,
       kind,
+      subKind,
       name: rec.name,
       displayName: rec.name,
       type: rec.type || null,
@@ -289,7 +293,7 @@ export async function syncBCParts() {
 
   for (const [path, kind] of JSON_CATEGORIES) {
     const text = flightText(await fetchHtml(`${BASE}/${path}/`));
-    const entities = extractObjects(text, '"variants"').filter((o) => o.slug && o.name && Array.isArray(o.variants));
+    const entities = extractObjects(text, '"variants"').filter((o) => o.name && Array.isArray(o.variants));
     for (const rec of entities) {
       try {
         const r = await upsertBCPart(idx, kind, rec);
@@ -298,11 +302,11 @@ export async function syncBCParts() {
       } catch { /* segue */ }
     }
   }
-  for (const [path, kind] of CARD_CATEGORIES) {
+  for (const [path, kind, subKind] of CARD_CATEGORIES) {
     const text = flightText(await fetchHtml(`${BASE}/${path}/`));
     for (const rec of parseCardCategory(text, path)) {
       try {
-        const r = await upsertBCPart(idx, kind, rec);
+        const r = await upsertBCPart(idx, kind, rec, subKind);
         r.created ? created++ : updated++;
       } catch { /* segue */ }
     }
