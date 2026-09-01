@@ -815,3 +815,13 @@ button.user-chip{cursor:pointer}
 .nav-collapsed .side-collapse .vicon{transform:rotate(180deg)}
 .user-menu .vicon{opacity:.8}
 .user-menu a:hover .vicon,.user-menu button:hover .vicon{opacity:1}
+
+/* v11.3 — fotos sempre inteiras (nao usar % de altura em item de grid auto:
+   a linha auto se dimensiona pelo conteudo e a imagem transborda/corta) */
+.part-main-img,.pcatalog-img,.product-photo,.product-hero-photo,.product-mini-photo,.variant-thumb{display:flex;align-items:center;justify-content:center}
+.part-main-img{padding:7%}
+.pcatalog-img{padding:8%}
+.product-photo{padding:9px}
+.product-hero-photo{padding:11px}
+.product-mini-photo{padding:5px}
+.part-main-img img,.pcatalog-img img,.product-photo img,.product-hero-photo img,.product-mini-photo img,.variant-thumb img{width:auto;height:auto;max-width:100%;max-height:100%;object-fit:contain;padding:0}
