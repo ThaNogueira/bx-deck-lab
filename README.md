@@ -1,26 +1,40 @@
 # BX Deck Lab
 
-Montador 3-on-3 de **Beyblade X** com coleção física, catálogo online, análise heurística, decks meta, modo de decks físicos e organizador de torneios.
+Plataforma da comunidade de **Beyblade X**: montador de decks 3-on-3 com coleção física e análise heurística, contas com login Google, perfis customizáveis (banner/avatar animados, molduras e stickers), deck lists da comunidade, catálogo de peças e produtos com "onde encontrar", torneios online com inscrição por QR Code e reporte duplo de resultados, marketplace via WhatsApp e painel completo de admin.
 
 ## Stack
 
-- HTML/CSS/JS puro, sem build e sem backend — um site estático.
-- Coleção, decks e torneios ficam no `localStorage` do navegador.
-- Catálogos e stats são consultados online direto do navegador (fontes abaixo).
+- **Frontend**: HTML/CSS/JS vanilla (sem build) — o montador original + páginas novas no mesmo estilo.
+- **Backend**: Node 20+ (Express) + Prisma + SQLite; sessões opacas e OAuth Google portados do GLC Hub.
+- Catálogos de meta continuam sendo consultados online pelo navegador; o catálogo de peças/produtos vive no banco (semeado do snapshot do app e sincronizável da BeyCommunity pelo admin).
+- Uploads (avatars, banners, imagens de peças) em `data/uploads`.
 
-## Rodando local
-
-Abra `index.html` no navegador. Como o app consulta catálogos online, a forma mais compatível é servir a pasta localmente:
+## Rodando em dev
 
 ```bash
-python -m http.server 8080
+cp .env.example .env      # DEV_LOGIN=1 permite entrar sem o Google
+npm install
+npx prisma migrate deploy
+npm run db:seed           # peças/produtos do snapshot + cosméticos + configurações
+npm run dev               # http://localhost:3000
 ```
 
-Depois abra `http://localhost:8080`.
+Contas em `ADMIN_EMAILS` viram admin ao logar; o painel fica em `/admin`.
+
+## Mapa do site
+
+- `/` montador (Início com dashboard do meta, coleção, decks físicos, etc.)
+- `/decks`, `/deck/:slug` — deck lists da comunidade (guia de lançamento + vídeo)
+- `/pecas`, `/peca/:slug` — cada peça com stats e **em quais produtos vem** (busca no Google)
+- `/produtos`, `/produto/:slug` — todos os lançamentos por linha/código (BX, UX, CX, Hasbro)
+- `/torneios`, `/torneio/:slug`, `/t/:slug` — torneios com QR, cartaz imprimível e reporte verde/vermelho
+- `/vendas` — vitrine de peças e combos à venda (contato via wa.me)
+- `/perfil`, `/u/:slug` — perfil customizável com coleção, vendas e combos
+- `/admin` — painel completo (usuários, moderação, catálogo, cosméticos, flags, logs)
 
 ## Deploy
 
-Passo a passo para servir numa VPS (Caddy, acesso por IP) em [DEPLOY.md](DEPLOY.md).
+Passo a passo (Docker + Caddy na VPS, incluindo o aviso sobre OAuth × IP) em [DEPLOY.md](DEPLOY.md).
 
 ## Coleção e catálogo
 

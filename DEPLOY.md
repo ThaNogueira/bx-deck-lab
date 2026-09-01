@@ -1,71 +1,101 @@
-# Deploy no VPS (site estático + Caddy)
+# Deploy no VPS (Docker + Caddy)
 
-O BX Deck Lab é 100% estático (HTML/CSS/JS, sem backend próprio — os catálogos
-são consultados direto do navegador). Deploy é basicamente clonar o repo e
-servir a pasta. Este guia assume acesso só por **IP** (sem domínio) numa VPS
-Linux (Ubuntu/Debian).
+A v2 tem servidor próprio (Node + Express + SQLite): contas Google, perfis,
+decks da comunidade, torneios online, marketplace e painel de admin. O deploy
+segue o padrão do GLC Hub: Docker Compose atrás do Caddy.
 
 ## 1. Pré-requisitos
 
-Caddy instalado (se a VPS já roda o GLC Hub, ele já está lá):
+Docker e Caddy (se a VPS já roda o GLC Hub, os dois já estão lá).
+
+## 2. Código e variáveis
 
 ```bash
-sudo apt install -y caddy
+git clone https://github.com/ThaNogueira/bx-deck-lab.git && cd bx-deck-lab
+cp .env.example .env
 ```
 
-## 2. Código
+Edite `.env`:
+
+| Variável | Valor |
+|---|---|
+| `SITE_URL` | URL pública (ex.: `http://SEU_IP:8080` — ver aviso do OAuth abaixo) |
+| `GOOGLE_CLIENT_ID/SECRET` | os MESMOS do GLC Hub — copie do `.env` da pasta do glchub na VPS (`grep GOOGLE_ /caminho/glchub/.env`) |
+| `ADMIN_EMAILS` | e-mails que viram admin ao logar (já vem com o seu) |
+| `DEV_LOGIN` | `0` em produção, SEMPRE |
+
+`DATABASE_URL` já vem certo no exemplo (SQLite em `data/`, que o compose monta
+como volume).
+
+## 3. Subir
 
 ```bash
-sudo git clone https://github.com/ThaNogueira/bx-deck-lab.git /opt/bx-deck-lab
+docker compose up -d --build
+docker compose logs -f web
 ```
 
-## 3. Servir por IP numa porta dedicada
+O container roda `prisma migrate deploy` + seed (idempotente) e sobe na porta
+interna 3001 (só localhost).
 
-Sem domínio não há certificado automático, então o site sai em HTTP puro numa
-porta própria (aqui, `8080`) — sem conflitar com outros sites do mesmo Caddy.
+## 4. Caddy (acesso por IP, porta 8080)
 
-Adicione ao `/etc/caddy/Caddyfile`:
+`/etc/caddy/Caddyfile`:
 
 ```
 http://:8080 {
-    root * /opt/bx-deck-lab
-    @oculto path /.git*
-    respond @oculto 404
+    reverse_proxy 127.0.0.1:3001
     encode gzip
-    file_server
 }
 ```
 
 ```bash
 sudo systemctl reload caddy
-```
-
-Se houver firewall:
-
-```bash
-sudo ufw allow 8080/tcp
+sudo ufw allow 8080/tcp   # se houver firewall
 ```
 
 Pronto: `http://SEU_IP:8080`.
 
-> Quando tiver um domínio, basta trocar `http://:8080` pelo domínio
-> (ex.: `bx.seudominio.com { ... }`) que o Caddy emite o certificado
-> Let's Encrypt sozinho.
+## ⚠ Google OAuth precisa de domínio
 
-## 4. Atualizações
+O Google **não aceita IP** como redirect URI (só `localhost` ou domínio). Ou
+seja: no `http://SEU_IP:8080` o site inteiro funciona, mas o botão "Entrar com
+Google" só vai funcionar quando houver um domínio (um subdomínio grátis do
+[DuckDNS](https://www.duckdns.org) resolve). Quando tiver:
 
-```bash
-cd /opt/bx-deck-lab && sudo git pull
+1. Aponte o domínio para o IP da VPS;
+2. Troque o bloco do Caddy por `bxlab.seudominio.com { reverse_proxy 127.0.0.1:3001 }`
+   (TLS automático) e ajuste `SITE_URL=https://bxlab.seudominio.com` no `.env`;
+3. No Google Cloud Console, na MESMA aplicação OAuth do GLC Hub, adicione o
+   redirect `https://bxlab.seudominio.com/api/oauth/google/callback`;
+4. `docker compose up -d` para recarregar o `.env`.
+
+Para testar login antes disso, rode local com `DEV_LOGIN=1` (`npm run dev` +
+`http://localhost:3000`), ou cadastre `http://localhost:3000/api/oauth/google/callback`
+no Google Console e teste o Google login localmente.
+
+## 5. Backup
+
+Tudo que importa está em `data/` (SQLite + uploads). Crontab diário, 14 dias:
+
+```
+20 4 * * * cd /caminho/para/bx-deck-lab && tar czf backups/bx-$(date +\%F).tar.gz data && find backups -name '*.tar.gz' -mtime +14 -delete
 ```
 
-Nada para rebuildar — o Caddy já serve os arquivos novos. Se o navegador
-insistir em versão antiga, recarregue com Ctrl+Shift+R (os dados ficam no
-`localStorage`, então recarregar não apaga coleção/decks).
+```bash
+mkdir -p backups
+```
 
-## 5. Observações
+## 6. Atualizações
 
-- A coleção, os decks e os torneios ficam no `localStorage` do **navegador de
-  quem usa** — o servidor não guarda nada, então não há banco nem backup a
-  fazer no VPS.
-- Os catálogos online (BEYBLADE X Database, BeyCommunity etc.) são consultados
-  pelo navegador do visitante; a VPS não precisa de acesso a essas fontes.
+```bash
+git pull
+docker compose up -d --build   # migrate + seed rodam de novo sozinhos
+```
+
+## 7. Operação
+
+- Painel: `/admin` (aparece a engrenagem no topo para contas MOD/ADMIN).
+- Manutenção, feature flags, avisos e filtro de palavras: tudo pelo painel.
+- Sync de produtos (BeyCommunity TT/Hasbro): botão em Admin → Home & meta,
+  ou `docker compose exec web node server/sync-cli.js`.
+- Erros do site e auditoria: Admin → Logs.
