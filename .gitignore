@@ -1,0 +1,8 @@
+# SO / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log
+
+# Claude Code (config local da sessão)
+.claude/
