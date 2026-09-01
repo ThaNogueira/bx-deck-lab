@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Peças — BX Deck Lab</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="noise"></div>
+  <header id="topbar"></header>
+  <main>
+    <div class="hero compact">
+      <div>
+        <p class="eyebrow">CATÁLOGO • BEYBLADE X</p>
+        <h1>Todas as <em>peças</em></h1>
+        <p>Clique em qualquer peça para ver stats, comportamento e — o mais importante — em quais produtos ela vem.</p>
+      </div>
+    </div>
+    <div class="page-toolbar">
+      <input id="q" placeholder="Buscar peça (nome, apelido ou sigla)…" />
+      <select id="kind">
+        <option value="">Todas as categorias</option>
+        <option value="BLADE">Blades</option>
+        <option value="LOCK_CHIP">Lock Chips</option>
+        <option value="OVER_BLADE">Over Blades</option>
+        <option value="MAIN_BLADE">Main Blades</option>
+        <option value="ASSIST_BLADE">Assist Blades</option>
+        <option value="RATCHET">Ratchets</option>
+        <option value="BIT">Bits</option>
+      </select>
+    </div>
+    <div id="list" class="collection-pieces"><div class="empty-state">Carregando catálogo…</div></div>
+  </main>
+  <script src="/js/shared.js"></script>
+  <script>
+    (async () => {
+      BX.renderTopbar('/pecas');
+      await BX.partTagReady();
+      const KINDS = ['BLADE','LOCK_CHIP','OVER_BLADE','MAIN_BLADE','ASSIST_BLADE','RATCHET','BIT'];
+      let all = [];
+
+      function typeBadge(p) {
+        return p.type ? `<span class="badge ${p.type.toLowerCase()}">${p.type}</span>` : '';
+      }
+
+      function render() {
+        const q = BX.norm(document.getElementById('q').value);
+        const kind = document.getElementById('kind').value;
+        const list = document.getElementById('list');
+        const groups = KINDS
+          .filter((k) => !kind || k === kind)
+          .map((k) => {
+            const parts = all.filter((p) => p.kind === k &&
+              (!q || [p.name, p.displayName, p.abbrev, ...(p.aliases || [])].some((v) => BX.norm(v).includes(q))));
+            if (!parts.length) return '';
+            return `<section>
+              <div class="part-group-title"><h2>${BX.KIND_PT[k]}s</h2><span>${parts.length} peça(s)</span></div>
+              <div class="parts-grid">${parts.map((p) => `
+                <a class="part-card" href="/peca/${p.slug}" style="text-decoration:none;color:inherit">
+                  ${BX.partThumb({ ...p, img: p.imageUrl }, 54)}
+                  <div class="part-meta">
+                    <strong>${BX.esc(p.displayName)}</strong>
+                    <small>${BX.KIND_PT[p.kind]}${p.abbrev ? ` • ${BX.esc(p.abbrev)}` : ''}</small>
+                    ${typeBadge(p)} ${p.banned ? '<span class="badge banned">Banida WBO</span>' : ''}
+                  </div>
+                </a>`).join('')}</div>
+            </section>`;
+          }).join('');
+        list.innerHTML = groups || '<div class="empty-state">Nenhuma peça encontrada.</div>';
+      }
+
+      const { parts } = await BX.api('/api/parts');
+      all = parts;
+      render();
+      document.getElementById('q').addEventListener('input', render);
+      document.getElementById('kind').addEventListener('change', render);
+    })();
+  </script>
+</body>
+</html>

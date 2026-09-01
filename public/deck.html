@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Deck — BX Deck Lab</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="noise"></div>
+  <header id="topbar"></header>
+  <main id="app"><div class="empty-state">Carregando deck…</div></main>
+  <script src="/js/shared.js"></script>
+  <script>
+    (async () => {
+      BX.renderTopbar('/decks');
+      await BX.partTagReady();
+      const slug = BX.pathPart(1);
+      const app = document.getElementById('app');
+      let deck;
+      try {
+        deck = (await BX.api(`/api/decks/${encodeURIComponent(slug)}`)).deck;
+      } catch (e) {
+        app.innerHTML = `<div class="empty-state">${BX.esc(e.message)} — <a href="/decks" style="color:var(--cyan)">ver todos os decks</a></div>`;
+        return;
+      }
+      document.title = `${deck.title} — BX Deck Lab`;
+      const me = await BX.me().catch(() => null);
+      const mine = me && deck.author && me.id === deck.author.id;
+      const embed = BX.ytEmbed(deck.youtubeUrl);
+
+      const beysHtml = deck.beys.map((bey, i) => `
+        <div class="list-card">
+          <h3>Bey ${i + 1}</h3>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            ${bey.map((id) => BX.partTag(deck.parts?.[id] ? { ...deck.parts[id], display: deck.parts[id].displayName, img: deck.parts[id].imageUrl } : id, { size: 30, block: true })).join('')}
+          </div>
+        </div>`).join('');
+
+      app.innerHTML = `
+        <div class="hero compact">
+          <div>
+            <p class="eyebrow">DECK DA COMUNIDADE${deck.featured ? ' • ★ EM DESTAQUE' : ''}</p>
+            <h1>${BX.esc(deck.title)}</h1>
+            <div class="author-line" style="margin-top:10px">
+              ${BX.avatarHtml(deck.author, { size: 46 })}
+              <span>
+                <a href="/u/${deck.author?.slug}">${BX.esc(deck.author?.name || '?')}</a>
+                <small>publicado em ${BX.dateFmt(deck.createdAt, { day: '2-digit', month: 'long', year: 'numeric' })}</small>
+              </span>
+            </div>
+          </div>
+          <div class="hero-actions">
+            ${mine ? `<a class="btn secondary" href="/deck/${deck.slug}/editar">Editar</a>` : ''}
+            ${mine ? `<button class="btn danger-outline" id="delBtn">Excluir</button>` : `<button class="btn ghost" id="reportBtn">⚑ Denunciar</button>`}
+          </div>
+        </div>
+        <div class="deck-grid" style="margin-bottom:20px">${beysHtml}</div>
+        <div class="profile-grid">
+          <div style="display:flex;flex-direction:column;gap:16px">
+            ${deck.description ? `<div class="panel-card"><p class="eyebrow">SOBRE O DECK</p><p class="prose">${BX.esc(deck.description)}</p></div>` : ''}
+            ${deck.launchGuide ? `<div class="panel-card"><p class="eyebrow">GUIA DE LANÇAMENTO</p><p class="prose">${BX.esc(deck.launchGuide)}</p></div>` : ''}
+          </div>
+          <div>
+            ${embed ? `<div class="video-embed"><iframe src="${embed}" title="Vídeo do deck" allowfullscreen loading="lazy"></iframe></div>` : ''}
+          </div>
+        </div>`;
+
+      document.getElementById('reportBtn')?.addEventListener('click', () => BX.report('DECK', deck.id, 'este deck'));
+      document.getElementById('delBtn')?.addEventListener('click', async () => {
+        if (!confirm('Excluir este deck? Essa ação não tem volta.')) return;
+        try { await BX.api(`/api/decks/${deck.id}`, { method: 'DELETE' }); location.href = '/decks'; }
+        catch (e) { BX.toast(e.message); }
+      });
+    })();
+  </script>
+</body>
+</html>

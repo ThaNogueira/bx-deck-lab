@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Vendas — BX Deck Lab</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="noise"></div>
+  <header id="topbar"></header>
+  <main>
+    <div class="hero compact">
+      <div>
+        <p class="eyebrow">MARKETPLACE DA COMUNIDADE</p>
+        <h1>Peças e combos <em>à venda</em></h1>
+        <p>Anúncios feitos pelos próprios jogadores. O contato é direto via WhatsApp — o site não intermedia pagamentos; combine tudo com o vendedor.</p>
+      </div>
+    </div>
+    <div class="page-toolbar">
+      <input id="q" placeholder="Buscar peça, combo ou vendedor…" />
+      <select id="type"><option value="">Tudo</option><option value="parts">Só peças</option><option value="combos">Só combos</option></select>
+    </div>
+    <div id="list" class="card-grid"><div class="empty-state">Carregando anúncios…</div></div>
+  </main>
+  <script src="/js/shared.js"></script>
+  <script>
+    (async () => {
+      BX.renderTopbar('/vendas');
+      await BX.partTagReady();
+      let data = { items: [], combos: [] };
+
+      function render() {
+        const q = BX.norm(document.getElementById('q').value);
+        const type = document.getElementById('type').value;
+        const items = type === 'combos' ? [] : data.items.filter((i) => !q || BX.norm(`${i.part.displayName} ${i.seller.name}`).includes(q));
+        const combos = type === 'parts' ? [] : data.combos.filter((c) => !q || BX.norm(`${c.title} ${c.seller.name}`).includes(q));
+        const cards = [
+          ...items.map((i) => `
+            <div class="list-card">
+              <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
+                ${BX.partTag({ ...i.part, display: i.part.displayName, img: i.part.imageUrl }, { size: 34 })}
+                <span class="sale-tag">à venda</span>
+              </div>
+              <div class="muted">${i.qty > 1 ? `${i.qty} unidades • ` : ''}${BX.esc(i.condition || 'condição não informada')}</div>
+              <div class="author-line">${BX.avatarHtml(i.seller, { size: 24 })}<a href="/u/${i.seller.slug}">${BX.esc(i.seller.name)}</a></div>
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:auto">
+                <span class="price">${i.priceCents != null ? BX.money(i.priceCents) : 'a combinar'}</span>
+                ${i.whatsappUrl ? `<a class="wa-btn" target="_blank" rel="noopener" href="${BX.esc(i.whatsappUrl)}">💬 Tenho interesse</a>` : '<small class="muted">sem WhatsApp cadastrado</small>'}
+              </div>
+            </div>`),
+          ...combos.map((c) => `
+            <div class="list-card">
+              <div style="display:flex;justify-content:space-between;gap:8px"><h3 style="font-size:17px">${BX.esc(c.title)}</h3><span class="sale-tag">combo</span></div>
+              <div class="combo-tags">${c.parts.map((p) => BX.partTag({ ...p, display: p.displayName, img: p.imageUrl }, { size: 22 })).join('')}</div>
+              ${c.description ? `<p class="muted" style="margin:0">${BX.esc(c.description.slice(0, 100))}</p>` : ''}
+              <div class="author-line">${BX.avatarHtml(c.seller, { size: 24 })}<a href="/u/${c.seller.slug}">${BX.esc(c.seller.name)}</a></div>
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:auto">
+                <span class="price">${c.priceCents != null ? BX.money(c.priceCents) : 'a combinar'}</span>
+                ${c.whatsappUrl ? `<a class="wa-btn" target="_blank" rel="noopener" href="${BX.esc(c.whatsappUrl)}">💬 Tenho interesse</a>` : ''}
+              </div>
+            </div>`),
+        ];
+        document.getElementById('list').innerHTML = cards.join('') || '<div class="empty-state">Nenhum anúncio no momento. Para vender, marque peças da sua coleção como “à venda” no seu perfil.</div>';
+      }
+
+      data = await BX.api('/api/market');
+      render();
+      document.getElementById('q').addEventListener('input', render);
+      document.getElementById('type').addEventListener('change', render);
+    })();
+  </script>
+</body>
+</html>

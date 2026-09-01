@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0b0c11" />
+  <title>BX Deck Lab — Montador de Decks Beyblade X</title>
+  <link rel="preconnect" href="https://beyblade.phstudy.org" crossorigin>
+  <link rel="preconnect" href="https://beybladehub.app" crossorigin>
+  <link rel="preconnect" href="https://beycommunity.com" crossorigin>
+  <link rel="preconnect" href="https://r.jina.ai" crossorigin>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="noise"></div>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true"><span>X</span></div>
+      <div>
+        <strong>BX DECK LAB</strong>
+        <small>3-on-3 deck builder</small>
+      </div>
+    </div>
+    <nav class="tabs" aria-label="Navegação principal">
+      <button class="tab active" data-tab="home">Início</button>
+      <button class="tab" data-tab="builder">Montador</button>
+      <button class="tab" data-tab="collection">Minha coleção</button>
+      <button class="tab" data-tab="missing">Faltam na coleção</button>
+      <button class="tab" data-tab="popular">Decks populares</button>
+      <button class="tab" data-tab="weekly">Meta de peças</button>
+      <button class="tab" data-tab="session">Decks físicos</button>
+      <button class="tab" data-tab="tournament">Torneio</button>
+      <button class="tab" data-tab="rules">Regras</button>
+    </nav>
+    <div class="header-status" id="headerStatus"></div>
+  </header>
+
+  <main>
+    <section class="view active" id="view-home">
+      <div class="hero compact">
+        <div>
+          <p class="eyebrow">DASHBOARD DO META • BEYBLADE X</p>
+          <h1>O que está <em>girando</em> agora</h1>
+          <p>Tendências do meta competitivo, peças em destaque e decks da comunidade — tudo num lugar só. Os dados vêm das mesmas fontes das abas de meta.</p>
+        </div>
+        <div class="hero-actions">
+          <a class="btn secondary" href="/decks" style="text-decoration:none">Decks da comunidade</a>
+          <a class="btn secondary" href="/torneios" style="text-decoration:none">Torneios</a>
+          <a class="btn secondary" href="/pecas" style="text-decoration:none">Peças</a>
+          <a class="btn secondary" href="/produtos" style="text-decoration:none">Produtos</a>
+          <a class="btn secondary" href="/vendas" style="text-decoration:none">Vendas</a>
+        </div>
+      </div>
+      <div id="homeFeatured"></div>
+      <div class="home-grid" id="homeCharts"></div>
+    </section>
+
+    <section class="view" id="view-builder">
+      <div class="hero compact">
+        <div>
+          <p class="eyebrow">DECK COMPETITIVO • WBO</p>
+          <h1>Monte seu deck <em>3-on-3</em></h1>
+          <p>O montador usa somente peças da sua coleção, respeita quantidades físicas e bloqueia repetições proibidas pelo regulamento.</p>
+        </div>
+        <div class="hero-actions">
+          <button class="btn secondary" id="randomDeckBtn">🎲 Deck aleatório</button>
+          <button class="btn secondary viable" id="viableDeckBtn">✦ Aleatório viável</button>
+          <button class="btn secondary" id="clearDeckBtn">Limpar deck</button>
+          <button class="btn primary" id="saveDeckBtn">Salvar deck</button>
+        </div>
+      </div>
+
+      <div class="builder-layout">
+        <div class="deck-area">
+          <div class="deck-toolbar">
+            <div class="deck-name-wrap">
+              <label for="deckName">Nome do deck</label>
+              <input id="deckName" maxlength="40" placeholder="Ex.: Deck de torneio" />
+            </div>
+            <div id="deckLegality" class="legality"></div>
+          </div>
+          <div class="deck-grid" id="deckGrid"></div>
+          <section class="analysis-card" id="deckAnalysis"></section>
+          <div class="saved-panel">
+            <div class="section-title-row">
+              <div>
+                <p class="eyebrow">LOCAL</p>
+                <h2>Decks salvos</h2>
+              </div>
+              <small>Ficam armazenados neste navegador.</small>
+            </div>
+            <div id="savedDecks" class="saved-decks"></div>
+          </div>
+        </div>
+
+        <aside class="side-panel">
+          <div class="panel-card sticky">
+            <div class="panel-title">
+              <span class="status-dot"></span>
+              <strong>Validação em tempo real</strong>
+            </div>
+            <div id="validationList" class="validation-list"></div>
+            <hr />
+            <div class="mini-rule">
+              <span>3</span>
+              <p><strong>3 Beys</strong><br>para um deck completo.</p>
+            </div>
+            <div class="mini-rule">
+              <span>1×</span>
+              <p><strong>Sem repetir peças</strong><br>mesmo possuindo cópias extras.</p>
+            </div>
+            <div class="mini-rule danger">
+              <span>!</span>
+              <p><strong>Metal Needle</strong><br>banida por padrão na WBO.</p>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <section class="view" id="view-collection">
+      <div class="hero compact">
+        <div>
+          <p class="eyebrow">SEU ESTOQUE</p>
+          <h1>Minha coleção</h1>
+          <p>Cole sua lista de Beys. O tipo entre parênteses é opcional. Peças e Beys são consultados em catálogos online; BX, UX, CX, Hasbro/collabs e sistemas com peças integradas são tratados pelo mesmo resolvedor.</p>
+        </div>
+        <div>
+          <div class="collection-count" id="collectionCount"></div>
+          <button class="btn secondary" id="sendCollectionBtn" style="margin-top:8px;width:100%">☁ Enviar para meu perfil</button>
+        </div>
+      </div>
+
+      <div class="collection-layout">
+        <div class="panel-card import-card">
+          <div class="section-title-row">
+            <div>
+              <p class="eyebrow">IMPORTAR</p>
+              <h2>Lista de Beys</h2>
+            </div>
+            <button class="btn primary" id="importBtn">Importar lista</button>
+          </div>
+          <textarea id="inventoryText" spellcheck="false" aria-label="Lista de Beyblades"></textarea>
+          <div class="import-note" id="importNote"></div>
+        </div>
+
+        <div class="panel-card manual-card">
+          <div class="section-title-row">
+            <div>
+              <p class="eyebrow">PEÇA AVULSA</p>
+              <h2>Adicionar pelo catálogo</h2>
+            </div>
+          </div>
+          <div class="manual-form">
+            <select id="manualKind" aria-label="Tipo da peça">
+              <option value="blade">Lâmina</option>
+              <option value="ratchet">Catraca</option>
+              <option value="bit">Ponta</option>
+              <option value="lock">Lock Chip (CX)</option>
+              <option value="main">Main Blade (CX)</option>
+              <option value="assist">Assist Blade (CX)</option>
+              <option value="over">Over Blade (CX Expand)</option>
+              <option value="integrated">Lâmina com catraca integrada</option>
+              <option value="rib">Ratchet-Integrated Bit (ex.: Turbo)</option>
+            </select>
+            <input id="manualName" placeholder="Nome / abreviação" />
+            <input id="manualQty" type="number" min="1" max="99" value="1" aria-label="Quantidade" />
+            <button class="btn secondary" id="manualAddBtn">Adicionar</button>
+          </div>
+          <p class="form-help">Este campo usa o mesmo catálogo online da busca abaixo. Ele não cria nomes arbitrários: a peça precisa existir no catálogo e será registrada como <strong>“Adicionada à parte”</strong> na origem da coleção.</p>
+        </div>
+      </div>
+
+      <section class="panel-card live-catalog-card">
+        <div class="section-title-row">
+          <div><p class="eyebrow">CATÁLOGO VIVO</p><h2>Buscar peças e lançamentos</h2></div>
+          <div class="catalog-actions"><span class="catalog-status live" id="catalogStatus"><i class="online-pulse"></i>Conectando…</span><button class="btn secondary" id="syncCatalogBtn">Atualizar catálogo</button></div>
+        </div>
+        <p class="form-help">O catálogo é atualizado online ao abrir o site e mescla peças com produtos TT/Hasbro. A busca nunca deixa de consultar os lançamentos só porque encontrou uma peça local.</p>
+        <div class="catalog-search"><input id="catalogSearchInput" placeholder="Ex.: Glory Valkyrie, Spider-Man, Turbo, 8-80…"><button class="btn primary" id="catalogSearchBtn">Buscar</button></div>
+        <div id="catalogSearchResults" class="catalog-results"></div>
+      </section>
+
+      <div class="collection-pieces" id="collectionPieces"></div>
+    </section>
+
+    <section class="view" id="view-missing">
+      <div class="hero compact">
+        <div>
+          <p class="eyebrow">CHECKLIST DE COLEÇÃO</p>
+          <h1>Beyblades e lançamentos que ainda faltam</h1>
+          <p>Compara os Beys importados na sua coleção com catálogos online de Takara Tomy e Hasbro. Versões equivalentes ficam no mesmo card sempre que o site consegue relacioná-las.</p>
+        </div>
+        <div class="freshness"><span></span><span id="missingCatalogStatus">Catálogo online</span></div>
+      </div>
+
+      <section class="panel-card missing-toolbar">
+        <div class="missing-search-row">
+          <input id="missingSearchInput" placeholder="Buscar Bey, código, linha ou collab…" />
+          <select id="missingBrandFilter" aria-label="Marca">
+            <option value="all">Takara Tomy + Hasbro</option>
+            <option value="tt">Somente Takara Tomy</option>
+            <option value="hasbro">Somente Hasbro</option>
+          </select>
+          <select id="missingCategoryFilter" aria-label="Categoria">
+            <option value="all">Todos os lançamentos</option>
+            <option value="main">Somente mainline</option>
+            <option value="collector">Colecionador / limitada</option>
+            <option value="collab">Somente collabs</option>
+            <option value="nonmain">Somente não-main</option>
+          </select>
+        </div>
+        <div class="missing-toolbar-foot">
+          <span id="missingCount">0 faltando</span>
+          <small>“Onde comprar” abre pesquisas; estoque e preço variam por loja/região.</small>
+        </div>
+      </section>
+
+      <div id="missingGrid" class="missing-grid"></div>
+    </section>
+
+    <section class="view" id="view-popular">
+      <div class="hero compact">
+        <div>
+          <p class="eyebrow">META INTERNACIONAL</p>
+          <h1>Decks que estão aparecendo em torneios</h1>
+          <p>Decks de pódio e arquétipos agregados de múltiplas bases competitivas. O botão abaixo busca páginas adicionais em vez de depender apenas de uma lista fixa.</p>
+        </div>
+        <div class="freshness"><span></span>Dados online</div>
+      </div>
+      <div class="meta-fetch-toolbar">
+        <div><strong id="metaDeckCount">Decks carregados</strong><small id="metaFetchStatus">WBO • BBX DB • Beycrate • BBXHub • BeyBase</small></div>
+        <button class="btn primary" id="loadMoreMetaBtn">Buscar mais decks meta</button>
+      </div>
+      <div class="popular-grid" id="popularGrid"></div>
+      <div class="source-banner">
+        <strong>Como esta aba é tratada:</strong>
+        <span>cards “Pódio” representam decks reportados; cards “Agregado” são sínteses de builds populares e são marcados como tal. Formato, estádio, região e regras opcionais podem mudar o meta.</span>
+      </div>
+    </section>
+
+    <section class="view" id="view-weekly">
+      <div class="hero compact">
+        <div>
+          <p class="eyebrow">BBX WEEKLY • 4 SEMANAS</p>
+          <h1>Quais peças estão aparecendo no meta?</h1>
+          <p>Ranking de uso relativo publicado pelo BBX Weekly a partir de eventos WBO. Use esta aba para enxergar tendências de peças; ela complementa a aba de decks completos.</p>
+        </div>
+        <div class="freshness"><span></span>Snapshot: 2026-W18 • 10 abr–7 mai 2026</div>
+      </div>
+      <div class="weekly-summary" id="weeklySummary"></div>
+      <div class="weekly-grid" id="weeklyGrid"></div>
+      <div class="source-banner">
+        <strong>Fonte:</strong>
+        <span>BBX Weekly — ranking de 4 semanas, 183 eventos e 5.248 peças analisadas no snapshot mostrado. O valor é um índice relativo do próprio site, não uma porcentagem de win rate.</span>
+        <a class="meta-link" href="https://www.bbxweekly.com/4weeks" target="_blank" rel="noopener">Abrir BBX Weekly ↗</a>
+      </div>
+    </section>
+
+
+    <section class="view" id="view-session">
+      <div class="hero compact">
+        <div>
+          <p class="eyebrow">SESSÃO CASUAL • ESTOQUE FÍSICO</p>
+          <h1>Monte vários decks sem desmontar os anteriores</h1>
+          <p>Cada deck fechado reserva as peças físicas da sua coleção. O próximo deck só oferece o que ainda está livre — perfeito para deixar vários Beys montados ao mesmo tempo.</p>
+        </div>
+        <div class="hero-actions">
+          <button class="btn secondary" id="sessionCopyCurrentBtn">Copiar deck em andamento</button>
+          <button class="btn secondary" id="sessionClearDraftBtn">Limpar rascunho</button>
+          <button class="btn primary" id="sessionLockBtn">Reservar este deck</button>
+          <button class="btn danger-outline" id="sessionResetBtn">Resetar sessão</button>
+        </div>
+      </div>
+      <div class="session-summary" id="sessionSummary"></div>
+      <div class="session-layout">
+        <div>
+          <div class="deck-toolbar">
+            <div class="deck-name-wrap"><label for="sessionDeckName">Nome do deck físico</label><input id="sessionDeckName" maxlength="40" placeholder="Ex.: Deck do João" /></div>
+            <div id="sessionLegality" class="legality"></div>
+          </div>
+          <div class="session-draft-grid" id="sessionDraftGrid"></div>
+        </div>
+        <aside class="panel-card session-stock-panel">
+          <p class="eyebrow">PEÇAS LIVRES</p>
+          <h2>Estoque restante</h2>
+          <div id="sessionAvailableParts" class="session-stock-list"></div>
+        </aside>
+      </div>
+      <div class="section-title-row physical-title"><div><p class="eyebrow">RESERVADOS</p><h2>Decks já montados</h2></div><small>Remover um deck devolve suas peças ao estoque da sessão.</small></div>
+      <div id="sessionDecks" class="physical-decks"></div>
+    </section>
+
+    <section class="view" id="view-tournament">
+      <div class="hero compact">
+        <div>
+          <p class="eyebrow">ORGANIZADOR LOCAL</p>
+          <h1>Torneio, inscrições e chave</h1>
+          <p>Cadastre jogadores, foto e deck, gere uma chave de eliminação simples e registre o placar de cada confronto. A tabela acompanha vitórias, derrotas e pontos marcados.</p>
+        </div>
+        <div class="hero-actions">
+          <button class="btn secondary" id="shuffleBracketBtn">Gerar / sortear chave</button>
+          <button class="btn danger-outline" id="resetTournamentBtn">Resetar torneio</button>
+        </div>
+      </div>
+
+      <div class="tournament-setup">
+        <section class="panel-card tournament-config">
+          <div class="section-title-row"><div><p class="eyebrow">CONFIGURAÇÃO</p><h2>Tamanho</h2></div></div>
+          <label class="config-field">Máximo de jogadores <input id="tournamentMaxPlayers" type="number" min="2" max="32" value="8" /></label>
+          <label class="config-check"><input id="tournamentThirdPlace" type="checkbox" /> <span>Disputa de 3º lugar</span></label>
+          <p class="form-help">A chave aceita de 2 a 32 jogadores e cria BYEs automaticamente quando necessário. Com a disputa de 3º lugar ativada, os perdedores das semifinais recebem um confronto extra exibido abaixo da Final.</p>
+        </section>
+        <section class="panel-card registration-card">
+          <div class="section-title-row"><div><p class="eyebrow">INSCRIÇÃO</p><h2>Novo jogador</h2></div><span id="registrationCount"></span></div>
+          <div class="registration-form">
+            <div class="photo-input-wrap"><div class="player-photo-preview" id="playerPhotoPreview"><span>+</span></div><label class="btn ghost file-btn">Foto<input id="playerPhotoInput" type="file" accept="image/*" /></label></div>
+            <div class="registration-fields">
+              <input id="playerNameInput" maxlength="30" placeholder="Nome do jogador" />
+              <textarea id="playerDeckInput" rows="3" placeholder="Deck (3 Beys, um por linha)"></textarea>
+              <div class="inline-actions"><button class="btn ghost" id="useCurrentDeckForPlayerBtn">Usar deck em andamento</button><button class="btn primary" id="addPlayerBtn">Inscrever</button></div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div class="tournament-content">
+        <section>
+          <div class="section-title-row"><div><p class="eyebrow">PARTICIPANTES</p><h2>Jogadores inscritos</h2></div></div>
+          <div id="playerList" class="player-list"></div>
+        </section>
+        <section>
+          <div class="section-title-row"><div><p class="eyebrow">CLASSIFICAÇÃO</p><h2>Tabela</h2></div></div>
+          <div class="standings-wrap"><table class="standings"><thead><tr><th>#</th><th>Jogador</th><th>J</th><th>V</th><th>D</th><th>PF</th><th>PA</th><th>Saldo</th></tr></thead><tbody id="standingsBody"></tbody></table></div>
+        </section>
+      </div>
+
+      <section class="bracket-section">
+        <div class="section-title-row"><div><p class="eyebrow">CHAVE</p><h2>Eliminação simples</h2></div><div class="tournament-result-chips"><div id="tournamentThirdPlaceResult" class="champion-chip third-chip"></div><div id="tournamentChampion" class="champion-chip"></div></div></div>
+        <div id="bracket" class="bracket"></div>
+      </section>
+    </section>
+
+    <section class="view" id="view-rules">
+      <div class="hero compact">
+        <div>
+          <p class="eyebrow">WBO • BEYBLADE X</p>
+          <h1>Regras usadas pelo montador</h1>
+          <p>O site segue o regulamento padrão atual da World Beyblade Organization para a construção de decks, com avisos para regras que podem variar por evento.</p>
+        </div>
+      </div>
+      <div class="rules-grid">
+        <article class="rule-card"><span>01</span><h2>Deck de 3 Beys</h2><p>No 3-on-3 cada jogador seleciona um deck com três Beys e define a ordem de uso.</p></article>
+        <article class="rule-card"><span>02</span><h2>Sem peças repetidas</h2><p>Uma peça não pode aparecer em dois Beys do mesmo deck. Cores e moldes diferentes continuam sendo a mesma peça.</p></article>
+        <article class="rule-card"><span>03</span><h2>Exceção dos Lock Chips</h2><p>Lock Chips CX básicos podem repetir pelas regras WBO. O site ainda exige que você possua cópias físicas suficientes.</p></article>
+        <article class="rule-card banned"><span>04</span><h2>Metal Needle (MN)</h2><p>É banida por padrão na WBO porque sua ponta metálica pode danificar o estádio. Um organizador pode optar por liberá-la.</p></article>
+        <article class="rule-card"><span>05</span><h2>Peças oficiais</h2><p>O regulamento WBO exige peças e lançadores oficiais de Beyblade X produzidos por Takara Tomy ou Hasbro.</p></article>
+        <article class="rule-card"><span>06</span><h2>Regras locais</h2><p>Eventos podem habilitar regras opcionais. Antes de um torneio, confira a página específica daquele evento.</p></article>
+      </div>
+      <div class="links-card">
+        <h2>Fontes usadas</h2>
+        <a href="https://worldbeyblade.org/Thread-Beyblade-X-Rules" target="_blank" rel="noopener">WBO — Beyblade X Rules ↗</a>
+        <a href="https://worldbeyblade.org/Thread-Winning-Combinations-at-WBO-Organized-Events-Beyblade-X-BBX" target="_blank" rel="noopener">WBO — Winning Combinations ↗</a>
+        <a href="https://beyblade.phstudy.org/" target="_blank" rel="noopener">BEYBLADE X Database — catálogo TT/Hasbro e produtos ↗</a>
+        <a href="https://beybladehub.app/parts" target="_blank" rel="noopener">BeybladeHub — catálogo de partes e imagens ↗</a>
+        <a href="https://byybladebuilder.com/parts" target="_blank" rel="noopener">Byyblade X HQ — stats/geometry para heurísticas ↗</a>
+        <a href="https://bbxdatabase.com/record" target="_blank" rel="noopener">BBX DB — registros recentes de torneios ↗</a>
+        <a href="https://beycrate.com/" target="_blank" rel="noopener">Beycrate — agregação do meta ↗</a>
+        <a href="https://www.bbxweekly.com/4weeks" target="_blank" rel="noopener">BBX Weekly — meta de peças (4 semanas) ↗</a>
+        <a href="https://beycommunity.com/en/x/products/" target="_blank" rel="noopener">BeyCommunity — produtos Takara Tomy ↗</a>
+        <a href="https://beycommunity.com/en/x/hasbro/" target="_blank" rel="noopener">BeyCommunity — produtos Hasbro ↗</a>
+      </div>
+    </section>
+  </main>
+
+  <div class="slot-picker-backdrop" id="slotPickerModal" hidden>
+    <div class="slot-picker" role="dialog" aria-modal="true" aria-labelledby="slotPickerTitle">
+      <button class="slot-picker-close" id="slotPickerClose" aria-label="Fechar">×</button>
+      <p class="eyebrow">DESTINO</p>
+      <h2 id="slotPickerTitle">Escolha o slot</h2>
+      <p id="slotPickerSubtitle"></p>
+      <div class="slot-picker-choices" id="slotPickerChoices"></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="/js/shared.js"></script>
+  <script src="app.js"></script>
+  <script src="/js/home.js"></script>
+</body>
+</html>

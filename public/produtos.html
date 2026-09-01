@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Produtos — BX Deck Lab</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="noise"></div>
+  <header id="topbar"></header>
+  <main>
+    <div class="hero compact">
+      <div>
+        <p class="eyebrow">CATÁLOGO • LANÇAMENTOS</p>
+        <h1>Todos os <em>produtos</em></h1>
+        <p>Tudo o que existe de Beyblade X no mercado, em ordem por linha e número: BX, UX, CX e Hasbro.</p>
+      </div>
+    </div>
+    <div class="page-toolbar">
+      <input id="q" placeholder="Buscar produto (nome ou código)…" />
+      <select id="line">
+        <option value="">Todas as linhas</option>
+        <option value="BX">BX</option>
+        <option value="UX">UX</option>
+        <option value="CX">CX</option>
+        <option value="HASBRO">Hasbro</option>
+        <option value="OTHER">Outros</option>
+      </select>
+      <select id="brand">
+        <option value="">Todas as marcas</option>
+        <option value="TAKARA_TOMY">Takara Tomy</option>
+        <option value="HASBRO">Hasbro</option>
+      </select>
+    </div>
+    <div id="list" class="card-grid"><div class="empty-state">Carregando produtos…</div></div>
+  </main>
+  <script src="/js/shared.js"></script>
+  <script>
+    (async () => {
+      BX.renderTopbar('/produtos');
+      let all = [];
+      const brandName = { TAKARA_TOMY: 'Takara Tomy', HASBRO: 'Hasbro', OTHER: '—' };
+
+      function render() {
+        const q = BX.norm(document.getElementById('q').value);
+        const line = document.getElementById('line').value;
+        const brand = document.getElementById('brand').value;
+        const items = all.filter((p) =>
+          (!line || p.line === line) && (!brand || p.brand === brand) &&
+          (!q || BX.norm(`${p.code || ''} ${p.name}`).includes(q)));
+        document.getElementById('list').innerHTML = items.length
+          ? items.map((p) => `
+            <a class="list-card" href="/produto/${p.slug}">
+              <div style="display:flex;justify-content:space-between;gap:8px;align-items:start">
+                <h3>${BX.esc(p.name)}</h3>
+                ${p.code ? `<span class="product-code">${BX.esc(p.code)}</span>` : ''}
+              </div>
+              <div class="muted">${brandName[p.brand] || p.brand}${p.category ? ` • ${p.category.toLowerCase().replace('_', ' ')}` : ''}${p.beyType ? ` • ${p.beyType}` : ''}</div>
+              <div class="list-card-foot">${p.line ? `<span class="status-chip">${p.line}</span>` : ''}<span style="margin-left:auto;color:var(--cyan)">ver peças →</span></div>
+            </a>`).join('')
+          : '<div class="empty-state">Nenhum produto encontrado.</div>';
+      }
+
+      const { products } = await BX.api('/api/products');
+      all = products;
+      render();
+      for (const id of ['q', 'line', 'brand']) document.getElementById(id).addEventListener(id === 'q' ? 'input' : 'change', render);
+    })();
+  </script>
+</body>
+</html>

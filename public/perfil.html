@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Meu perfil — BX Deck Lab</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="noise"></div>
+  <header id="topbar"></header>
+  <main id="app"><div class="empty-state">Carregando perfil…</div></main>
+  <script src="/js/shared.js"></script>
+  <script>
+    (async () => {
+      BX.renderTopbar(null);
+      const me = await BX.requireLogin('/perfil');
+      if (!me) return;
+      const idx = await BX.partTagReady();
+      const app = document.getElementById('app');
+
+      let cosmetics = { cosmetics: [] };
+      let collection = { items: [] };
+      let profile = null;
+      async function reload() {
+        [cosmetics, collection, profile] = await Promise.all([
+          BX.api('/api/cosmetics'),
+          BX.api('/api/me/collection'),
+          BX.api(`/api/users/${encodeURIComponent(me.slug)}`).catch(() => null),
+        ]);
+      }
+      await reload();
+
+      const frames = () => cosmetics.cosmetics.filter((c) => c.kind === 'FRAME');
+      const stickers = () => cosmetics.cosmetics.filter((c) => c.kind === 'STICKER');
+      let current = { ...me };
+      let selStickers = [...(me.stickers || [])];
+
+      function bannerInner(user) {
+        if (!user.bannerUrl) return '';
+        return /\.(mp4|webm)$/i.test(user.bannerUrl)
+          ? `<video src="${BX.esc(user.bannerUrl)}" autoplay loop muted playsinline></video>`
+          : `<img src="${BX.esc(user.bannerUrl)}" alt="">`;
+      }
+
+      function render() {
+        const frameObj = frames().find((f) => f.id === current.frameId) || null;
+        app.innerHTML = `
+          ${BX.qs('bemvindo') ? `<div class="source-banner" style="margin-bottom:16px"><strong>Bem-vindo(a) ao BX Deck Lab! 🌀</strong> Sua conta foi criada — personalize seu perfil abaixo e importe sua coleção no montador.</div>` : ''}
+          <div class="profile-banner">${bannerInner(current)}
+            <button class="btn secondary no-print" id="bannerBtn" style="position:absolute;right:14px;bottom:12px;z-index:3">🖼 Trocar banner</button>
+          </div>
+          <div class="profile-head">
+            ${BX.avatarHtml(current, { size: 92, frame: frameObj })}
+            <div class="profile-id">
+              <h1>${BX.esc(current.name)} ${current.verified ? '<span class="badge ok">✔ verificado</span>' : ''} <span class="role-chip ${current.role}">${current.role}</span></h1>
+              <p>@${BX.esc(current.slug)} • ${BX.esc(current.email)}</p>
+              <div class="sticker-row" style="margin-top:8px">${selStickers.map((id) => {
+                const s = stickers().find((x) => x.id === id);
+                return s ? `<span class="sticker" title="${BX.esc(s.name)}">${s.imageUrl ? `<img src="${BX.esc(s.imageUrl)}">` : BX.esc(s.styleKey || '★')}</span>` : '';
+              }).join('')}</div>
+            </div>
+            <div class="profile-head-actions">
+              <button class="btn secondary" id="avatarBtn">📷 Trocar foto</button>
+              <a class="btn ghost" href="/u/${BX.esc(current.slug)}">Ver perfil público</a>
+              <button class="btn ghost" id="logoutBtn">Sair</button>
+            </div>
+          </div>
+          <div class="profile-grid">
+            <div style="display:flex;flex-direction:column;gap:16px">
+              <div class="panel-card form-grid">
+                <p class="eyebrow" style="margin:0">EDITAR PERFIL</p>
+                <div><label>Nome</label><input id="fName" maxlength="40" value="${BX.esc(current.name)}" /></div>
+                <div><label>Bio</label><textarea id="fBio" maxlength="500" placeholder="Conte quem você é no mundo Beyblade…">${BX.esc(current.bio || '')}</textarea></div>
+                <div><label>WhatsApp (para vendas — com DDI, ex.: 5511999998888)</label><input id="fWhats" value="${BX.esc(current.whatsapp || '')}" placeholder="5511999998888" /></div>
+                <div>
+                  <label>Bey / peça favorita em destaque</label>
+                  <input id="fFav" placeholder="Busque uma peça…" value="${BX.esc(idx.byId.get(current.favoritePartId)?.display || '')}" />
+                  <div id="favResults" style="display:flex;flex-direction:column;gap:4px;margin-top:6px"></div>
+                </div>
+                <div>
+                  <label>Moldura do avatar</label>
+                  <div class="choice-row">
+                    <div class="choice-item ${!current.frameId ? 'selected' : ''}" data-frame="">
+                      ${BX.avatarHtml(current, { size: 44, frame: null })}<small>Nenhuma</small>
+                    </div>
+                    ${frames().map((f) => `
+                      <div class="choice-item ${current.frameId === f.id ? 'selected' : ''}" data-frame="${f.id}">
+                        ${BX.avatarHtml(current, { size: 44, frame: f })}<small>${BX.esc(f.name)}</small>
+                      </div>`).join('')}
+                  </div>
+                </div>
+                <div>
+                  <label>Stickers do perfil (até 8)</label>
+                  <div class="choice-row">${stickers().map((s) => `
+                    <div class="choice-item ${selStickers.includes(s.id) ? 'selected' : ''}" data-sticker="${s.id}">
+                      <span class="sticker">${s.imageUrl ? `<img src="${BX.esc(s.imageUrl)}">` : BX.esc(s.styleKey || '★')}</span><small>${BX.esc(s.name)}</small>
+                    </div>`).join('')}</div>
+                </div>
+                <div class="inline-actions"><button class="btn primary" id="saveProfile">Salvar perfil</button></div>
+              </div>
+
+              <div class="panel-card">
+                <div class="section-title-row" style="margin-bottom:12px">
+                  <div><p class="eyebrow">ITEM 9</p><h2>Minha coleção & vendas</h2></div>
+                  <small>Importe pelo montador (aba Minha coleção → “Enviar para meu perfil”).</small>
+                </div>
+                <div id="collectionList"></div>
+              </div>
+
+              <div class="panel-card">
+                <div class="section-title-row" style="margin-bottom:12px">
+                  <div><p class="eyebrow">COMBOS</p><h2>Meus combos</h2></div>
+                  <button class="btn secondary" id="newCombo">+ Montar combo</button>
+                </div>
+                <div id="combosList"></div>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:16px">
+              <div class="panel-card">
+                <p class="eyebrow">MEUS DECKS PUBLICADOS</p>
+                <div id="myDecks" style="margin-top:10px"></div>
+                <a class="btn secondary" href="/deck-novo" style="display:inline-block;margin-top:12px;text-decoration:none">+ Publicar deck</a>
+              </div>
+              <div class="panel-card">
+                <p class="eyebrow">DICAS</p>
+                <div class="mini-rule"><span>📷</span><p><strong>Avatar e banner animados:</strong> GIF, WebP animado e vídeos curtos (MP4/WebM) até 10 MB.</p></div>
+                <div class="mini-rule"><span>💬</span><p><strong>Vendas via WhatsApp:</strong> cadastre seu número para o botão “Tenho interesse” aparecer nos seus anúncios.</p></div>
+                <div class="mini-rule"><span>🏆</span><p><strong>Molduras exclusivas</strong> podem ser concedidas em premiações de torneios.</p></div>
+              </div>
+            </div>
+          </div>
+          <input type="file" id="avatarFile" accept="image/*,video/mp4,video/webm" hidden />
+          <input type="file" id="bannerFile" accept="image/*,video/mp4,video/webm" hidden />
+
+          <div class="modal-backdrop" id="comboModal" hidden>
+            <div class="modal">
+              <button class="modal-close" id="comboClose">×</button>
+              <h2>Montar combo</h2>
+              <div class="form-grid">
+                <div><label>Nome do combo</label><input id="cTitle" maxlength="80" placeholder="Ex.: Wizard Rod tanque" /></div>
+                <div><label>Peças</label>
+                  <input id="cSearch" placeholder="Busque e clique para adicionar…" />
+                  <div id="cResults" style="display:flex;flex-direction:column;gap:4px;margin-top:6px;max-height:180px;overflow:auto"></div>
+                  <div id="cParts" class="choice-row" style="margin-top:8px"></div>
+                </div>
+                <div><label>Descrição</label><textarea id="cDesc" maxlength="1000"></textarea></div>
+                <div class="config-check"><input type="checkbox" id="cSale" /> <span>Colocar à venda</span></div>
+                <div id="saleFields" hidden style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                  <div><label>Preço (R$)</label><input id="cPrice" type="number" min="0" step="0.01" /></div>
+                  <div><label>Condição</label><select id="cCond"><option>Nova</option><option>Usada — ótima</option><option>Usada — com desgaste</option></select></div>
+                </div>
+                <div class="inline-actions"><button class="btn primary" id="cSave">Salvar combo</button></div>
+              </div>
+            </div>
+          </div>`;
+        bindAll();
+        renderCollection();
+        renderCombos();
+        loadMyDecks();
+      }
+
+      function renderCollection() {
+        const el = document.getElementById('collectionList');
+        if (!collection.items.length) {
+          el.innerHTML = '<div class="empty-state">Coleção vazia por aqui. Abra o <a href="/" style="color:var(--cyan)">montador</a>, aba “Minha coleção”, e clique em “Enviar coleção para meu perfil”.</div>';
+          return;
+        }
+        el.innerHTML = `<div class="table-wrap" style="max-height:420px"><table class="data-table"><thead>
+          <tr><th>Peça</th><th>Qtd</th><th>À venda</th><th>Preço</th><th>Condição</th></tr></thead><tbody>
+          ${collection.items.map((i) => `
+            <tr data-part="${i.partId}">
+              <td>${BX.partTag(i.partId, { size: 24 })} ${i.forSale ? '<span class="sale-tag">à venda</span>' : ''}</td>
+              <td>${i.qty}</td>
+              <td><input type="checkbox" class="saleChk" ${i.forSale ? 'checked' : ''} style="width:auto;height:auto"></td>
+              <td><input class="salePrice" type="number" min="0" step="0.01" value="${i.priceCents != null ? (i.priceCents / 100).toFixed(2) : ''}" style="height:30px;width:90px" ${i.forSale ? '' : 'disabled'}></td>
+              <td><select class="saleCond" style="height:30px;width:150px" ${i.forSale ? '' : 'disabled'}>
+                ${['Nova', 'Usada — ótima', 'Usada — com desgaste'].map((c) => `<option ${i.condition === c ? 'selected' : ''}>${c}</option>`).join('')}
+              </select></td>
+            </tr>`).join('')}
+        </tbody></table></div>
+        <small style="display:block;color:var(--muted);margin-top:8px;font-size:10px">Alterações de venda são salvas automaticamente. Peças à venda aparecem no seu perfil público e na página <a href="/vendas" style="color:var(--cyan)">Vendas</a>.</small>`;
+
+        el.querySelectorAll('tr[data-part]').forEach((tr) => {
+          const partId = tr.dataset.part;
+          const save = async () => {
+            const forSale = tr.querySelector('.saleChk').checked;
+            const price = parseFloat(tr.querySelector('.salePrice').value);
+            try {
+              await BX.api(`/api/me/collection/${partId}`, {
+                method: 'PATCH',
+                body: {
+                  forSale,
+                  priceCents: Number.isFinite(price) ? Math.round(price * 100) : null,
+                  condition: tr.querySelector('.saleCond').value,
+                },
+              });
+              tr.querySelector('.salePrice').disabled = !forSale;
+              tr.querySelector('.saleCond').disabled = !forSale;
+              BX.toast(forSale ? 'Anúncio atualizado!' : 'Peça retirada de venda.');
+            } catch (e) { BX.toast(e.message); }
+          };
+          tr.querySelector('.saleChk').addEventListener('change', save);
+          tr.querySelector('.salePrice').addEventListener('change', save);
+          tr.querySelector('.saleCond').addEventListener('change', save);
+        });
+      }
+
+      function renderCombos() {
+        const el = document.getElementById('combosList');
+        const combos = profile?.combos || [];
+        el.innerHTML = combos.length
+          ? `<div class="card-grid">${combos.map((c) => `
+              <div class="list-card">
+                <div style="display:flex;justify-content:space-between;gap:8px"><h3 style="font-size:17px">${BX.esc(c.title)}</h3>${c.forSale ? '<span class="sale-tag">à venda</span>' : ''}</div>
+                <div class="combo-tags">${c.parts.map((p) => BX.partTag({ ...p, display: p.displayName, img: p.imageUrl }, { size: 22 })).join('')}</div>
+                ${c.forSale && c.priceCents != null ? `<div class="price">${BX.money(c.priceCents)}</div>` : ''}
+                <div class="inline-actions"><button class="btn danger-outline" data-delcombo="${c.id}">Excluir</button></div>
+              </div>`).join('')}</div>`
+          : '<div class="empty-state">Nenhum combo ainda — monte um para expor ou vender.</div>';
+        el.querySelectorAll('[data-delcombo]').forEach((btn) => btn.addEventListener('click', async () => {
+          if (!confirm('Excluir este combo?')) return;
+          await BX.api(`/api/combos/${btn.dataset.delcombo}`, { method: 'DELETE' }).catch((e) => BX.toast(e.message));
+          profile = await BX.api(`/api/users/${encodeURIComponent(me.slug)}`);
+          renderCombos();
+        }));
+      }
+
+      async function loadMyDecks() {
+        const { decks } = await BX.api(`/api/decks?author=${encodeURIComponent(me.slug)}`);
+        document.getElementById('myDecks').innerHTML = decks.length
+          ? decks.map((d) => `<div class="bey-line"><span style="flex:1"><a href="/deck/${d.slug}" style="color:white;text-decoration:none;font-weight:700">${BX.esc(d.title)}</a></span><small style="color:var(--muted)">${BX.dateFmt(d.createdAt, { day: '2-digit', month: 'short' })}</small></div>`).join('')
+          : '<div class="empty-state">Nenhum deck publicado.</div>';
+      }
+
+      function bindAll() {
+        document.getElementById('logoutBtn').addEventListener('click', async () => {
+          await BX.api('/api/auth/logout', { method: 'POST' });
+          location.href = '/';
+        });
+        document.getElementById('avatarBtn').addEventListener('click', () => document.getElementById('avatarFile').click());
+        document.getElementById('bannerBtn').addEventListener('click', () => document.getElementById('bannerFile').click());
+        for (const field of ['avatar', 'banner']) {
+          document.getElementById(`${field}File`).addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const fd = new FormData();
+            fd.append('file', file);
+            try {
+              const { user } = await BX.api(`/api/me/${field}`, { method: 'POST', body: fd });
+              current = { ...current, ...user };
+              BX.toast('Imagem atualizada!');
+              render();
+            } catch (err) { BX.toast(err.message); }
+          });
+        }
+        document.querySelectorAll('[data-frame]').forEach((el) => el.addEventListener('click', () => {
+          current.frameId = el.dataset.frame || null;
+          render();
+        }));
+        document.querySelectorAll('[data-sticker]').forEach((el) => el.addEventListener('click', () => {
+          const id = el.dataset.sticker;
+          selStickers = selStickers.includes(id) ? selStickers.filter((x) => x !== id) : [...selStickers, id].slice(0, 8);
+          render();
+        }));
+
+        let favPartId = current.favoritePartId;
+        const favInput = document.getElementById('fFav');
+        favInput.addEventListener('input', () => {
+          const q = BX.norm(favInput.value);
+          const box = document.getElementById('favResults');
+          if (q.length < 2) { box.innerHTML = ''; return; }
+          const found = idx.list.filter((p) => [p.name, p.display, ...(p.aliases || [])].some((v) => BX.norm(v).includes(q))).slice(0, 6);
+          box.innerHTML = found.map((p) => `<button class="slot-choice" data-fav="${p.id}" style="min-height:0;display:flex;gap:8px;align-items:center">${BX.partThumb(p, 24)}<span style="color:white;font-size:11px">${BX.esc(p.display)}</span></button>`).join('');
+          box.querySelectorAll('[data-fav]').forEach((btn) => btn.addEventListener('click', () => {
+            favPartId = btn.dataset.fav;
+            favInput.value = idx.byId.get(favPartId)?.display || '';
+            box.innerHTML = '';
+          }));
+        });
+
+        document.getElementById('saveProfile').addEventListener('click', async () => {
+          try {
+            const { user } = await BX.api('/api/me', {
+              method: 'PATCH',
+              body: {
+                name: document.getElementById('fName').value,
+                bio: document.getElementById('fBio').value,
+                whatsapp: document.getElementById('fWhats').value,
+                favoritePartId: favInput.value ? favPartId : null,
+                frameId: current.frameId,
+                stickers: selStickers,
+              },
+            });
+            current = { ...current, ...user };
+            BX.toast('Perfil salvo!');
+          } catch (e) { BX.toast(e.message); }
+        });
+
+        // Combos
+        const modal = document.getElementById('comboModal');
+        let comboParts = [];
+        document.getElementById('newCombo').addEventListener('click', () => { comboParts = []; renderComboParts(); modal.hidden = false; });
+        document.getElementById('comboClose').addEventListener('click', () => { modal.hidden = true; });
+        document.getElementById('cSale').addEventListener('change', (e) => { document.getElementById('saleFields').hidden = !e.target.checked; });
+        function renderComboParts() {
+          document.getElementById('cParts').innerHTML = comboParts.map((id, i) =>
+            `<span style="display:inline-flex;align-items:center;gap:4px">${BX.partTag(id, { size: 22 })}<button class="icon-btn" data-crem="${i}" style="width:22px;height:22px">×</button></span>`).join('') || '<small style="color:var(--muted)">nenhuma peça ainda</small>';
+          document.querySelectorAll('[data-crem]').forEach((btn) => btn.addEventListener('click', () => { comboParts.splice(parseInt(btn.dataset.crem, 10), 1); renderComboParts(); }));
+        }
+        document.getElementById('cSearch').addEventListener('input', (e) => {
+          const q = BX.norm(e.target.value);
+          const box = document.getElementById('cResults');
+          if (q.length < 2) { box.innerHTML = ''; return; }
+          const found = idx.list.filter((p) => [p.name, p.display, ...(p.aliases || [])].some((v) => BX.norm(v).includes(q))).slice(0, 10);
+          box.innerHTML = found.map((p) => `<button class="slot-choice" data-cadd="${p.id}" style="min-height:0;display:flex;gap:8px;align-items:center">${BX.partThumb(p, 24)}<span style="color:white;font-size:11px">${BX.esc(p.display)}</span></button>`).join('');
+          box.querySelectorAll('[data-cadd]').forEach((btn) => btn.addEventListener('click', () => {
+            if (comboParts.length >= 8) return;
+            comboParts.push(btn.dataset.cadd);
+            renderComboParts();
+          }));
+        });
+        document.getElementById('cSave').addEventListener('click', async () => {
+          const price = parseFloat(document.getElementById('cPrice').value);
+          try {
+            await BX.api('/api/combos', {
+              method: 'POST',
+              body: {
+                title: document.getElementById('cTitle').value,
+                description: document.getElementById('cDesc').value,
+                partIds: comboParts,
+                forSale: document.getElementById('cSale').checked,
+                priceCents: Number.isFinite(price) ? Math.round(price * 100) : null,
+                condition: document.getElementById('cCond').value,
+              },
+            });
+            modal.hidden = true;
+            BX.toast('Combo salvo!');
+            profile = await BX.api(`/api/users/${encodeURIComponent(me.slug)}`);
+            renderCombos();
+          } catch (e) { BX.toast(e.message); }
+        });
+      }
+
+      render();
+    })();
+  </script>
+</body>
+</html>

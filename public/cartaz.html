@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cartaz — BX Deck Lab</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="noise"></div>
+  <main style="padding-top:26px">
+    <div class="inline-actions no-print" style="max-width:760px;margin:0 auto 16px">
+      <a class="btn ghost" id="backLink" href="/torneios">← Voltar</a>
+      <button class="btn primary" onclick="window.print()">🖨 Imprimir cartaz</button>
+    </div>
+    <div class="poster" id="poster">
+      <div class="poster-logo">BEYBLADE <em>X</em></div>
+      <h1>TORNEIO</h1>
+      <p class="poster-name" id="pName"></p>
+      <div class="qr-wrap"><img id="pQr" alt="QR Code de inscrição" /></div>
+      <p class="poster-url" id="pUrl"></p>
+      <p class="poster-foot">Aponte a câmera do celular para o QR Code e garanta sua vaga. ⚡</p>
+    </div>
+  </main>
+  <script src="/js/shared.js"></script>
+  <script>
+    (async () => {
+      const slug = BX.pathPart(1);
+      document.getElementById('backLink').href = `/torneio/${slug}`;
+      try {
+        const { tournament: t } = await BX.api(`/api/tournaments/${encodeURIComponent(slug)}`);
+        document.title = `Cartaz — ${t.name}`;
+        document.getElementById('pName').textContent =
+          `${t.name}${t.storeName ? ` • ${t.storeName}` : ''} — ${BX.dateFmt(t.startsAt, { day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' })}`;
+        document.getElementById('pQr').src = `/api/tournaments/${t.slug}/qr.svg`;
+        document.getElementById('pUrl').textContent = t.joinUrl;
+      } catch (e) {
+        document.getElementById('pName').textContent = e.message;
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0b0c11" />
+  <title>Entrar — BX Deck Lab</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="noise"></div>
+  <header id="topbar"></header>
+  <main>
+    <div class="center-page">
+      <div class="panel-card">
+        <p class="eyebrow">SUA CONTA</p>
+        <h1 style="font:800 40px var(--display);text-transform:uppercase;margin:4px 0 10px">Entrar no <em style="color:var(--red)">BX Deck Lab</em></h1>
+        <p style="color:var(--muted);font-size:13px;line-height:1.6;margin:0 0 22px">
+          Entre para publicar decks, se inscrever em torneios, montar seu perfil e vender peças.
+        </p>
+        <div id="loginError" class="conflict-banner" hidden style="margin-bottom:14px"></div>
+        <a class="login-btn" id="googleBtn" href="/api/oauth/google">
+          <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.5l6.7-6.7C35.7 2.4 30.2 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.8 6.1C12.3 13.4 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.4 5.8c4.4-4.1 7.2-10.1 7.2-17.5z"/><path fill="#FBBC05" d="M10.4 28.7a14.5 14.5 0 0 1 0-9.4l-7.8-6.1a24 24 0 0 0 0 21.6l7.8-6.1z"/><path fill="#34A853" d="M24 48c6.2 0 11.4-2 15.3-5.6l-7.4-5.8c-2.1 1.4-4.8 2.2-7.9 2.2-6.3 0-11.7-3.9-13.6-9.4l-7.8 6.1C6.5 42.6 14.6 48 24 48z"/></svg>
+          Entrar com Google
+        </a>
+        <form id="devLogin" hidden style="margin-top:16px;display:grid;gap:8px">
+          <small style="color:var(--muted)">Login de desenvolvimento (só local):</small>
+          <input id="devEmail" type="email" placeholder="seu@email.com" required />
+          <button class="btn secondary" type="submit">Entrar (dev)</button>
+        </form>
+        <p style="color:#626976;font-size:10px;line-height:1.5;margin-top:20px">
+          Usamos o Google só para autenticar seu e-mail. Nada é publicado em seu nome.
+        </p>
+      </div>
+    </div>
+  </main>
+  <script src="/js/shared.js"></script>
+  <script>
+    (async () => {
+      BX.renderTopbar(null);
+      const erro = BX.qs('erro');
+      if (erro) {
+        const box = document.getElementById('loginError');
+        box.textContent = erro;
+        box.hidden = false;
+      }
+      const user = await BX.me().catch(() => null);
+      if (user) { location.href = '/perfil'; return; }
+      const site = await BX.site().catch(() => null);
+      if (site && !site.googleLogin) {
+        document.getElementById('googleBtn').style.opacity = .4;
+        document.getElementById('googleBtn').addEventListener('click', (e) => {
+          e.preventDefault();
+          BX.toast('Login Google ainda não configurado neste servidor.');
+        });
+      }
+      if (site?.devLogin) {
+        const form = document.getElementById('devLogin');
+        form.hidden = false;
+        form.addEventListener('submit', async (e) => {
+          e.preventDefault();
+          try {
+            await BX.api('/api/auth/dev-login', { method: 'POST', body: { email: document.getElementById('devEmail').value } });
+            location.href = '/perfil';
+          } catch (err) { BX.toast(err.message); }
+        });
+      }
+    })();
+  </script>
+</body>
+</html>

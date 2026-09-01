@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Decks da comunidade — BX Deck Lab</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="noise"></div>
+  <header id="topbar"></header>
+  <main>
+    <div class="hero compact">
+      <div>
+        <p class="eyebrow">COMUNIDADE</p>
+        <h1>Deck lists <em>da galera</em></h1>
+        <p>Decks publicados pelos jogadores, com guia de lançamento e vídeo. Publique o seu!</p>
+      </div>
+      <div class="hero-actions">
+        <button class="btn primary" id="newDeck">+ Publicar deck</button>
+      </div>
+    </div>
+    <div class="page-toolbar">
+      <input id="q" placeholder="Buscar deck ou autor…" />
+      <select id="filter">
+        <option value="">Mais recentes</option>
+        <option value="featured">Em destaque</option>
+      </select>
+    </div>
+    <div id="list" class="card-grid"><div class="empty-state">Carregando decks…</div></div>
+  </main>
+  <script src="/js/shared.js"></script>
+  <script>
+    (async () => {
+      BX.renderTopbar('/decks');
+      await BX.partTagReady();
+      document.getElementById('newDeck').addEventListener('click', async () => {
+        if (await BX.requireLogin('/deck-novo')) location.href = '/deck-novo';
+      });
+      let timer;
+      async function load() {
+        const q = document.getElementById('q').value;
+        const featured = document.getElementById('filter').value === 'featured' ? '1' : '';
+        const { decks } = await BX.api(`/api/decks?query=${encodeURIComponent(q)}&featured=${featured}`);
+        document.getElementById('list').innerHTML = decks.length
+          ? decks.map((d) => `
+            <a class="list-card" href="/deck/${d.slug}">
+              <div style="display:flex;justify-content:space-between;gap:8px">
+                <h3>${BX.esc(d.title)}</h3>
+                ${d.featured ? '<span class="badge owned">★ destaque</span>' : ''}
+              </div>
+              <div>${d.beys.map((bey, i) => `<div class="bey-line"><b>${i + 1}</b><span class="muted" style="font-size:11px">${bey.length} peça(s)</span></div>`).join('')}</div>
+              ${d.description ? `<p class="muted" style="margin:0">${BX.esc(d.description.slice(0, 120))}${d.description.length > 120 ? '…' : ''}</p>` : ''}
+              <div class="list-card-foot">
+                <span class="author-line">${BX.avatarHtml(d.author, { size: 24 })}<span style="color:#c4cad3">${BX.esc(d.author?.name || '?')}</span></span>
+                <span style="margin-left:auto">${BX.dateFmt(d.createdAt, { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+              </div>
+            </a>`).join('')
+          : '<div class="empty-state">Nenhum deck publicado ainda — seja a primeira pessoa!</div>';
+      }
+      document.getElementById('q').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(load, 300); });
+      document.getElementById('filter').addEventListener('change', load);
+      load();
+    })();
+  </script>
+</body>
+</html>

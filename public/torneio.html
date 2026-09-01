@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Torneio — BX Deck Lab</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="noise"></div>
+  <header id="topbar"></header>
+  <main id="app"><div class="empty-state">Carregando torneio…</div></main>
+  <script src="/js/shared.js"></script>
+  <script>
+    (async () => {
+      BX.renderTopbar('/torneios');
+      const slug = BX.pathPart(1);
+      const app = document.getElementById('app');
+      let view = 'geral'; // geral | partida | gestao
+      let pollTimer = null;
+
+      const STATUS_PT = { OPEN: 'inscrições abertas', RUNNING: 'em andamento', FINISHED: 'encerrado', CANCELED: 'cancelado' };
+
+      async function load() {
+        let data;
+        try {
+          data = await BX.api(`/api/tournaments/${encodeURIComponent(slug)}`);
+        } catch (e) {
+          app.innerHTML = `<div class="empty-state">${BX.esc(e.message)} — <a href="/torneios" style="color:var(--cyan)">ver torneios</a></div>`;
+          return;
+        }
+        const me = await BX.me().catch(() => null);
+        const myMatch = me && data.me ? await BX.api(`/api/tournaments/${encodeURIComponent(slug)}/me`).catch(() => null) : null;
+        render(data, me, myMatch);
+      }
+
+      function render(data, me, myData) {
+        const t = data.tournament;
+        document.title = `${t.name} — BX Deck Lab`;
+        const joined = !!data.me;
+        const tabs = [
+          ['geral', 'Torneio'],
+          ...(joined && t.status === 'RUNNING' ? [['partida', '🎯 Minha partida']] : []),
+          ...(t.canManage ? [['gestao', '⚙ Gestão']] : []),
+        ];
+
+        app.innerHTML = `
+          <div class="hero compact">
+            <div>
+              <p class="eyebrow">${BX.dateFmt(t.startsAt, { weekday: 'long', day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' })}</p>
+              <h1>${BX.esc(t.name)}</h1>
+              <p>
+                <span class="status-chip ${t.status}">${STATUS_PT[t.status]}${t.status === 'RUNNING' ? ` — rodada ${t.currentRound}/${t.roundsPlanned}` : ''}</span>
+                ${t.storeName ? ` 🏬 ${BX.esc(t.storeName)}` : ''}${t.address ? ` • 📍 ${BX.esc(t.address)}` : ''}
+                • ${t.format === 'MD3' ? 'Melhor de 3' : 'Partida simples até 4 pontos'}
+              </p>
+            </div>
+            <div class="hero-actions">
+              ${t.status === 'OPEN' && !joined ? `<button class="btn primary" id="joinBtn">Entrar no torneio</button>` : ''}
+              ${t.status === 'OPEN' && joined ? `<button class="btn danger-outline" id="leaveBtn">Sair do torneio</button>` : ''}
+              <button class="btn ghost" id="reportBtn">⚑</button>
+            </div>
+          </div>
+          ${tabs.length > 1 ? `<nav class="tabs" style="justify-content:flex-start;margin-bottom:18px">${tabs.map(([k, label]) => `<button class="tab${view === k ? ' active' : ''}" data-view="${k}">${label}</button>`).join('')}</nav>` : ''}
+          <div id="viewBox"></div>`;
+
+        document.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => { view = b.dataset.view; render(data, me, myData); }));
+        document.getElementById('joinBtn')?.addEventListener('click', () => { location.href = `/t/${t.slug}`; });
+        document.getElementById('leaveBtn')?.addEventListener('click', async () => {
+          if (!confirm('Sair deste torneio?')) return;
+          await BX.api(`/api/tournaments/${slug}/leave`, { method: 'POST' }).catch((e) => BX.toast(e.message));
+          load();
+        });
+        document.getElementById('reportBtn')?.addEventListener('click', () => BX.report('TOURNAMENT', t.id, 'este torneio'));
+
+        const box = document.getElementById('viewBox');
+        if (view === 'partida' && myData?.match) renderMatch(box, t, myData);
+        else if (view === 'gestao' && t.canManage) renderManage(box, t, data);
+        else renderGeneral(box, t, data);
+      }
+
+      function renderGeneral(box, t, data) {
+        const standings = data.standings.length ? `
+          <div class="panel-card" style="margin-top:16px">
+            <p class="eyebrow">CLASSIFICAÇÃO</p>
+            <div class="standings-wrap" style="margin-top:10px"><table class="standings">
+              <tr><th>#</th><th>Jogador</th><th>V</th><th>D</th><th>Buchholz</th></tr>
+              ${data.standings.map((s, i) => `<tr><td>${i + 1}</td><td><span class="standing-player">${BX.avatarHtml(s.player.user, { size: 24 })}${BX.esc(s.player.user.name)}${s.player.dropped ? ' <small style="color:var(--muted)">(drop)</small>' : ''}</span></td><td>${s.wins}</td><td>${s.losses}</td><td>${s.sos}</td></tr>`).join('')}
+            </table></div>
+          </div>` : '';
+        box.innerHTML = `
+          ${t.description ? `<div class="panel-card" style="margin-bottom:16px"><p class="prose" style="margin:0">${BX.esc(t.description)}</p></div>` : ''}
+          <div class="section-title-row" style="margin-bottom:10px">
+            <div><p class="eyebrow">INSCRITOS</p><h2>${data.players.length} jogador(es)</h2></div>
+          </div>
+          <div class="player-list" style="grid-template-columns:repeat(auto-fill,minmax(230px,1fr))">
+            ${data.players.map((p) => `
+              <a class="player-card" href="/u/${p.user.slug}" style="text-decoration:none;color:inherit;${p.dropped ? 'opacity:.5' : ''}">
+                ${BX.avatarHtml(p.user, { size: 44 })}
+                <div><h3>${BX.esc(p.user.name)}</h3><small>@${BX.esc(p.user.slug)}${p.dropped ? ' • DROP' : ''}</small></div>
+              </a>`).join('') || '<div class="empty-state">Ninguém inscrito ainda.</div>'}
+          </div>
+          ${standings}`;
+      }
+
+      function renderMatch(box, t, myData) {
+        const m = myData.match;
+        if (m.bye) {
+          box.innerHTML = `<div class="match-screen"><p class="eyebrow">RODADA ${myData.round}</p><div class="match-vs">BYE</div><p style="color:var(--muted)">Você folga nesta rodada e já tem a vitória. Descanse o pulso! 💪</p></div>`;
+          return;
+        }
+        const done = m.status === 'DONE';
+        box.innerHTML = `
+          <div class="match-screen">
+            <p class="eyebrow">RODADA ${myData.round} • ${t.format === 'MD3' ? 'MELHOR DE 3' : 'ATÉ 4 PONTOS'}</p>
+            <div style="margin:6px 0 2px">${BX.avatarHtml(m.opponent, { size: 84 })}</div>
+            <div class="match-vs">VS ${BX.esc(m.opponent?.name || '?')}</div>
+            <div class="match-table">Mesa ${m.tableNo}</div>
+            ${done
+              ? `<div class="match-score-zero" style="color:${m.won ? 'var(--green)' : 'var(--red)'}">${m.won ? 'VITÓRIA' : 'DERROTA'}</div><p style="color:var(--muted)">Resultado fechado. Aguarde a próxima rodada.</p>`
+              : `<div class="match-score-zero">0 — 0</div>
+                 ${m.status === 'CONFLICT' ? `<div class="conflict-banner">⚠ Os dois jogadores reportaram o mesmo resultado. O organizador foi notificado e vai resolver com vocês.</div>` : ''}
+                 ${m.myReport
+                   ? `<p style="color:var(--muted)">Você reportou <b style="color:${m.myReport === 'WIN' ? 'var(--green)' : 'var(--red)'}">${m.myReport === 'WIN' ? 'vitória' : 'derrota'}</b>. ${m.opponentReported ? '' : 'Aguardando o oponente…'}</p>`
+                   : `<p style="color:var(--muted)">Terminou a partida? Reporte o SEU resultado:</p>
+                      <div class="report-row">
+                        <button class="report-btn win" data-report="WIN">✔ Venci</button>
+                        <button class="report-btn loss" data-report="LOSS">✖ Perdi</button>
+                      </div>`}`}
+          </div>`;
+        box.querySelectorAll('[data-report]').forEach((btn) => btn.addEventListener('click', async () => {
+          try {
+            const res = await BX.api(`/api/tournaments/${slug}/report`, { method: 'POST', body: { matchId: m.id, result: btn.dataset.report } });
+            if (res.conflict) BX.toast('Conflito de resultado — o organizador vai verificar.');
+            load();
+          } catch (e) { BX.toast(e.message); }
+        }));
+      }
+
+      function renderManage(box, t, data) {
+        const roundMatches = data.matches.filter((m) => m.round === t.currentRound);
+        const conflicts = roundMatches.filter((m) => m.status === 'CONFLICT');
+        box.innerHTML = `
+          ${conflicts.length ? `<div class="conflict-banner" style="margin-bottom:14px">⚠ <b>${conflicts.length} conflito(s) de resultado</b> nesta rodada — verifique com os jogadores e escolha o vencedor abaixo antes de fechar a rodada.</div>` : ''}
+          <div class="profile-grid">
+            <div style="display:flex;flex-direction:column;gap:16px">
+              <div class="panel-card">
+                <p class="eyebrow">CONTROLE DO TORNEIO</p>
+                <div class="inline-actions" style="justify-content:flex-start;margin-top:12px">
+                  ${t.status === 'OPEN' ? `<button class="btn primary" id="startBtn">▶ Começar (rodada 1)</button>` : ''}
+                  ${t.status === 'RUNNING' && t.currentRound < t.roundsPlanned ? `<button class="btn primary" id="nextBtn">Fechar rodada e parear a próxima</button>` : ''}
+                  ${t.status === 'RUNNING' ? `<button class="btn secondary" id="finishBtn">🏁 Encerrar torneio</button>` : ''}
+                  ${t.status !== 'CANCELED' && t.status !== 'FINISHED' ? `<button class="btn danger-outline" id="cancelBtn">Cancelar torneio</button>` : ''}
+                </div>
+              </div>
+              ${t.status !== 'OPEN' ? `
+              <div class="panel-card">
+                <p class="eyebrow">RODADA ${t.currentRound} — PARTIDAS</p>
+                <div style="margin-top:12px">
+                  ${roundMatches.map((m) => {
+                    const rep = (r) => r == null ? '<span style="color:#5a6270">—</span>' : r ? `<b style="color:var(--green)">reportou</b>` : '';
+                    return `
+                    <div class="org-match-row ${m.status === 'CONFLICT' ? 'conflict' : ''} ${m.status === 'DONE' ? 'done' : ''}">
+                      <b style="font:800 15px var(--display);color:var(--yellow)">M${m.tableNo}</b>
+                      <div style="font-size:12px">
+                        <b>${BX.esc(m.p1?.user.name || '?')}</b> ${m.p1Reported ? '✓' : ''} vs <b>${BX.esc(m.p2?.user.name || 'BYE')}</b> ${m.p2Reported ? '✓' : ''}
+                        <small style="display:block;color:var(--muted)">${m.status === 'DONE' ? `✔ vencedor: ${BX.esc((m.winnerId === m.p1?.id ? m.p1 : m.p2)?.user.name || '?')}${m.resolvedBy === 'ORGANIZER' ? ' (manual)' : ''}` : m.status === 'CONFLICT' ? '⚠ conflito — escolha o vencedor' : 'aguardando reportes'}</small>
+                      </div>
+                      <div class="row-actions">
+                        ${m.status !== 'DONE' && !m.bye ? `
+                          ${m.status !== 'CONFLICT' && (m.p1Reported || m.p2Reported) ? `<button class="btn secondary" data-accept="${m.id}">Aceitar reporte único</button>` : ''}
+                          <button class="btn secondary" data-win="${m.id}:${m.p1?.id}">🏆 ${BX.esc(m.p1?.user.name || '')}</button>
+                          <button class="btn secondary" data-win="${m.id}:${m.p2?.id}">🏆 ${BX.esc(m.p2?.user.name || '')}</button>` : ''}
+                        ${m.status === 'DONE' && !m.bye ? `<button class="btn ghost" data-reopen="${m.id}">Reabrir</button>` : ''}
+                      </div>
+                    </div>`;
+                  }).join('') || '<div class="empty-state">Nenhuma partida nesta rodada.</div>'}
+                </div>
+              </div>` : ''}
+              <div class="panel-card">
+                <p class="eyebrow">JOGADORES</p>
+                <div style="margin-top:10px">${data.players.map((p) => `
+                  <div class="org-match-row">
+                    ${BX.avatarHtml(p.user, { size: 34 })}
+                    <div style="font-size:12px"><b>${BX.esc(p.user.name)}</b>${p.dropped ? ' <small style="color:var(--muted)">(removido/drop)</small>' : ''}</div>
+                    ${!p.dropped ? `<button class="btn danger-outline" data-kick="${p.id}">Remover</button>` : '<span></span>'}
+                  </div>`).join('')}</div>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:16px">
+              <div class="panel-card">
+                <p class="eyebrow">DIVULGAÇÃO</p>
+                <div class="qr-box" style="margin:12px 0"><img src="/api/tournaments/${t.slug}/qr.svg" alt="QR Code de inscrição"></div>
+                <div class="share-grid">
+                  <button class="btn secondary" id="copyLink">🔗 Copiar link de inscrição</button>
+                  <a class="btn secondary" style="text-decoration:none;text-align:center" href="/torneio/${t.slug}/cartaz" target="_blank">🖨 Cartaz para impressão</a>
+                  <a class="btn secondary" style="text-decoration:none;text-align:center;background:#173a24;border-color:#1faa53" href="${BX.esc(t.whatsappShareUrl)}" target="_blank" rel="noopener">💬 Compartilhar no WhatsApp</a>
+                  <a class="btn secondary" style="text-decoration:none;text-align:center" href="/api/tournaments/${t.slug}/qr.svg" download="qr-${t.slug}.svg">⬇ Baixar QR Code</a>
+                </div>
+              </div>
+              <div class="panel-card form-grid">
+                <p class="eyebrow" style="margin:0">EDITAR TORNEIO</p>
+                <div><label>Nome</label><input id="eName" value="${BX.esc(t.name)}" /></div>
+                <div><label>Loja</label><input id="eStore" value="${BX.esc(t.storeName || '')}" /></div>
+                <div><label>Endereço</label><input id="eAddr" value="${BX.esc(t.address || '')}" /></div>
+                <div><label>Rodadas</label><input id="eRounds" type="number" min="1" max="12" value="${t.roundsPlanned}" /></div>
+                <div><label>Descrição</label><textarea id="eDesc">${BX.esc(t.description || '')}</textarea></div>
+                <div class="inline-actions"><button class="btn primary" id="saveT">Salvar</button></div>
+              </div>
+            </div>
+          </div>`;
+
+        const act = (fn) => async () => { try { await fn(); load(); } catch (e) { BX.toast(e.message); } };
+        document.getElementById('startBtn')?.addEventListener('click', act(() => BX.api(`/api/tournaments/${slug}/start`, { method: 'POST' })));
+        document.getElementById('nextBtn')?.addEventListener('click', act(() => BX.api(`/api/tournaments/${slug}/next-round`, { method: 'POST' })));
+        document.getElementById('finishBtn')?.addEventListener('click', act(() => confirm('Encerrar o torneio?') && BX.api(`/api/tournaments/${slug}/finish`, { method: 'POST' })));
+        document.getElementById('cancelBtn')?.addEventListener('click', act(() => confirm('Cancelar o torneio? Os jogadores serão avisados pelo status.') && BX.api(`/api/tournaments/${slug}/cancel`, { method: 'POST' })));
+        box.querySelectorAll('[data-accept]').forEach((b) => b.addEventListener('click', act(() => BX.api(`/api/tournaments/${slug}/matches/${b.dataset.accept}/resolve`, { method: 'POST', body: {} }))));
+        box.querySelectorAll('[data-win]').forEach((b) => b.addEventListener('click', act(() => {
+          const [matchId, winnerId] = b.dataset.win.split(':');
+          return BX.api(`/api/tournaments/${slug}/matches/${matchId}/resolve`, { method: 'POST', body: { winnerId } });
+        })));
+        box.querySelectorAll('[data-reopen]').forEach((b) => b.addEventListener('click', act(() => BX.api(`/api/tournaments/${slug}/matches/${b.dataset.reopen}/reopen`, { method: 'POST' }))));
+        box.querySelectorAll('[data-kick]').forEach((b) => b.addEventListener('click', act(() => confirm('Remover este jogador?') && BX.api(`/api/tournaments/${slug}/players/${b.dataset.kick}`, { method: 'DELETE' }))));
+        document.getElementById('copyLink')?.addEventListener('click', async () => {
+          await navigator.clipboard.writeText(t.joinUrl);
+          BX.toast('Link copiado!');
+        });
+        document.getElementById('saveT')?.addEventListener('click', act(() => BX.api(`/api/tournaments/${slug}`, {
+          method: 'PATCH',
+          body: {
+            name: document.getElementById('eName').value,
+            storeName: document.getElementById('eStore').value,
+            address: document.getElementById('eAddr').value,
+            roundsPlanned: document.getElementById('eRounds').value,
+            description: document.getElementById('eDesc').value,
+          },
+        })));
+      }
+
+      await load();
+      // Atualiza sozinho a cada 20s durante o torneio (tela de partida/gestão)
+      pollTimer = setInterval(async () => {
+        if (document.hidden) return;
+        const data = await BX.api(`/api/tournaments/${encodeURIComponent(slug)}`).catch(() => null);
+        if (data?.tournament.status === 'RUNNING') load();
+      }, 20_000);
+    })();
+  </script>
+</body>
+</html>

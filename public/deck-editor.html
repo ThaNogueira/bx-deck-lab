@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Publicar deck — BX Deck Lab</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="noise"></div>
+  <header id="topbar"></header>
+  <main id="app"><div class="empty-state">Carregando editor…</div></main>
+  <script src="/js/shared.js"></script>
+  <script>
+    (async () => {
+      BX.renderTopbar('/decks');
+      const me = await BX.requireLogin(location.pathname);
+      if (!me) return;
+      const idx = await BX.partTagReady();
+      const editSlug = BX.pathPart(0) === 'deck' ? BX.pathPart(1) : null;
+      let existing = null;
+      if (editSlug) {
+        existing = (await BX.api(`/api/decks/${encodeURIComponent(editSlug)}`)).deck;
+        if (existing.author?.id !== me.id && !['MOD', 'ADMIN'].includes(me.role)) {
+          document.getElementById('app').innerHTML = '<div class="empty-state">Este deck não é seu.</div>';
+          return;
+        }
+      }
+      const beys = existing ? existing.beys.map((b) => [...b]) : [[], [], []];
+
+      const KIND_ORDER = ['BLADE', 'LOCK_CHIP', 'OVER_BLADE', 'MAIN_BLADE', 'ASSIST_BLADE', 'RATCHET', 'BIT'];
+      const app = document.getElementById('app');
+      app.innerHTML = `
+        <div class="hero compact">
+          <div>
+            <p class="eyebrow">COMUNIDADE</p>
+            <h1>${existing ? 'Editar' : 'Publicar'} <em>deck</em></h1>
+            <p>Monte de 1 a 3 Beys buscando as peças pelo nome, conte como o deck funciona e cole um vídeo se tiver.</p>
+          </div>
+        </div>
+        <div class="profile-grid">
+          <div class="panel-card form-grid">
+            <div><label>Título do deck</label><input id="title" maxlength="80" placeholder="Ex.: Trio anti-meta da loja X" /></div>
+            <div class="deck-grid" id="beyEditors" style="grid-template-columns:repeat(3,minmax(0,1fr))"></div>
+            <div><label>Descrição</label><textarea id="description" maxlength="2000" placeholder="Por que essas peças? Contra o que o deck joga bem?"></textarea></div>
+            <div><label>Guia de lançamento</label><textarea id="launchGuide" maxlength="2000" placeholder="Como lançar cada Bey: força, ângulo, quando usar cada um…"></textarea></div>
+            <div><label>Vídeo do YouTube (opcional)</label><input id="youtubeUrl" placeholder="https://youtube.com/watch?v=…" /></div>
+            <div class="inline-actions">
+              <a class="btn ghost" href="${existing ? `/deck/${existing.slug}` : '/decks'}">Cancelar</a>
+              <button class="btn primary" id="saveBtn">${existing ? 'Salvar alterações' : 'Publicar deck'}</button>
+            </div>
+          </div>
+          <div class="panel-card">
+            <p class="eyebrow">BUSCAR PEÇAS</p>
+            <input id="partSearch" placeholder="Digite o nome da peça…" style="margin:8px 0 10px" />
+            <div id="searchResults" style="display:flex;flex-direction:column;gap:5px;max-height:52vh;overflow:auto">
+              <div class="empty-state">Busque uma peça e clique para adicionar ao Bey selecionado.</div>
+            </div>
+          </div>
+        </div>`;
+
+      if (existing) {
+        document.getElementById('title').value = existing.title;
+        document.getElementById('description').value = existing.description || '';
+        document.getElementById('launchGuide').value = existing.launchGuide || '';
+        document.getElementById('youtubeUrl').value = existing.youtubeUrl || '';
+      }
+
+      let activeBey = 0;
+      function renderBeys() {
+        document.getElementById('beyEditors').innerHTML = beys.map((bey, i) => `
+          <div class="list-card${i === activeBey ? '' : ''}" data-bey="${i}" style="cursor:pointer;${i === activeBey ? 'border-color:var(--cyan)' : ''}">
+            <h3 style="font-size:16px">Bey ${i + 1} ${i === activeBey ? '<span class="badge cx">selecionado</span>' : ''}</h3>
+            <div style="display:flex;flex-direction:column;gap:5px">
+              ${bey.length ? bey.map((id, j) => `
+                <span style="display:flex;align-items:center;gap:5px">
+                  ${BX.partTag(id, { size: 24, block: false })}
+                  <button class="icon-btn" data-remove="${i}:${j}" title="Remover" style="width:24px;height:24px">×</button>
+                </span>`).join('') : '<span class="muted" style="font-size:10px;color:var(--muted)">vazio — clique aqui e busque peças</span>'}
+            </div>
+          </div>`).join('');
+        document.querySelectorAll('[data-bey]').forEach((el) => el.addEventListener('click', (e) => {
+          if (e.target.dataset.remove) return;
+          activeBey = parseInt(el.dataset.bey, 10);
+          renderBeys();
+        }));
+        document.querySelectorAll('[data-remove]').forEach((btn) => btn.addEventListener('click', () => {
+          const [i, j] = btn.dataset.remove.split(':').map(Number);
+          beys[i].splice(j, 1);
+          renderBeys();
+        }));
+      }
+      renderBeys();
+
+      const results = document.getElementById('searchResults');
+      document.getElementById('partSearch').addEventListener('input', (e) => {
+        const q = BX.norm(e.target.value);
+        if (!q || q.length < 2) { results.innerHTML = '<div class="empty-state">Digite ao menos 2 letras.</div>'; return; }
+        const found = idx.list.filter((p) =>
+          [p.name, p.display, p.abbrev, ...(p.aliases || [])].some((v) => BX.norm(v).includes(q))).slice(0, 25);
+        results.innerHTML = found.length
+          ? found.map((p) => `<button class="slot-choice" data-add="${p.id}" style="min-height:0;display:flex;gap:9px;align-items:center">${BX.partThumb(p, 30)}<span style="color:white;font-weight:700;font-size:12px">${BX.esc(p.display)}</span><small style="margin-left:auto;color:var(--muted)">${BX.KIND_PT[p.kind]}</small></button>`).join('')
+          : '<div class="empty-state">Nada encontrado.</div>';
+        results.querySelectorAll('[data-add]').forEach((btn) => btn.addEventListener('click', () => {
+          if (beys[activeBey].length >= 7) { BX.toast('Este Bey já tem 7 peças.'); return; }
+          beys[activeBey].push(btn.dataset.add);
+          renderBeys();
+        }));
+      });
+
+      document.getElementById('saveBtn').addEventListener('click', async () => {
+        const body = {
+          title: document.getElementById('title').value,
+          description: document.getElementById('description').value,
+          launchGuide: document.getElementById('launchGuide').value,
+          youtubeUrl: document.getElementById('youtubeUrl').value,
+          beys: beys.filter((b) => b.length),
+        };
+        try {
+          const saved = existing
+            ? await BX.api(`/api/decks/${existing.id}`, { method: 'PATCH', body })
+            : await BX.api('/api/decks', { method: 'POST', body });
+          location.href = `/deck/${saved.deck.slug}`;
+        } catch (e) { BX.toast(e.message); }
+      });
+    })();
+  </script>
+</body>
+</html>

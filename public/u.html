@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Perfil — BX Deck Lab</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="noise"></div>
+  <header id="topbar"></header>
+  <main id="app"><div class="empty-state">Carregando perfil…</div></main>
+  <script src="/js/shared.js"></script>
+  <script>
+    (async () => {
+      BX.renderTopbar(null);
+      await BX.partTagReady();
+      const slug = BX.pathPart(1);
+      const app = document.getElementById('app');
+      let data;
+      try {
+        data = await BX.api(`/api/users/${encodeURIComponent(slug)}`);
+      } catch (e) {
+        app.innerHTML = `<div class="empty-state">${BX.esc(e.message)}</div>`;
+        return;
+      }
+      const { user, favoritePart, collection, combos, decks } = data;
+      document.title = `${user.name} — BX Deck Lab`;
+      const me = await BX.me().catch(() => null);
+
+      const bannerInner = user.bannerUrl
+        ? (/\.(mp4|webm)$/i.test(user.bannerUrl)
+            ? `<video src="${BX.esc(user.bannerUrl)}" autoplay loop muted playsinline></video>`
+            : `<img src="${BX.esc(user.bannerUrl)}" alt="">`)
+        : '';
+      const stickers = (user.cosmetics?.stickers || []);
+      const forSale = collection.filter((i) => i.forSale);
+      const shelf = collection.filter((i) => !i.forSale);
+
+      const saleCard = (i) => `
+        <div class="list-card">
+          <div style="display:flex;justify-content:space-between;gap:8px;align-items:center">
+            ${BX.partTag({ ...i.part, display: i.part?.displayName, img: i.part?.imageUrl }, { size: 34 })}
+            <span class="sale-tag">à venda</span>
+          </div>
+          <div class="muted">${i.qty > 1 ? `${i.qty} unidades • ` : ''}${BX.esc(i.condition || 'condição não informada')}</div>
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+            <span class="price">${i.priceCents != null ? BX.money(i.priceCents) : 'a combinar'}</span>
+            ${i.whatsappUrl ? `<a class="wa-btn" target="_blank" rel="noopener" href="${BX.esc(i.whatsappUrl)}">💬 Tenho interesse</a>` : ''}
+          </div>
+        </div>`;
+
+      app.innerHTML = `
+        <div class="profile-banner">${bannerInner}</div>
+        <div class="profile-head">
+          ${BX.avatarHtml(user, { size: 92 })}
+          <div class="profile-id">
+            <h1>${BX.esc(user.name)} ${user.role !== 'USER' ? `<span class="role-chip ${user.role}">${user.role}</span>` : ''}</h1>
+            <p>@${BX.esc(user.slug)}${user.bio ? ` — ${BX.esc(user.bio)}` : ''}</p>
+            ${stickers.length ? `<div class="sticker-row" style="margin-top:8px">${stickers.map((s) => `<span class="sticker" title="${BX.esc(s.name)}">${s.imageUrl ? `<img src="${BX.esc(s.imageUrl)}">` : BX.esc(s.styleKey || '★')}</span>`).join('')}</div>` : ''}
+          </div>
+          <div class="profile-head-actions">
+            ${me && me.id === user.id ? '<a class="btn secondary" href="/perfil">Editar meu perfil</a>' : `<button class="btn ghost" id="reportBtn">⚑ Denunciar</button>`}
+          </div>
+        </div>
+        <div class="profile-grid">
+          <div style="display:flex;flex-direction:column;gap:16px">
+            ${forSale.length ? `
+              <div class="panel-card">
+                <div class="section-title-row" style="margin-bottom:12px"><div><p class="eyebrow">VITRINE</p><h2>Peças à venda</h2></div></div>
+                <div class="card-grid">${forSale.map(saleCard).join('')}</div>
+              </div>` : ''}
+            ${combos.length ? `
+              <div class="panel-card">
+                <div class="section-title-row" style="margin-bottom:12px"><div><p class="eyebrow">COMBOS</p><h2>Combos montados</h2></div></div>
+                <div class="card-grid">${combos.map((c) => `
+                  <div class="list-card">
+                    <div style="display:flex;justify-content:space-between;gap:8px"><h3 style="font-size:17px">${BX.esc(c.title)}</h3>${c.forSale ? '<span class="sale-tag">à venda</span>' : ''}</div>
+                    ${c.description ? `<p class="muted" style="margin:0">${BX.esc(c.description)}</p>` : ''}
+                    <div class="combo-tags">${c.parts.map((p) => BX.partTag({ ...p, display: p.displayName, img: p.imageUrl }, { size: 22 })).join('')}</div>
+                    ${c.forSale ? `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+                      <span class="price">${c.priceCents != null ? BX.money(c.priceCents) : 'a combinar'}</span>
+                      ${c.whatsappUrl ? `<a class="wa-btn" target="_blank" rel="noopener" href="${BX.esc(c.whatsappUrl)}">💬 Tenho interesse</a>` : ''}
+                    </div>` : ''}
+                  </div>`).join('')}</div>
+              </div>` : ''}
+            <div class="panel-card">
+              <div class="section-title-row" style="margin-bottom:12px">
+                <div><p class="eyebrow">COLEÇÃO</p><h2>Peças da coleção</h2></div>
+                <small>${collection.length} peça(s) catalogada(s)</small>
+              </div>
+              ${shelf.length
+                ? `<div class="combo-tags">${shelf.map((i) => BX.partTag({ ...i.part, display: i.part?.displayName, img: i.part?.imageUrl }, { size: 24, label: `${i.part?.displayName}${i.qty > 1 ? ` ×${i.qty}` : ''}` })).join('')}</div>`
+                : '<div class="empty-state">Coleção não publicada.</div>'}
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:16px">
+            ${favoritePart ? `
+              <div class="panel-card">
+                <p class="eyebrow">BEY FAVORITA</p>
+                <div class="fav-bey-card" style="margin-top:10px">
+                  ${BX.partThumb({ ...favoritePart, img: favoritePart.imageUrl }, 92)}
+                  <div>
+                    <strong style="font:800 22px var(--display);text-transform:uppercase"><a href="/peca/${favoritePart.slug}" style="text-decoration:none;color:inherit">${BX.esc(favoritePart.displayName)}</a></strong>
+                    ${favoritePart.type ? `<div style="margin-top:5px"><span class="badge ${favoritePart.type.toLowerCase()}">${favoritePart.type}</span></div>` : ''}
+                  </div>
+                </div>
+              </div>` : ''}
+            <div class="panel-card">
+              <p class="eyebrow">DECKS PUBLICADOS</p>
+              <div style="margin-top:10px">
+                ${decks.length
+                  ? decks.map((d) => `<div class="bey-line"><span style="flex:1"><a href="/deck/${d.slug}" style="color:white;text-decoration:none;font-weight:700">${BX.esc(d.title)}</a></span><small style="color:var(--muted)">${BX.dateFmt(d.createdAt, { day: '2-digit', month: 'short' })}</small></div>`).join('')
+                  : '<div class="empty-state">Nenhum deck publicado.</div>'}
+              </div>
+            </div>
+            <div class="panel-card">
+              <p class="eyebrow">DESDE</p>
+              <p style="color:var(--muted);font-size:12px;margin:8px 0 0">No BX Deck Lab desde ${BX.dateFmt(user.createdAt, { day: '2-digit', month: 'long', year: 'numeric' })}.</p>
+            </div>
+          </div>
+        </div>`;
+
+      document.getElementById('reportBtn')?.addEventListener('click', () => BX.report('USER', user.id, 'este perfil'));
+    })();
+  </script>
+</body>
+</html>

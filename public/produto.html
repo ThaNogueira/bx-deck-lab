@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Produto — BX Deck Lab</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="noise"></div>
+  <header id="topbar"></header>
+  <main id="app"><div class="empty-state">Carregando produto…</div></main>
+  <script src="/js/shared.js"></script>
+  <script>
+    (async () => {
+      BX.renderTopbar('/produtos');
+      await BX.partTagReady();
+      const slug = BX.pathPart(1);
+      const app = document.getElementById('app');
+      let data;
+      try {
+        data = await BX.api(`/api/products/${encodeURIComponent(slug)}`);
+      } catch (e) {
+        app.innerHTML = `<div class="empty-state">${BX.esc(e.message)} — <a href="/produtos" style="color:var(--cyan)">voltar ao catálogo</a></div>`;
+        return;
+      }
+      const { product: p, partsByKind } = data;
+      document.title = `${p.code ? p.code + ' ' : ''}${p.name} — BX Deck Lab`;
+      const brandName = { TAKARA_TOMY: 'Takara Tomy', HASBRO: 'Hasbro', OTHER: 'Marca não confirmada' };
+
+      const sections = partsByKind.length
+        ? partsByKind.map((g) => `
+            <section class="kind-section" style="margin-bottom:20px">
+              <h2>${BX.KIND_PT[g.kind]}${g.parts.length > 1 ? 's' : ''}</h2>
+              <div class="card-grid">${g.parts.map((part) => `
+                <a class="list-card" href="/peca/${part.slug}">
+                  <div style="display:flex;gap:12px;align-items:center">
+                    ${BX.partThumb({ ...part, img: part.imageUrl }, 54)}
+                    <div>
+                      <h3 style="font-size:17px">${BX.esc(part.displayName)}${part.qty > 1 ? ` ×${part.qty}` : ''}</h3>
+                      <div class="muted">${part.type ? `<span class="badge ${part.type.toLowerCase()}">${part.type}</span>` : ''}</div>
+                    </div>
+                  </div>
+                </a>`).join('')}</div>
+            </section>`).join('')
+        : '<div class="empty-state">As peças deste produto ainda não foram mapeadas.</div>';
+
+      app.innerHTML = `
+        <div class="hero compact">
+          <div>
+            <p class="eyebrow">${p.line ? `LINHA ${p.line} • ` : ''}${brandName[p.brand] || p.brand}${p.code ? ` • ${BX.esc(p.code)}` : ''}</p>
+            <h1>${BX.esc(p.name)}</h1>
+            <p>${p.category ? `${p.category.toLowerCase().replace('_', ' ')}. ` : ''}${p.notes ? BX.esc(p.notes) + '. ' : ''}${p.releaseDate ? `Lançamento: ${new Date(p.releaseDate).toLocaleDateString('pt-BR')}.` : ''}</p>
+          </div>
+          <div class="hero-actions">
+            <a class="google-btn" target="_blank" rel="noopener" href="${BX.esc(p.googleUrl)}">🔎 Buscar preços no Google</a>
+          </div>
+        </div>
+        <div class="assembly-note">
+          <b>Ordem de montagem</b> (de cima para baixo): Lock Chip → Over Blade → Main Blade → Assist Blade → Ratchet → Bit.
+          Nem todo produto tem todas as camadas — a maioria tem só Blade, Ratchet e Bit.
+        </div>
+        <div class="section-title-row" style="margin-bottom:14px">
+          <div><p class="eyebrow">CONTEÚDO</p><h2>Contém essas peças</h2></div>
+        </div>
+        ${sections}`;
+    })();
+  </script>
+</body>
+</html>

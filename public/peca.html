@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Peça — BX Deck Lab</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="noise"></div>
+  <header id="topbar"></header>
+  <main id="app"><div class="empty-state">Carregando peça…</div></main>
+  <script src="/js/shared.js"></script>
+  <script>
+    (async () => {
+      BX.renderTopbar('/pecas');
+      await BX.partTagReady();
+      const slug = BX.pathPart(1);
+      const app = document.getElementById('app');
+      let data;
+      try {
+        data = await BX.api(`/api/parts/${encodeURIComponent(slug)}`);
+      } catch (e) {
+        app.innerHTML = `<div class="empty-state">${BX.esc(e.message)} — <a href="/pecas" style="color:var(--cyan)">voltar ao catálogo</a></div>`;
+        return;
+      }
+      const { part, products } = data;
+      document.title = `${part.displayName} — BX Deck Lab`;
+      const stats = part.stats
+        ? `<div class="stat-chips">${Object.entries({ atk: 'Ataque', def: 'Defesa', sta: 'Stamina', dash: 'Dash' })
+            .filter(([k]) => part.stats[k] != null)
+            .map(([k, label]) => `<span class="badge">${label}: <b style="margin-left:4px">${part.stats[k]}</b></span>`).join('')}</div>`
+        : '';
+      const aliases = (part.aliases || []).filter(Boolean);
+
+      const brandName = { TAKARA_TOMY: 'Takara Tomy', HASBRO: 'Hasbro', OTHER: '—' };
+      const productsHtml = products.length
+        ? `<div class="card-grid">${products.map((p) => `
+            <div class="list-card">
+              <div style="display:flex;justify-content:space-between;gap:8px;align-items:start">
+                <h3><a href="/produto/${p.slug}" style="text-decoration:none;color:inherit">${BX.esc(p.name)}</a></h3>
+                ${p.code ? `<span class="product-code">${BX.esc(p.code)}</span>` : ''}
+              </div>
+              <div class="muted">${brandName[p.brand] || p.brand}${p.line ? ` • linha ${p.line}` : ''}${p.category ? ` • ${p.category.toLowerCase().replace('_', ' ')}` : ''}</div>
+              <div class="list-card-foot">
+                <a class="google-btn" target="_blank" rel="noopener" href="${BX.esc(p.googleUrl)}">🔎 Buscar no Google</a>
+                <a href="/produto/${p.slug}" style="color:var(--cyan);font-size:11px;text-decoration:none">detalhes →</a>
+              </div>
+            </div>`).join('')}</div>`
+        : `<div class="empty-state">Ainda não mapeamos os produtos desta peça. O admin pode vincular pelo painel.</div>`;
+
+      app.innerHTML = `
+        <div class="hero compact">
+          <div class="part-hero">
+            ${BX.partThumb({ ...part, img: part.imageUrl }, 140)}
+            <div>
+              <p class="eyebrow">${BX.KIND_PT[part.kind]}${part.subKind === 'INTEGRATED' ? ' • RATCHET INTEGRADA' : part.subKind === 'RIB' ? ' • RATCHET-INTEGRATED BIT' : ''}</p>
+              <h1>${BX.esc(part.displayName)}</h1>
+              <p>${part.type ? `<span class="badge ${part.type.toLowerCase()}">${part.type}</span> ` : ''}${part.banned ? '<span class="badge banned">Banida por padrão na WBO</span> ' : ''}${aliases.length ? `Também conhecida como: ${aliases.map(BX.esc).join(', ')}.` : ''}</p>
+              ${stats}
+            </div>
+          </div>
+        </div>
+        ${part.behavior || part.note ? `<div class="panel-card" style="margin-bottom:20px"><p class="prose" style="margin:0">${BX.esc(part.behavior || part.note)}</p></div>` : ''}
+        <div class="section-title-row" style="margin-bottom:12px">
+          <div><p class="eyebrow">ONDE ENCONTRAR</p><h2>Vem nesses produtos</h2></div>
+          <small>Os botões abrem uma busca do Google — confira sempre o vendedor.</small>
+        </div>
+        ${productsHtml}`;
+    })();
+  </script>
+</body>
+</html>

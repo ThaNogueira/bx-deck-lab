@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Torneios — BX Deck Lab</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="noise"></div>
+  <header id="topbar"></header>
+  <main>
+    <div class="hero compact">
+      <div>
+        <p class="eyebrow">JOGUE PRESENCIAL</p>
+        <h1>Torneios <em>abertos</em></h1>
+        <p>Inscreva-se num torneio perto de você ou crie o seu — o site gera link de inscrição, QR Code e cartaz prontos.</p>
+      </div>
+      <div class="hero-actions"><button class="btn primary" id="newT">+ Criar torneio</button></div>
+    </div>
+    <div class="page-toolbar">
+      <input id="q" placeholder="Buscar por nome, loja ou cidade…" />
+      <select id="status">
+        <option value="">Abertos e em andamento</option>
+        <option value="OPEN">Inscrições abertas</option>
+        <option value="RUNNING">Em andamento</option>
+        <option value="FINISHED">Encerrados</option>
+      </select>
+    </div>
+    <div id="list" class="card-grid"><div class="empty-state">Carregando torneios…</div></div>
+
+    <div class="modal-backdrop" id="newModal" hidden>
+      <div class="modal">
+        <button class="modal-close" id="newClose">×</button>
+        <h2>Criar torneio</h2>
+        <div class="form-grid">
+          <div><label>Nome do torneio</label><input id="tName" maxlength="80" placeholder="Ex.: X Clash — Edição 4" /></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div><label>Loja</label><input id="tStore" maxlength="80" placeholder="Nome da loja" /></div>
+            <div><label>Data e horário</label><input id="tDate" type="datetime-local" /></div>
+          </div>
+          <div><label>Endereço</label><input id="tAddr" maxlength="160" placeholder="Rua, número, cidade" /></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div><label>Formato</label><select id="tFormat"><option value="MD3">Melhor de 3 (MD3)</option><option value="POINTS4">Partida simples até 4 pontos</option></select></div>
+            <div><label>Rodadas</label><input id="tRounds" type="number" min="1" max="12" value="4" /></div>
+          </div>
+          <div><label>Informações extras</label><textarea id="tDesc" maxlength="2000" placeholder="Taxa de inscrição, premiação, regras da casa…"></textarea></div>
+          <div class="inline-actions"><button class="btn primary" id="tCreate">Criar torneio</button></div>
+        </div>
+      </div>
+    </div>
+  </main>
+  <script src="/js/shared.js"></script>
+  <script>
+    (async () => {
+      BX.renderTopbar('/torneios');
+      let timer;
+      async function load() {
+        const q = document.getElementById('q').value;
+        const status = document.getElementById('status').value;
+        const { tournaments } = await BX.api(`/api/tournaments?query=${encodeURIComponent(q)}&status=${status}`);
+        document.getElementById('list').innerHTML = tournaments.length
+          ? tournaments.map((t) => `
+            <a class="list-card" href="/torneio/${t.slug}">
+              <div style="display:flex;justify-content:space-between;gap:8px;align-items:start">
+                <h3>${BX.esc(t.name)}</h3>
+                <span class="status-chip ${t.status}">${{ OPEN: 'inscrições abertas', RUNNING: `rodada ${t.currentRound}`, FINISHED: 'encerrado', CANCELED: 'cancelado' }[t.status]}</span>
+              </div>
+              <div class="muted">
+                📅 ${BX.dateFmt(t.startsAt, { weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}<br>
+                ${t.storeName ? `🏬 ${BX.esc(t.storeName)}<br>` : ''}${t.address ? `📍 ${BX.esc(t.address)}` : ''}
+              </div>
+              <div class="list-card-foot">
+                <span>${t.playersCount} inscrito(s)</span>
+                <span>${t.format === 'MD3' ? 'Melhor de 3' : 'Até 4 pontos'} • ${t.roundsPlanned} rodadas</span>
+              </div>
+            </a>`).join('')
+          : '<div class="empty-state">Nenhum torneio por aqui ainda — crie o primeiro!</div>';
+      }
+      load();
+      document.getElementById('q').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(load, 300); });
+      document.getElementById('status').addEventListener('change', load);
+
+      const modal = document.getElementById('newModal');
+      document.getElementById('newT').addEventListener('click', async () => {
+        if (await BX.requireLogin('/torneios')) modal.hidden = false;
+      });
+      document.getElementById('newClose').addEventListener('click', () => { modal.hidden = true; });
+      document.getElementById('tCreate').addEventListener('click', async () => {
+        try {
+          const { tournament } = await BX.api('/api/tournaments', {
+            method: 'POST',
+            body: {
+              name: document.getElementById('tName').value,
+              storeName: document.getElementById('tStore').value,
+              address: document.getElementById('tAddr').value,
+              startsAt: document.getElementById('tDate').value,
+              format: document.getElementById('tFormat').value,
+              roundsPlanned: document.getElementById('tRounds').value,
+              description: document.getElementById('tDesc').value,
+            },
+          });
+          location.href = `/torneio/${tournament.slug}`;
+        } catch (e) { BX.toast(e.message); }
+      });
+    })();
+  </script>
+</body>
+</html>
