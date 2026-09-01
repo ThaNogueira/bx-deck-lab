@@ -35,7 +35,7 @@ docker compose logs -f web
 ```
 
 O container roda `prisma migrate deploy` + seed (idempotente) e sobe na porta
-interna 3001 (só localhost).
+interna **3004** (só localhost).
 
 ## 4. Caddy (acesso por IP, porta 8080)
 
@@ -43,7 +43,7 @@ interna 3001 (só localhost).
 
 ```
 http://:8080 {
-    reverse_proxy 127.0.0.1:3001
+    reverse_proxy 127.0.0.1:3004
     encode gzip
 }
 ```
@@ -63,7 +63,7 @@ Google" só vai funcionar quando houver um domínio (um subdomínio grátis do
 [DuckDNS](https://www.duckdns.org) resolve). Quando tiver:
 
 1. Aponte o domínio para o IP da VPS;
-2. Troque o bloco do Caddy por `bxlab.seudominio.com { reverse_proxy 127.0.0.1:3001 }`
+2. Troque o bloco do Caddy por `bxlab.seudominio.com { reverse_proxy 127.0.0.1:3004 }`
    (TLS automático) e ajuste `SITE_URL=https://bxlab.seudominio.com` no `.env`;
 3. No Google Cloud Console, na MESMA aplicação OAuth do GLC Hub, adicione o
    redirect `https://bxlab.seudominio.com/api/oauth/google/callback`;

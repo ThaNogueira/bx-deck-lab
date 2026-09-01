@@ -4,6 +4,6 @@ services:
     restart: unless-stopped
     env_file: .env
     ports:
-      - "127.0.0.1:3001:3000" # só localhost — o Caddy faz o proxy público
+      - "127.0.0.1:3004:3000" # só localhost — o Caddy faz o proxy público
     volumes:
       - ./data:/app/data # SQLite + uploads sobrevivem a rebuilds
