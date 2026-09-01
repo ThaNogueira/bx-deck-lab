@@ -232,21 +232,52 @@
   }
 
   // -------------------------------------------------------------------------
+  // Ícones vetoriais próprios — traço poligonal, estilo Beyblade X (sem emoji)
+  // -------------------------------------------------------------------------
+
+  const ICON_PATHS = {
+    home: '<path d="M4 11.5 12 4l8 7.5V20h-5.5v-5h-5v5H4Z"/>',
+    builder: '<path d="M12 2.5 18.5 6.2l.9 6L12 21.5l-7.4-9.3.9-6Z"/><path d="M12 7.2l3.4 1.9-.8 3.1-2.6 3.2-2.6-3.2-.8-3.1Z"/>',
+    meta: '<path d="M4 4v16h16"/><path d="m7 15 4-5.5 3 3L19 6"/><path d="M15.5 6H19v3.5"/>',
+    community: '<circle cx="12" cy="12" r="3.4"/><path d="M2.8 12c0-2.4 4.1-4.4 9.2-4.4s9.2 2 9.2 4.4-4.1 4.4-9.2 4.4S2.8 14.4 2.8 12Z"/>',
+    popular: '<path d="M7.5 4h9v5.2a4.5 4.5 0 0 1-9 0Z"/><path d="M7.5 5.2h-3v1.6a3.6 3.6 0 0 0 3.2 3.6M16.5 5.2h3v1.6a3.6 3.6 0 0 1-3.2 3.6"/><path d="M12 13.7v3M8.2 20h7.6l-.9-3.3H9.1Z"/>',
+    tournaments: '<path d="m5 3.5 12.8 12.8M18.6 3.5 5.8 16.3"/><path d="m4 16.5 3.5 3.5M16.5 20l3.5-3.5M4.5 3.5H8M4.5 3.5V7M19.1 3.5h-3.5M19.1 3.5V7"/>',
+    pecas: '<path d="M12 3.2 19 7.1v9.8l-7 3.9-7-3.9V7.1Z"/><circle cx="12" cy="12" r="3"/>',
+    produtos: '<path d="M12 3 20 7.4v9.2L12 21l-8-4.4V7.4Z"/><path d="M4 7.4 12 12l8-4.6M12 12v9"/>',
+    vendas: '<path d="M12.8 3.5H20v7.2L10.4 20.3 3.5 13.4Z"/><circle cx="16.2" cy="7.4" r="1.5"/>',
+    rules: '<path d="M12 3.2 19 6v6.2c0 4.6-3.3 7-7 8.6-3.7-1.6-7-4-7-8.6V6Z"/><path d="m9 12.2 2.1 2.1 3.9-4.5"/>',
+    collapse: '<path d="M11.5 6 5.5 12l6 6M18.5 6l-6 6 6 6"/>',
+    profile: '<circle cx="12" cy="8" r="3.4"/><path d="M4.8 20c1.4-3.8 3.9-5.4 7.2-5.4s5.8 1.6 7.2 5.4"/>',
+    collection: '<path d="M4 8.2h16V20H4Z"/><path d="M9 8.2V5h6v3.2M4 13.4h16"/>',
+    missing: '<path d="M12 3.2 19 7.1v9.8l-7 3.9-7-3.9V7.1Z" stroke-dasharray="3.2 3"/><path d="M12 8.4v7.2M8.4 12h7.2"/>',
+    decks: '<path d="M4.5 7.5h11v13h-11Z"/><path d="M8.5 4h11v13"/>',
+    physical: '<path d="m12 3 8 4.5-8 4.5-8-4.5Z"/><path d="m4 12.5 8 4.5 8-4.5M4 16.5 12 21l8-4.5"/>',
+    organizer: '<path d="M5.5 4.5h13V21h-13Z"/><path d="M9 4.5V3h6v3H9ZM8.7 11h6.6M8.7 15h4.4"/>',
+    admin: '<path d="M12 3.2 19 6v6.2c0 4.6-3.3 7-7 8.6-3.7-1.6-7-4-7-8.6V6Z"/><path d="M12 7.5v5M9.5 10h5"/>',
+    logout: '<path d="M14 4H6v16h8"/><path d="M10.5 12H20m-3.4-3.4L20 12l-3.4 3.4"/>',
+    publish: '<path d="M3.5 11.6 20.5 4l-4.7 16-4.3-6.1Z"/><path d="M11.5 13.9 20.5 4"/>',
+    plus: '<path d="M12 5.5v13M5.5 12h13"/>',
+    google: '<circle cx="11.5" cy="11.5" r="6.5"/><path d="m16.5 16.5 4 4M11.5 8.5v6M8.5 11.5h6"/>',
+  };
+  const icon = (name, size = 19) =>
+    `<svg class="vicon" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="bevel" stroke-linecap="square" aria-hidden="true">${ICON_PATHS[name] || ICON_PATHS.pecas}</svg>`;
+
+  // -------------------------------------------------------------------------
   // Shell de navegação: sidebar colapsável + topbar + menu do avatar
   // -------------------------------------------------------------------------
 
   const NAV_MAIN = [
-    ['home', '/#home', '⌂', 'Início'],
-    ['builder', '/#builder', '⚙', 'Deck Builder'],
-    ['weekly', '/#weekly', '📈', 'Meta check'],
-    ['community', '/decks', '🌀', 'Decks da comunidade'],
-    ['popular', '/#popular', '🏆', 'Decks populares'],
-    ['tournaments', '/torneios', '⚔', 'Torneios'],
+    ['home', '/#home', 'Início'],
+    ['builder', '/#builder', 'Deck Builder'],
+    ['weekly', '/#weekly', 'Meta check'],
+    ['community', '/decks', 'Decks da comunidade'],
+    ['popular', '/#popular', 'Decks populares'],
+    ['tournaments', '/torneios', 'Torneios'],
   ];
   const NAV_CATALOG = [
-    ['pecas', '/pecas', '🔩', 'Peças'],
-    ['produtos', '/produtos', '📦', 'Produtos'],
-    ['vendas', '/vendas', '💰', 'Vendas'],
+    ['pecas', '/pecas', 'Peças'],
+    ['produtos', '/produtos', 'Produtos'],
+    ['vendas', '/vendas', 'Vendas'],
   ];
   const PATH_KEY = { '/decks': 'community', '/pecas': 'pecas', '/produtos': 'produtos', '/torneios': 'tournaments', '/vendas': 'vendas' };
   const IS_APP_PAGE = () => location.pathname === '/' || location.pathname === '/index.html';
@@ -256,14 +287,14 @@
     if (!user) return `<a class="btn secondary chip-login" href="/entrar">Entrar</a>`;
     return `<button class="user-chip" id="userMenuBtn" title="Menu da conta">${avatarHtml(user, { size: 34 })}<span>${esc(user.name)}</span><i class="chev">▾</i></button>
       <div class="user-menu" id="userMenu" hidden>
-        <a href="/perfil">👤 Meu perfil</a>
-        <a href="/#collection">🎒 Minha coleção</a>
-        <a href="/#missing">🧩 Faltam na coleção</a>
-        <a href="/decks?author=${esc(user.slug)}">📜 Meus decks</a>
-        <a href="/#session">🧱 Decks físicos</a>
-        <a href="/#tournament">📋 Organizador local</a>
-        ${['MOD', 'ADMIN'].includes(user.role) ? '<a href="/admin">🛡 Painel de admin</a>' : ''}
-        <button id="logoutMenuBtn">🚪 Sair</button>
+        <a href="/perfil">${icon('profile', 16)} Meu perfil</a>
+        <a href="/#collection">${icon('collection', 16)} Minha coleção</a>
+        <a href="/#missing">${icon('missing', 16)} Faltam na coleção</a>
+        <a href="/decks?author=${esc(user.slug)}">${icon('decks', 16)} Meus decks</a>
+        <a href="/#session">${icon('physical', 16)} Decks físicos</a>
+        <a href="/#tournament">${icon('organizer', 16)} Organizador local</a>
+        ${['MOD', 'ADMIN'].includes(user.role) ? `<a href="/admin">${icon('admin', 16)} Painel de admin</a>` : ''}
+        <button id="logoutMenuBtn">${icon('logout', 16)} Sair</button>
       </div>`;
   }
 
@@ -287,7 +318,7 @@
       side.className = 'side-nav';
       document.body.appendChild(side);
     }
-    const item = ([k, href, icon, label]) => `<a class="side-item${k === key ? ' active' : ''}" data-key="${k}" href="${href}"><i>${icon}</i><span>${label}</span></a>`;
+    const item = ([k, href, label]) => `<a class="side-item${k === key ? ' active' : ''}" data-key="${k}" href="${href}"><i>${icon(k)}</i><span>${label}</span></a>`;
     side.innerHTML = `
       <a class="side-brand" href="/#home">
         <div class="brand-mark" aria-hidden="true"><span>X</span></div>
@@ -299,8 +330,8 @@
         ${NAV_CATALOG.map(item).join('')}
       </nav>
       <div class="side-foot">
-        <a class="side-item" data-key="rules" href="/#rules"><i>📖</i><span>Regras WBO</span></a>
-        <button class="side-item side-collapse" id="navCollapseBtn" title="Recolher menu"><i>«</i><span>Recolher</span></button>
+        <a class="side-item" data-key="rules" href="/#rules"><i>${icon('rules')}</i><span>Regras WBO</span></a>
+        <button class="side-item side-collapse" id="navCollapseBtn" title="Recolher menu"><i>${icon('collapse')}</i><span>Recolher</span></button>
       </div>
       <div class="side-backdrop" id="sideBackdrop"></div>`;
 
@@ -399,7 +430,7 @@
   };
 
   window.BX = {
-    api, me, site, esc, norm, toast, money, dateFmt,
+    api, me, site, esc, norm, toast, money, dateFmt, icon,
     partsIndex, partTagReady, partTag, comboTags, partThumb, KIND_PT, radar, beyVisual,
     avatarHtml, renderTopbar, renderShell, mountUserWidget, userChipHtml, setActiveNav,
     report, requireLogin, qs, pathPart, ytEmbed,
