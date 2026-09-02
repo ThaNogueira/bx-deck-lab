@@ -1301,3 +1301,25 @@ a.bm-part:hover{border-color:var(--cyan);z-index:9}
 .saved-deck-actions.col .btn{padding:7px 10px;font-size:11px;white-space:nowrap}
 .physical-preview.small{justify-content:flex-start;margin:4px 0 6px}
 .physical-preview.small .deck-mini{width:auto;max-width:100%}
+
+/* ===== v23: picker na sessão física + dropdown da coleção no perfil ===== */
+.sess-picker{display:flex;flex-direction:column;gap:10px}
+.sess-picker .picker-grid{max-height:calc(100vh - 330px);min-height:220px}
+.picker-tile.disabled{opacity:.38;filter:grayscale(.9);cursor:not-allowed}
+.picker-tile.disabled:hover{transform:none;border-color:#2a3039;background:#10141b}
+.picker-left{position:absolute;top:5px;left:5px;right:auto;border-radius:999px;padding:1px 6px;background:rgba(84,230,156,.16);border:1px solid rgba(84,230,156,.45);color:#9df5c3;font:800 8px var(--display);font-style:normal;letter-spacing:.03em;z-index:2}
+.picker-left.out{background:rgba(255,255,255,.06);border-color:#3a414d;color:#8a94a2}
+.picker-tile .picker-banned{left:auto;right:5px;top:24px}
+.session-bey-card{cursor:pointer;transition:border-color .15s,box-shadow .15s}
+.session-bey-card.active-slot{border-color:var(--cyan);box-shadow:0 0 0 1px rgba(80,231,255,.35),0 10px 30px rgba(80,231,255,.08)}
+/* perfil: dropdowns por categoria */
+details.pcol-group{border:1px solid #232933;border-radius:12px;background:#0f1218;margin-top:8px;overflow:hidden}
+details.pcol-group>summary{list-style:none;cursor:pointer;padding:9px 12px;margin:0;user-select:none}
+details.pcol-group>summary::-webkit-details-marker{display:none}
+details.pcol-group>summary::after{content:none}
+details.pcol-group>summary:hover{background:#12161e}
+details.pcol-group[open]>summary{border-bottom:1px solid #232933}
+details.pcol-group .pcol-grid{padding:10px}
+.pcol-caret{font-style:normal;color:#6b7482;font-size:11px;transition:transform .15s;display:inline-block}
+details.pcol-group[open] .pcol-caret{transform:rotate(90deg)}
+details.pcol-group summary small b{color:#74eeb0}

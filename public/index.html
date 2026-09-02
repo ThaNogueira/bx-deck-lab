@@ -320,10 +320,15 @@
           </div>
           <div class="session-draft-grid" id="sessionDraftGrid"></div>
         </div>
-        <aside class="panel-card session-stock-panel">
-          <p class="eyebrow">PEÇAS LIVRES</p>
-          <h2>Estoque restante</h2>
-          <div id="sessionAvailableParts" class="session-stock-list"></div>
+        <aside class="panel-card session-stock-panel picker sess-picker">
+          <div class="picker-head">
+            <div><p class="eyebrow">PEÇAS LIVRES DA COLEÇÃO</p><h2>Estoque</h2></div>
+            <span class="picker-target">Bey <b id="sessActiveSlotLabel">1</b></span>
+          </div>
+          <input id="sessPickerSearch" placeholder="Buscar peça…" />
+          <div class="picker-filters" id="sessPickerFilters"></div>
+          <div class="picker-grid" id="sessPickerGrid"></div>
+          <p class="picker-hint" id="sessPickerHint"></p>
         </aside>
       </div>
       <div class="section-title-row physical-title"><div><p class="eyebrow">RESERVADOS</p><h2>Decks já montados</h2></div><small>Remover um deck devolve suas peças ao estoque da sessão.</small></div>

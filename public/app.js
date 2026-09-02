@@ -1672,9 +1672,38 @@
     const complete=sessionDraft.filter(isComplete).length;
     return {complete,errors:[...new Set(errors)],warnings:[...new Set(warnings)],legal:complete===3&&errors.length===0};
   }
+  let sessionActiveSlot=0;
+  function setSessionActiveSlot(i){
+    sessionActiveSlot=Math.max(0,Math.min(2,i));
+    document.querySelectorAll('#sessionDraftGrid .session-bey-card').forEach(c=>c.classList.toggle('active-slot',+c.dataset.sessionCard===sessionActiveSlot));
+    const label=document.getElementById('sessActiveSlotLabel'); if(label)label.textContent=sessionActiveSlot+1;
+    renderSessPicker();
+  }
+  /** Quantas cópias da peça (somando recolors) ainda estão livres para o slot ativo da sessão. */
+  function sessionLeft(p,slotIndex=sessionActiveSlot){
+    const reserved=reservedUsage(), other=sessionDraftUsage(slotIndex);
+    const ids=[p.id,...childrenOf(p).map(k=>k.id)];
+    const used=ids.reduce((n,id)=>n+(reserved[id]||0)+(other[id]||0),0);
+    const repeated=ids.some(id=>(other[id]||0)>0)&&!p.basicLock;
+    return {left:(inventory[p.id]||0)-used,repeated};
+  }
+  /** Na sessão física a cor tem que ser uma que você TEM (e que ainda esteja livre). */
+  async function chooseOwnedColor(p){
+    const kids=childrenOf(p).filter(k=>(inventory[k.id]||0)>0); if(!kids.length)return p;
+    const reserved=reservedUsage(), other=sessionDraftUsage(sessionActiveSlot);
+    const freeOf=(id)=>(inventory[id]||0)-(reserved[id]||0)-(other[id]||0);
+    const kidsQty=childrenOf(p).reduce((n,k)=>n+(inventory[k.id]||0),0);
+    const genericFree=(inventory[p.id]||0)-kidsQty-(reserved[p.id]||0)-(other[p.id]||0);
+    const options=kids.filter(k=>freeOf(k.id)>0).map(k=>({id:k.id,img:k.image,label:k.colorLabel||'Cor',qty:freeOf(k.id)}));
+    if(!options.length&&genericFree<=0)return null;
+    if(options.length===1&&genericFree<=0)return PARTS[options[0].id];
+    if(!options.length)return p;
+    const r=await window.BX.colorDialog({name:p.display,options,allowDefault:genericFree>0,defaultLabel:`Sem cor definida (${genericFree} livre${genericFree>1?'s':''})`,hint:'Qual das suas cores vai neste Bey?'});
+    if(r===null)return null; return r==='__default'?p:(PARTS[r]||p);
+  }
   function renderSessionSlot(slot,i) {
     const isCX=['cx','cxrib'].includes(slot.mode), main=PARTS[slot.main], overNeeded=isCX&&main?.requiresOver;
-    return `<article class="session-bey-card">
+    return `<article class="session-bey-card ${i===sessionActiveSlot?'active-slot':''}" data-session-card="${i}">
       <div class="bey-head"><div class="slot-number"><b><i>${i+1}</i></b> Bey ${i+1}</div><button class="session-clear-slot" data-slot="${i}" title="Limpar">×</button></div>
       ${renderBeyVisual(slot)}
       <div class="bey-form compact-form">
@@ -1699,10 +1728,9 @@
     const leg=document.getElementById('sessionLegality');leg.className='legality '+(v.legal?'good':v.errors.length?'bad':'neutral');leg.textContent=v.legal?(v.warnings.length?'✓ Pode reservar • regra casual':'✓ Pode reservar'):v.errors.length?'✕ Conflito de estoque':`${v.complete}/3 Beys prontos`;
     root.innerHTML=sessionDraft.map(renderSessionSlot).join('');
     root.querySelectorAll('select[data-session-slot]').forEach(x=>x.addEventListener('change',onSessionSlotChange));
-    root.querySelectorAll('.session-clear-slot').forEach(b=>b.addEventListener('click',()=>{sessionDraft[+b.dataset.slot]=emptySlot();saveSession();renderSession();}));hydrateImages(root);
-    const stock=document.getElementById('sessionAvailableParts');
-    const order=['blade','integrated','lock','over','main','assist','ratchet','bit','rib'];
-    stock.innerHTML=order.map(kind=>{const items=PARENTS().filter(p=>p.kind===kind&&(inventory[p.id]||0)>0).map(p=>[p,Math.max(0,(inventory[p.id]||0)-(reserved[p.id]||0))]).filter(([,q])=>q>0);if(!items.length)return'';return `<div class="session-stock-group"><b>${KIND_LABEL[kind]||kind}</b>${items.map(([p,q])=>`<span>${escapeHTML(p.display)} <em>×${q}</em></span>`).join('')}</div>`;}).join('')||'<p class="empty-state">Todas as peças estão reservadas.</p>';
+    root.querySelectorAll('.session-clear-slot').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();sessionDraft[+b.dataset.slot]=emptySlot();saveSession();renderSession();}));hydrateImages(root);
+    root.querySelectorAll('.session-bey-card').forEach(c=>c.addEventListener('click',e=>{if(e.target.closest('select,button,a'))return;setSessionActiveSlot(+c.dataset.sessionCard);}));
+    renderSessPicker();
     const decksRoot=document.getElementById('sessionDecks');
     if(sessionDecks.some(d=>!d.beys))saveSession();
     decksRoot.innerHTML=sessionDecks.length?sessionDecks.map((d,i)=>`<article class="physical-deck"><div class="physical-deck-head"><div><small>DECK ${i+1}</small><h3>${escapeHTML(d.name||`Deck físico ${i+1}`)}</h3></div><button class="icon-btn release-session-deck" data-i="${i}" title="Desmontar / liberar peças">×</button></div>${window.BX?.deckPreview&&window.BX.partTag?._idx?`<div class="physical-preview">${window.BX.deckPreview(deckBeyNames(d.deck),{u:44})}</div>`:''}${d.deck.map((slot,j)=>`<div class="physical-bey"><b>${j+1}</b><span>${escapeHTML(slotName(slot))}</span></div>`).join('')}<small>${d.deck.flatMap(slotParts).length} componentes reservados</small></article>`).join(''):'<div class="empty-state">Nenhum deck físico reservado ainda.</div>';
@@ -1824,8 +1852,9 @@
   }
 
   /** Aplica uma peça (objeto do catálogo local) no slot, ajustando a estrutura. */
-  function applyPartToSlot(p,target){
-    const old=clone(deck[target]); let s=clone(old);
+  /** Encaixa a peça num slot (cópia), ajustando a estrutura standard/CX/integrada. */
+  function buildSlotWith(old,p){
+    let s=clone(old);
     const kind=p.kind;
     if(kind==='blade'){const keepR=old.ratchet||'',keepB=old.bit||'';s=emptySlot();s.mode='standard';s.blade=p.id;s.ratchet=keepR;s.bit=keepB;}
     else if(kind==='integrated'){const keepB=old.bit||'';s=emptySlot();s.mode='integrated';s.blade=p.id;s.bit=keepB;}
@@ -1840,8 +1869,9 @@
     }
     else if(kind==='bit'){ if(s.mode==='cxrib'){s.mode='cx';s.rib='';} s.bit=p.id; }
     else if(kind==='rib'){ if(!['cx','cxrib'].includes(s.mode))s=emptySlot(); s.mode='cxrib';s.rib=p.id;s.ratchet='';s.bit=''; }
-    deck[target]=s; saveState(); renderAll();
+    return s;
   }
+  function applyPartToSlot(p,target){ deck[target]=buildSlotWith(deck[target],p); saveState(); renderAll(); }
 
   /**
    * Fábrica de picker: mesma caixa de quadradinhos (busca + filtro por tipo +
@@ -1854,26 +1884,28 @@
       const filters=document.getElementById(cfg.filters);
       if(filters&&!filters.dataset.ready){
         filters.innerHTML=PICKER_KINDS.map(([k,label])=>`<button class="picker-chip ${k===st.kind?'active':''}" data-kind="${k}">${label}</button>`).join('')
-          +`<button class="picker-chip owned-toggle" data-owned="1" title="Mostrar só peças que eu tenho">✓ Tenho</button>`;
+          +(cfg.onlyOwned?'':`<button class="picker-chip owned-toggle" data-owned="1" title="Mostrar só peças que eu tenho">✓ Tenho</button>`);
         filters.dataset.ready='1';
         filters.querySelectorAll('[data-kind]').forEach(b=>b.addEventListener('click',()=>{
           st.kind=b.dataset.kind;
           filters.querySelectorAll('[data-kind]').forEach(x=>x.classList.toggle('active',x===b));
           render();
         }));
-        filters.querySelector('[data-owned]').addEventListener('click',e=>{
+        filters.querySelector('[data-owned]')?.addEventListener('click',e=>{
           st.ownedOnly=!st.ownedOnly; e.currentTarget.classList.toggle('active',st.ownedOnly); render();
         });
       }
       const q=equivalentKey(document.getElementById(cfg.search)?.value||'');
       let items=PARENTS().filter(p=>!st.kind||p.kind===st.kind);
       if(q)items=items.filter(p=>[p.name,p.display,p.abbrev,...(p.aliases||[])].some(x=>x&&equivalentKey(x).includes(q)));
-      if(st.ownedOnly)items=items.filter(p=>(inventory[p.id]||0)>0);
+      if(st.ownedOnly||cfg.onlyOwned)items=items.filter(p=>(inventory[p.id]||0)>0);
       items.sort((a,b)=>((inventory[b.id]||0)>0)-((inventory[a.id]||0)>0)||a.display.localeCompare(b.display));
       const shown=items.slice(0,160);
       grid.innerHTML=shown.map(p=>{
         const owned=inventory[p.id]||0;
-        return `<button class="picker-tile ${owned?'owned':''}" data-part="${escapeAttr(p.id)}" title="${escapeAttr(p.display)} — ${KIND_LABEL[p.kind]||p.kind}${owned?` (você tem ×${owned})`:''}">
+        const stt=cfg.tileState?cfg.tileState(p):null;
+        return `<button class="picker-tile ${owned?'owned':''} ${stt?.disabled?'disabled':''}" data-part="${escapeAttr(p.id)}" ${stt?.disabled?'data-disabled="1"':''} title="${escapeAttr(p.display)} — ${KIND_LABEL[p.kind]||p.kind}${owned?` (você tem ×${owned})`:''}${stt?.title?` — ${escapeAttr(stt.title)}`:''}">
+          ${stt?.badge?`<i class="picker-left ${stt.disabled?'out':''}">${escapeHTML(stt.badge)}</i>`:''}
           ${partArt(p,'tile')}
           <span class="picker-tile-name">${escapeHTML(p.display)}</span>
           ${owned?`<i class="picker-owned">✓${owned>1?` ×${owned}`:''}</i><em class="picker-have">na coleção</em>`:''}
@@ -1882,7 +1914,7 @@
       }).join('')||'<div class="empty-state">Nenhuma peça com esses filtros.</div>';
       const hint=document.getElementById(cfg.hint);
       if(hint)hint.innerHTML=`${items.length} peça(s)${items.length>shown.length?` • mostrando ${shown.length}`:''} — ${cfg.hintText()}`;
-      grid.querySelectorAll('.picker-tile').forEach(b=>b.addEventListener('click',()=>{const p=PARTS[b.dataset.part];if(p)cfg.onPick(p);}));
+      grid.querySelectorAll('.picker-tile').forEach(b=>b.addEventListener('click',()=>{const p=PARTS[b.dataset.part];if(!p)return;if(b.dataset.disabled){toast(cfg.disabledText?cfg.disabledText(p):`${p.display} já está reservada em outro deck.`);return;}cfg.onPick(p);}));
       hydrateImages(grid);
     }
     document.getElementById(cfg.search)?.addEventListener('input',render);
@@ -1897,6 +1929,13 @@
   });
 
   // Coleção: clique adiciona +1 cópia
+  const renderSessPicker=makePicker({
+    search:'sessPickerSearch',filters:'sessPickerFilters',grid:'sessPickerGrid',hint:'sessPickerHint',onlyOwned:true,
+    tileState:(p)=>{const {left,repeated}=sessionLeft(p);const have=inventory[p.id]||0;return {disabled:left<=0||repeated,badge:left>0?`${left} livre${left>1?'s':''}`:'reservada',title:repeated?'já está neste deck':left<=0?`todas as ${have} cópias já estão reservadas`:`${left} de ${have} livre(s)`};},
+    disabledText:(p)=>sessionLeft(p).repeated?`${p.display} já está em outro Bey deste deck.`:`Todas as cópias de ${p.display} já estão reservadas em outros decks.`,
+    hintText:()=>`só peças da sua coleção — clique para colocar no <b>Bey ${sessionActiveSlot+1}</b>; acinzentadas já estão reservadas`,
+    onPick:async(p)=>{const c=await chooseOwnedColor(p);if(!c){toast(`Nenhuma cópia livre de ${p.display}.`);return;}sessionDraft[sessionActiveSlot]=buildSlotWith(sessionDraft[sessionActiveSlot],c);saveSession();renderSession();toast(`${c.display}${c.colorLabel?` (${c.colorLabel})`:''} → Bey ${sessionActiveSlot+1}`);},
+  });
   const renderColPicker=makePicker({
     search:'colPickerSearch',filters:'colPickerFilters',grid:'colPickerGrid',hint:'colPickerHint',
     hintText:()=>'clique para adicionar <b>+1</b> à sua coleção (o botão − no card da peça remove).',
