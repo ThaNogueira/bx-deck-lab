@@ -35,7 +35,10 @@
       const frames = () => cosmetics.cosmetics.filter((c) => c.kind === 'FRAME');
       const stickers = () => cosmetics.cosmetics.filter((c) => c.kind === 'STICKER');
       let current = { ...me };
-      let selStickers = [...(me.stickers || [])];
+      // só pré-seleciona o que ainda está disponível (admin pode ter desativado/excluído)
+      const availableIds = new Set(cosmetics.cosmetics.map((c) => c.id));
+      let selStickers = [...(me.stickers || [])].filter((id) => availableIds.has(id));
+      if (current.frameId && !availableIds.has(current.frameId)) current.frameId = null;
 
       function bannerInner(user) {
         if (!user.bannerUrl) return '';
@@ -295,6 +298,7 @@
               },
             });
             current = { ...current, ...user };
+            selStickers = [...(user.stickers || [])];
             BX.toast('Perfil salvo!');
           } catch (e) { BX.toast(e.message); }
         });

@@ -45,21 +45,23 @@ router.patch('/api/me', requireUser, moderateFields('name', 'bio'), ah(async (re
       data.favoritePartId = part.id;
     } else data.favoritePartId = null;
   }
+  // Cosméticos que deixaram de estar disponíveis (desativados, tornados exclusivos ou
+  // excluídos no admin) são descartados em silêncio — nunca bloqueiam o salvamento.
+  const dropped = [];
   if ('frameId' in b) {
-    if (b.frameId) {
-      if (!(await canUseCosmetic(req.user.id, b.frameId))) return res.status(422).json({ error: 'Moldura indisponível.' });
-      data.frameId = b.frameId;
-    } else data.frameId = null;
+    if (b.frameId && (await canUseCosmetic(req.user.id, String(b.frameId)))) data.frameId = String(b.frameId);
+    else { data.frameId = null; if (b.frameId) dropped.push('moldura'); }
   }
   if (Array.isArray(b.stickers)) {
-    const ids = b.stickers.slice(0, 8);
-    for (const id of ids) {
-      if (!(await canUseCosmetic(req.user.id, id))) return res.status(422).json({ error: 'Sticker indisponível.' });
+    const ids = [];
+    for (const id of [...new Set(b.stickers.map(String))].slice(0, 8)) {
+      if (await canUseCosmetic(req.user.id, id)) ids.push(id);
+      else dropped.push('sticker');
     }
     data.stickersJson = JSON.stringify(ids);
   }
   const user = await prisma.user.update({ where: { id: req.user.id }, data });
-  res.json({ user: publicUser(user) });
+  res.json({ user: publicUser(user), dropped });
 }));
 
 for (const field of ['avatar', 'banner']) {
