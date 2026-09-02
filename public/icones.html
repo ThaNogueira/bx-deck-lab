@@ -55,6 +55,9 @@ btn.innerHTML = BX.icon('check', 15) + 'Confirmar';
         <div class="tag-chips" style="margin-top:10px">${['clip','unboxing','channel','sale','result','champion','help','offtopic'].map((k) => `<span class="tag-chip sm ${k}">${icon(k, 14)}${esc(SEM[k])}</span>`).join('')}</div>
         <h3 style="margin-top:18px">Reações</h3>
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">${['fire','top','lol','wow'].map((k) => `<span class="react-btn on" style="cursor:default">${icon(k, 15)}<span>${esc(SEM[k].replace('Reação: ', ''))}</span></span>`).join('')}</div>
+        <h3 style="margin-top:18px">Emojis do site</h3>
+        <p class="muted" style="margin:6px 0 10px;font-size:12px">Sem emoji do sistema: nos posts e comentários digite <code>:codigo:</code> (ou use o botão de emojis do editor). Clique para copiar o código.</p>
+        <div class="icon-guide">${Object.entries(BX.EMOJIS).map(([k, n]) => `<button type="button" class="icon-tile" data-emo=":${k}:" title="Copiar :${k}:">${icon(n, 24)}<span>:${k}:</span></button>`).join('')}</div>
       </div>
       ${Object.entries(BX.ICON_GROUPS).map(([group, names]) => `
         <section class="panel-card" style="margin-bottom:16px">
@@ -63,6 +66,7 @@ btn.innerHTML = BX.icon('check', 15) + 'Confirmar';
         </section>`).join('')}`;
     app.addEventListener('click', async (e) => {
       const t = e.target.closest('.icon-tile'); if (!t) return;
+      if (t.dataset.emo) { try { await navigator.clipboard.writeText(t.dataset.emo); BX.toast(`Copiado: ${t.dataset.emo}`); } catch { BX.toast(t.dataset.emo); } return; }
       try { await navigator.clipboard.writeText(`BX.icon('${t.dataset.name}', 16)`); BX.toast(`Copiado: BX.icon('${t.dataset.name}')`); } catch { BX.toast(t.dataset.name); }
     });
   </script>

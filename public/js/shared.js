@@ -612,8 +612,57 @@
     clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
     crown: '<path d="m4 18 1-10 4.5 4L12 6l2.5 6L19 8l1 10Z"/><path d="M4 18h16v2H4Z"/>',
     feed: '<path d="M4 5.5h16v10.5h-7.5L8 20v-4H4Z"/><path d="M8 9.5h8M8 12.5h5"/>',
+    // Editor Markdown
+    'md-bold': '<path d="M7 4h6a4 4 0 0 1 0 8H7ZM7 12h7a4 4 0 0 1 0 8H7Z"/>',
+    'md-italic': '<path d="M10 4h8M6 20h8M14 4l-4 16"/>',
+    'md-strike': '<path d="M4 12h16"/><path d="M16.5 7.5c-.5-2-2.3-3-4.5-3-2.5 0-4.5 1.3-4.5 3.3 0 1.4.8 2.3 2.5 3M7.5 16c.5 2 2.2 3.5 4.5 3.5 2.6 0 4.5-1.4 4.5-3.5 0-.7-.2-1.3-.5-1.8"/>',
+    'md-heading': '<path d="M5 4v16M17 4v16M5 12h12"/>',
+    'md-quote': '<path d="M5 11h5v6H5ZM14 11h5v6h-5Z"/><path d="M10 11c0-3-1.5-4.5-4-5M19 11c0-3-1.5-4.5-4-5"/>',
+    'md-ol': '<path d="M10 6h10M10 12h10M10 18h10"/><path d="M4 4.5 5.5 3.5V8M4 11h3l-3 3.5h3M4 16.5h3v3.5H4"/>',
+    'md-code': '<path d="m8 8-4 4 4 4M16 8l4 4-4 4M13.5 5l-3 14"/>',
+    'md-emoji': '<circle cx="12" cy="12" r="8.5"/><path d="M9 10h.01M15 10h.01M8.5 14c1.5 2 5.5 2 7 0"/>',
+    // Emojis do site (mesmo traço dos ícones)
+    'e-burst': '<circle cx="12" cy="12" r="3.5"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M5.6 18.4l2.1-2.1"/>',
+    'e-spin': '<path d="M12 4a8 8 0 1 1-8 8"/><path d="M12 8a4 4 0 1 1-4 4"/><path d="M4 12 2.5 9.5M4 12l2.5-1"/>',
+    'e-xtreme': '<path d="M7 7l10 10M17 7 7 17"/><path d="M2 12h3M19 12h3M12 2v3M12 19v3"/>',
+    'e-stadium': '<ellipse cx="12" cy="8.5" rx="9" ry="3.5"/><path d="M3 8.5c0 5.5 4 9 9 9s9-3.5 9-9"/><circle cx="12" cy="9" r="1.5"/>',
+    'e-launcher': '<path d="M4 9h11a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2H4Z"/><path d="M17 12h5M7 9V5.5M11 9V5.5"/>',
+    'e-heart': '<path d="M12 20s-7.5-4.6-7.5-10a4 4 0 0 1 7.5-2 4 4 0 0 1 7.5 2c0 5.4-7.5 10-7.5 10Z"/>',
+    'e-skull': '<path d="M5 11a7 7 0 0 1 14 0v3a2 2 0 0 1-2 2v3H7v-3a2 2 0 0 1-2-2Z"/><circle cx="9.5" cy="11" r="1.3"/><circle cx="14.5" cy="11" r="1.3"/><path d="M11 16h2"/>',
+    'e-eyes': '<circle cx="7.5" cy="12" r="4"/><circle cx="16.5" cy="12" r="4"/><path d="M8.5 12h.01M17.5 12h.01"/>',
+    'e-100': '<path d="M3.5 9 5.5 7.5V16"/><ellipse cx="11" cy="11.75" rx="2.5" ry="4.25"/><ellipse cx="18" cy="11.75" rx="2.5" ry="4.25"/><path d="M4 19.5h16"/>',
+    'e-think': '<circle cx="12" cy="12" r="8.5"/><path d="M8.5 9.5h3M14 9v1.5M9 15.5c1.5-1 4-1 5.5.5"/>',
+    'e-cry': '<circle cx="12" cy="12" r="8.5"/><path d="M9 10h.01M15 10h.01M9.5 16c1.5-1.5 3.5-1.5 5 0M16 11.5c0 2 1.2 3 1.2 4.3a1.2 1.2 0 0 1-2.4 0"/>',
+    'e-cool': '<circle cx="12" cy="12" r="8.5"/><path d="M5.5 10h13M7 10l.6 2.2h3L11.2 10M12.8 10l.6 2.2h3L17 10M9 15.5c1.5 1.5 4.5 1.5 6 0"/>',
+    'e-rage': '<circle cx="12" cy="12" r="8.5"/><path d="M7.5 8.5 10.5 10M16.5 8.5 13.5 10M9 11.5h.01M15 11.5h.01M9 16.5c1.5-1.5 4.5-1.5 6 0"/>',
+    'e-laugh': '<circle cx="12" cy="12" r="8.5"/><path d="M8 10h2.5M13.5 10H16M7.5 13.5c1 3.5 8 3.5 9 0Z"/>',
+    'e-dizzy': '<circle cx="12" cy="12" r="8.5"/><path d="M8 9l2 2M10 9l-2 2M14 9l2 2M16 9l-2 2M9.5 15.5h5"/>',
+    'e-sleep': '<circle cx="11" cy="13.5" r="7.5"/><path d="M8 13h2M12 13h2M9 17h4M16 3h4l-4 4h4"/>',
+    'e-clutch': '<path d="M3 12h4l2-5 3 10 2.5-7 1.5 2h5"/>',
+    'e-gg': '<path d="M5 21V4h11l-1.5 3 1.5 3H5"/><path d="m8 7.5 1.5 1.5 3-3"/>',
+    'e-salt': '<path d="M9 8h6l1 13H8Z"/><path d="M9.5 8V5a2.5 2.5 0 0 1 5 0v3"/><path d="M11 4h.01M13 4h.01M12 2h.01"/>',
+    'e-hype': '<path d="M12 3c3 2 4 6 3 10l-3 3-3-3c-1-4 0-8 3-10Z"/><path d="M9 13l-3 2 1 3 3-1M15 13l3 2-1 3-3-1M12 16v5"/><circle cx="12" cy="9" r="1.2"/>',
+    'e-flex': '<path d="M5 14c0-3 2-5 5-5l2-3 3 1-1 3c3 0 5 2 5 5v3H5Z"/><path d="M9 14c1 1 3 1 4 0"/>',
+    'e-clap': '<path d="M8 21v-6l-3-3a1.5 1.5 0 0 1 2-2l2 2V6a1.5 1.5 0 0 1 3 0v6l4-4a1.5 1.5 0 0 1 2 2l-4 4v7"/><path d="M4 5l1.5 1.5M6.5 3.5 7 5.5M19 3l-1.5 1.5"/>',
+    'e-lock-in': '<path d="M12 3v4M12 17v4M3 12h4M17 12h4"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2"/>',
+    'e-wave': '<path d="M3 12c2-3 4-3 6 0s4 3 6 0 4-3 6 0"/><path d="M3 17c2-3 4-3 6 0s4 3 6 0 4-3 6 0"/>',
+    'e-ok': '<path d="M9 12.5V7a1.5 1.5 0 0 1 3 0v4M12 11V6a1.5 1.5 0 0 1 3 0v5M15 11.5V8a1.5 1.5 0 0 1 3 0v6a6 6 0 0 1-6 6h-1a6 6 0 0 1-5-2.7L3.5 13a1.5 1.5 0 0 1 2.4-1.8L9 14.5"/>',
+    'e-dead': '<circle cx="12" cy="12" r="8.5"/><path d="M8 9l2 2M10 9l-2 2M14 9l2 2M16 9l-2 2M8.5 16c1.5-2 5.5-2 7 0"/>',
+    'e-gem': '<path d="M7 4h10l4 5-9 11-9-11Z"/><path d="M3 9h18M7 4l5 16 5-16M9.5 9 12 4l2.5 5"/>',
+    'e-flag-race': '<path d="M5 21V4"/><path d="M5 4h14l-2 4 2 4H5"/><path d="M8 4v8M11 4v8M14 4v8M5 6h14M5 10h14"/>',
+    'e-star-eyes': '<circle cx="12" cy="12" r="8.5"/><path d="m8.5 8 1 2 2 .3-1.5 1.4.4 2.1-1.9-1-1.9 1 .4-2.1L5.5 10.3l2-.3ZM15.5 8l1 2 2 .3-1.5 1.4.4 2.1-1.9-1-1.9 1 .4-2.1-1.5-1.4 2-.3Z"/><path d="M9.5 16c1.5 1.2 3.5 1.2 5 0"/>',
+    'e-shush': '<circle cx="12" cy="12" r="8.5"/><path d="M9 10h.01M15 10h.01M9.5 15h5M12 12.5v6"/>',
+    'e-sweat': '<circle cx="12" cy="12" r="8.5"/><path d="M9 10h.01M15 10h.01M9.5 15.5h5M17.5 6c0 1.5 1 2 1 3a1 1 0 0 1-2 0c0-1 1-1.5 1-3Z"/>',
+    'e-launch': '<path d="M4 19 16.5 6.5"/><path d="M14 4h6v6"/><path d="M4 12v7h7"/>',
   };
-  const ICON_GROUPS = {"Navegação":["home","builder","meta","community","feed","popular","tournaments","pecas","produtos","vendas","rules","profile","collection","missing","decks","physical","organizer","admin","logout","login","menu","back","collapse","chevron"],"Tags da comunidade":["clip","unboxing","channel","sale","result","champion","help","offtopic"],"Reações":["fire","top","lol","wow"],"Status de torneio e partida":["live","done","pending","conflict","bye","finish","trophy","medal","crown"],"Ações":["plus","minus","edit","trash","check","x","save","share","link","external","comment","reply","flag","bell","search","filter","refresh","download","upload","print","eye","more","play","fullscreen","rotate","publish","google"],"Objetos e mídia":["image","camera","video","poll","folder","archive","book","scroll","calendar","clock","store","pin","target","globe","lock","star","sparkle","spiral","dice","backpack","screen","qr","whatsapp","megaphone","gift","bolt","party","info","warn","list","grid"],"Administração":["dashboard","users","shield","wrench","package","money","palette","settings","ban","scale"]};
+  // Emojis do site: :codigo: -> ícone. Inventados no mesmo traço dos ícones; nada de emoji Unicode.
+  const EMOJIS = {
+    burst: 'e-burst', spin: 'e-spin', xtreme: 'e-xtreme', stadium: 'e-stadium', launcher: 'e-launcher', launch: 'e-launch', lockin: 'e-lock-in',
+    fire: 'fire', top: 'top', lol: 'lol', wow: 'wow', laugh: 'e-laugh', cool: 'e-cool', think: 'e-think', cry: 'e-cry', rage: 'e-rage', dizzy: 'e-dizzy', dead: 'e-dead', sleep: 'e-sleep', stareyes: 'e-star-eyes', shush: 'e-shush', sweat: 'e-sweat',
+    heart: 'e-heart', skull: 'e-skull', eyes: 'e-eyes', '100': 'e-100', clutch: 'e-clutch', gg: 'e-gg', salt: 'e-salt', hype: 'e-hype', flex: 'e-flex', clap: 'e-clap', ok: 'e-ok', wave: 'e-wave', gem: 'e-gem', race: 'e-flag-race',
+    trophy: 'trophy', medal: 'medal', crown: 'crown', bolt: 'bolt', sparkle: 'sparkle', party: 'party', target: 'target', star: 'star', shield: 'shield', spiral: 'spiral', gift: 'gift', dice: 'dice', warn: 'warn', check: 'check', x: 'x', megaphone: 'megaphone',
+  };
+  const ICON_GROUPS = {"Navegação":["home","builder","meta","community","feed","popular","tournaments","pecas","produtos","vendas","rules","profile","collection","missing","decks","physical","organizer","admin","logout","login","menu","back","collapse","chevron"],"Tags da comunidade":["clip","unboxing","channel","sale","result","champion","help","offtopic"],"Reações":["fire","top","lol","wow"],"Status de torneio e partida":["live","done","pending","conflict","bye","finish","trophy","medal","crown"],"Ações":["plus","minus","edit","trash","check","x","save","share","link","external","comment","reply","flag","bell","search","filter","refresh","download","upload","print","eye","more","play","fullscreen","rotate","publish","google"],"Objetos e mídia":["image","camera","video","poll","folder","archive","book","scroll","calendar","clock","store","pin","target","globe","lock","star","sparkle","spiral","dice","backpack","screen","qr","whatsapp","megaphone","gift","bolt","party","info","warn","list","grid"],"Administração":["dashboard","users","shield","wrench","package","money","palette","settings","ban","scale"],"Editor de texto":["md-bold","md-italic","md-strike","md-heading","md-quote","md-ol","md-code","md-emoji"],"Emojis do site":["e-burst","e-spin","e-xtreme","e-stadium","e-launcher","e-launch","e-lock-in","e-laugh","e-cool","e-think","e-cry","e-rage","e-dizzy","e-dead","e-sleep","e-star-eyes","e-shush","e-sweat","e-heart","e-skull","e-eyes","e-100","e-clutch","e-gg","e-salt","e-hype","e-flex","e-clap","e-ok","e-wave","e-gem","e-flag-race"]};
   const ICON_NAMES = Object.keys(ICON_PATHS);
   // Sprite único no <body>: cada ícone vira <symbol>, e icon() referencia com <use> (HTML leve, sem repetir paths)
   function ensureIconSprite() {
@@ -879,7 +928,7 @@
   };
 
   window.BX = {
-    api, me, site, esc, norm, toast, money, dateFmt, icon, ic, stickerIcon, ICON_NAMES, ICON_GROUPS,
+    api, me, site, esc, norm, toast, money, dateFmt, icon, ic, stickerIcon, ICON_NAMES, ICON_GROUPS, EMOJIS,
     partsIndex, partTagReady, partTag, comboTags, partThumb, KIND_PT, radar, beyVisual, beyMini, deckPreview, colorDialog, itemDialog, confirmDialog, promptDialog, pickColor, collectionProgress, progressBarHtml, KIND_SORT,
     avatarHtml, renderTopbar, renderShell, mountUserWidget, userChipHtml, setActiveNav,
     report, requireLogin, qs, pathPart, ytEmbed,

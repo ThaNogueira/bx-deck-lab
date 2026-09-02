@@ -18,7 +18,10 @@
     if (s < 7 * 86400) return `${Math.floor(s / 86400)} d`;
     return BX.dateFmt(d, { day: '2-digit', month: 'short' });
   };
-  const linkify = (text) => esc(text || '')
+  // Título: sem Markdown, só :emoji: do site.
+  const titleHtml = (t) => BX.emojify ? BX.emojify(t) : esc(t || '');
+  // Corpo de post/comentário: Markdown seguro (md.js). Fallback simples se md.js não estiver carregado.
+  const linkify = (text) => BX.md ? BX.md(text) : esc(text || '')
     .replace(/(https?:\/\/[^\s<]+)/g, (u) => `<a href="${u}" target="_blank" rel="noopener nofollow">${u}</a>`)
     .replace(/(^|[\s(])@([a-z0-9][a-z0-9-]{1,40})/gi, (m, pre, slug) => `${pre}<a class="mention" href="/u/${slug}">@${slug}</a>`);
 
@@ -139,7 +142,7 @@
       <header class="pc-head">${who}${KIND_BADGE[kind] || ''}${tagChip(p.tag)}${menu}</header>
       ${p.status === 'SCANNING' ? `<div class="pc-note">${icon('pending', 14)} Publicando: analisando a mídia enviada. Vídeos passam por aprovação manual.</div>` : ''}
       ${p.status === 'PENDING' ? `<div class="pc-note warn">${icon('warn', 14)} Em revisão pela moderação${p.flag?.reasons?.length ? `: ${esc(p.flag.reasons.join('; '))}` : ''}. Só você vê este post por enquanto.</div>` : ''}
-      <h2 class="pc-title">${full ? esc(p.title) : `<a href="/comunidade/p/${p.id}">${esc(p.title)}</a>`}</h2>
+      <h2 class="pc-title">${full ? titleHtml(p.title) : `<a href="/comunidade/p/${p.id}">${titleHtml(p.title)}</a>`}</h2>
       ${p.body ? `<div class="pc-body ${!full && long ? 'clamp' : ''}">${linkify(p.body)}</div>${!full && long ? `<button type="button" class="pc-more" data-more>ver mais</button>` : ''}` : ''}
       ${mediaHtml(p)}
       ${deckHtml(p)}

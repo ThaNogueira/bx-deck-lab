@@ -18,6 +18,7 @@
   <header id="topbar"></header>
   <main id="app"><div class="com-layout"><section id="skel"></section></div></main>
   <script src="/js/shared.js"></script>
+  <script src="/js/md.js"></script>
   <script src="/js/post-card.js"></script>
   <script>
     (async () => {
@@ -116,6 +117,8 @@
         const TYPES = [['texto', 'edit', 'Texto'], ['midia', 'image', 'Imagens e vídeo'], ['link', 'video', 'Link do YouTube'], ['enquete', 'poll', 'Enquete'], ['venda', 'sale', 'Venda / troca']];
         let type = TYPES.some(([k]) => k === params.get('tipo')) ? params.get('tipo') : 'texto';
         let chosenTag = TAGS[params.get('tag')] && !TAGS[params.get('tag')].auto ? params.get('tag') : (type === 'venda' ? 'SALE' : '');
+        const TAG_HINTS = { CLIP: 'Aparece na home. Coloque o vídeo (YouTube ou arquivo).', RESULT: 'Aparece na home. Conte colocação, loja e deck.', CHAMPION: 'Aparece na home. Foto do troféu vale muito.', SALE: 'Só na comunidade. Preencha preço, estado e contato.', CHANNEL: 'Só na comunidade. Nada de spam repetido.', UNBOXING: 'Só na comunidade. Mostre as peças!', HELP: 'Só na comunidade. Seja específico na dúvida.', OFFTOPIC: 'Só na comunidade.' };
+        const HOME_TAGS = ['CLIP', 'RESULT', 'CHAMPION'];
         let files = [];
         document.title = 'Criar post — Comunidade BX Deck Lab';
         app.innerHTML = `<div class="composer-page">
@@ -130,7 +133,10 @@
 
               <section class="cf-block">
                 <label class="cf-label">Tag <small>obrigatória — define onde o post aparece</small></label>
-                <div class="tag-chips" id="cTags">${USER_TAGS.map((k) => tagChipBtn(k, k === chosenTag)).join('')}</div>
+                <div class="tag-dd" id="cTags">
+                  <button type="button" class="tag-dd-btn" id="cTagBtn" aria-haspopup="listbox" aria-expanded="false"></button>
+                  <div class="tag-dd-menu" id="cTagMenu" role="listbox" hidden>${USER_TAGS.map((k) => `<button type="button" role="option" data-tag="${k}" class="tag-dd-opt ${k.toLowerCase()} ${k === chosenTag ? 'active' : ''}"><span class="tag-dd-ic">${icon(TAGS[k].icon, 16)}</span><span class="tag-dd-txt"><strong>${esc(TAGS[k].label)}</strong><small>${esc(TAG_HINTS[k] || '')}</small></span>${HOME_TAGS.includes(k) ? `<span class="tag-dd-home">${icon('home', 11)}home</span>` : ''}</button>`).join('')}</div>
+                </div>
                 <small class="cf-hint" id="tagHint"></small>
               </section>
 
@@ -216,7 +222,10 @@
         };
         const syncTag = () => {
           q('#cTags').querySelectorAll('[data-tag]').forEach((b) => b.classList.toggle('active', b.dataset.tag === chosenTag));
-          q('#tagHint').textContent = chosenTag ? ({ CLIP: 'Aparece na home. Coloque o vídeo (YouTube ou arquivo).', RESULT: 'Aparece na home. Conte colocação, loja e deck.', CHAMPION: 'Aparece na home. Foto do troféu vale muito.', SALE: 'Só na comunidade. Preencha preço, estado e contato.', CHANNEL: 'Só na comunidade. Nada de spam repetido.', UNBOXING: 'Só na comunidade. Mostre as peças!', HELP: 'Só na comunidade. Seja específico na dúvida.', OFFTOPIC: 'Só na comunidade.' })[chosenTag] || '' : 'Escolha uma tag.';
+          const btn = q('#cTagBtn');
+          btn.innerHTML = chosenTag ? `<span class="tag-chip sm ${chosenTag.toLowerCase()} active">${icon(TAGS[chosenTag].icon, 13)}${esc(TAGS[chosenTag].label)}</span>${icon('chevron', 14)}` : `<span class="tag-dd-ph">${icon('filter', 14)}Escolher tag…</span>${icon('chevron', 14)}`;
+          btn.classList.toggle('empty', !chosenTag);
+          q('#tagHint').textContent = chosenTag ? TAG_HINTS[chosenTag] || '' : 'Escolha uma tag.';
           if (chosenTag === 'SALE' && type !== 'venda') setType('venda');
         };
         const draft = () => ({
@@ -238,7 +247,9 @@
 
         app.addEventListener('click', (e) => {
           const tb = e.target.closest('[data-type]'); if (tb) return setType(tb.dataset.type);
-          const tg = e.target.closest('#cTags [data-tag]'); if (tg) { chosenTag = tg.dataset.tag; tg.closest('.cf-block').classList.remove('cf-error'); syncTag(); preview(); return; }
+          const tbtn = e.target.closest('#cTagBtn'); if (tbtn) { const open = q('#cTagMenu').hidden; q('#cTagMenu').hidden = !open; tbtn.setAttribute('aria-expanded', String(open)); return; }
+          const tg = e.target.closest('#cTags [data-tag]'); if (tg) { chosenTag = tg.dataset.tag; tg.closest('.cf-block').classList.remove('cf-error'); q('#cTagMenu').hidden = true; q('#cTagBtn').setAttribute('aria-expanded', 'false'); syncTag(); preview(); return; }
+          if (!e.target.closest('#cTags') && q('#cTagMenu') && !q('#cTagMenu').hidden) { q('#cTagMenu').hidden = true; q('#cTagBtn').setAttribute('aria-expanded', 'false'); }
           const rm = e.target.closest('[data-rm]'); if (rm) { files.splice(+rm.dataset.rm, 1); renderFiles(); return; }
           if (e.target.closest('#cDrop')) return q('#cFiles').click();
           if (e.target.closest('#cPollAdd')) { const n = q('#cPollOpts').children.length; if (n >= 8) return; q('#cPollOpts').insertAdjacentHTML('beforeend', `<div class="row"><input placeholder="Opção ${n + 1}" maxlength="80"></div>`); preview(); }
@@ -248,6 +259,8 @@
         q('#cDrop').addEventListener('dragleave', () => q('#cDrop').classList.remove('over'));
         q('#cDrop').addEventListener('drop', (e) => { e.preventDefault(); q('#cDrop').classList.remove('over'); addFiles(e.dataTransfer.files); });
         q('#cDrop').addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); q('#cFiles').click(); } });
+        syncTag();
+        BX.mdEditor(q('#cBody'));
         app.addEventListener('input', (e) => {
           e.target.closest('.cf-block')?.classList.remove('cf-error');
           if (e.target.id === 'cTitle') q('#titleCount').textContent = e.target.value.length;
@@ -295,7 +308,7 @@
           ${removed ? '<span class="avatar" style="width:32px;height:32px"><b>·</b></span>' : BX.avatarHtml(c.author, { size: 32 })}
           <div>
             <div class="cm-head">${removed ? '<small>comentário removido</small>' : `<a href="/u/${esc(c.author.slug)}">${esc(c.author.name)}</a><small>${BXPost.timeAgo(c.createdAt)}</small>`}</div>
-            <p class="cm-body">${removed ? '—' : BXPost.linkify(c.body)}</p>
+            <div class="cm-body">${removed ? '—' : BXPost.linkify(c.body)}</div>
             ${removed ? '' : `<div class="cm-actions">${BXPost.reactionsHtml(c, 'COMMENT')}<button type="button" class="act-btn" data-reply="${c.id}" data-to="${esc(c.author.slug)}">${icon('reply', 13)}Responder</button><button type="button" class="act-btn" data-report-c="${c.id}" title="Denunciar">${icon('flag', 13)}</button>${(c.mine || current.post.canModerate) ? `<button type="button" class="act-btn" data-delc="${c.id}" title="Excluir">${icon('trash', 13)}</button>` : ''}</div>`}
           </div>
         </div>`;
@@ -309,6 +322,7 @@
       const commentForm = (parentId = '', to = '') => !me
         ? `<div class="empty-state" style="margin-top:12px"><a class="btn secondary" href="/entrar" style="text-decoration:none">Entre para comentar</a></div>`
         : `<form class="cm-form" data-parent="${parentId}">${parentId ? '' : BX.avatarHtml(me, { size: 32 })}<div><textarea name="body" maxlength="2000" placeholder="${parentId ? 'Sua resposta…' : 'Comente… (use @usuario para marcar)'}" required>${to ? `@${to} ` : ''}</textarea><div class="mention-menu" hidden></div><div class="composer-row" style="justify-content:flex-end">${parentId ? '<button type="button" class="btn ghost" data-cancel-reply>Cancelar</button>' : ''}<button class="btn primary">${icon('publish', 14)}Enviar</button></div></div></form>`;
+      const mountEditors = () => document.querySelectorAll('.cm-form textarea').forEach((t) => BX.mdEditor(t, { compact: true }));
       const setCount = (n) => { document.getElementById('cmCount').textContent = `${n} comentário${n === 1 ? '' : 's'}`; document.querySelectorAll('[data-cc]').forEach((x) => { x.textContent = n; }); };
 
       async function renderPost() {
@@ -329,6 +343,7 @@
             ${sideHtml()}
           </div>`;
           BXPost.bind(app, { getPost: () => current.post, onDeleted: () => { location.href = '/comunidade'; } });
+          mountEditors();
           if (location.hash.startsWith('#c-')) document.querySelector(location.hash)?.scrollIntoView({ block: 'center' });
           if (j.post.status === 'SCANNING') setTimeout(renderPost, 4000);
         } catch (e) { app.innerHTML = `<div class="empty-state">${esc(e.message)} — <a href="/comunidade" style="color:var(--cyan)">voltar</a></div>`; }
@@ -349,7 +364,7 @@
       });
       app.addEventListener('click', async (e) => {
         const r = e.target.closest('[data-reply]');
-        if (r) { document.querySelectorAll('.cm-form[data-parent]:not([data-parent=""])').forEach((x) => x.remove()); r.closest('.cm').querySelector('.cm-actions').insertAdjacentHTML('afterend', commentForm(r.dataset.reply, r.dataset.to)); r.closest('.cm').querySelector('textarea')?.focus(); return; }
+        if (r) { document.querySelectorAll('.cm-form[data-parent]:not([data-parent=""])').forEach((x) => x.remove()); r.closest('.cm').querySelector('.cm-actions').insertAdjacentHTML('afterend', commentForm(r.dataset.reply, r.dataset.to)); mountEditors(); r.closest('.cm').querySelector('textarea')?.focus(); return; }
         if (e.target.closest('[data-cancel-reply]')) { e.target.closest('.cm-form').remove(); return; }
         const rc = e.target.closest('[data-report-c]'); if (rc) return BX.report('COMMENT', rc.dataset.reportC, 'este comentário');
         const d = e.target.closest('[data-delc]');
