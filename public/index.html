@@ -134,9 +134,21 @@
               <label for="deckName">Nome do deck</label>
               <input id="deckName" maxlength="40" placeholder="Ex.: Deck de torneio" />
             </div>
-            <div id="deckLegality" class="legality"></div>
+            <div class="deck-toolbar-right">
+              <button type="button" class="icon-btn" id="undoDeckBtn" data-undo title="Desfazer (Ctrl+Z) — últimos 10 passos" disabled><svg class="vicon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="bevel" stroke-linecap="square" aria-hidden="true"><use href="#i-rotate"/></svg></button>
+              <button type="button" class="icon-btn" id="sfxBtn" title="Som ao encaixar peça"></button>
+              <div id="deckLegality" class="legality"></div>
+            </div>
+          </div>
+          <div class="draft-notice" id="draftNotice" hidden></div>
+          <div class="bey-pager" id="beyPager" aria-label="Navegar entre os Beys">
+            <button type="button" data-pg="-1" aria-label="Bey anterior"><svg class="vicon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="bevel" stroke-linecap="square" aria-hidden="true"><use href="#i-back"/></svg></button>
+            <div class="bey-pager-title"><p class="eyebrow">EDITANDO</p><b id="pagerTitle">Bey 1</b></div>
+            <button type="button" data-pg="1" aria-label="Próximo Bey"><svg class="vicon flip-x" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="bevel" stroke-linecap="square" aria-hidden="true"><use href="#i-back"/></svg></button>
           </div>
           <div class="deck-grid" id="deckGrid"></div>
+          <div class="pager-dots" id="pagerDots" aria-hidden="true"></div>
+          <div class="deck-bar" id="deckBar" aria-label="Resumo do deck"></div>
           <section class="analysis-card" id="deckAnalysis"></section>
           <div class="saved-panel">
             <div class="section-title-row">
@@ -485,6 +497,23 @@
       <div class="slot-picker-choices" id="slotPickerChoices"></div>
     </div>
   </div>
+
+  <!-- Builder: seletor de peças por slot (bottom sheet), ações do slot e prévia da peça -->
+  <div class="sheet-backdrop" id="slotSheet" hidden>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+      <div class="sheet-head">
+        <i class="sheet-grip" aria-hidden="true"></i>
+        <div class="sheet-titles"><p class="eyebrow" id="sheetEyebrow">BEY 1</p><h3 id="sheetTitle">Escolher peça</h3></div>
+        <small class="sheet-count" id="sheetCount"></small>
+        <button type="button" class="sheet-close" id="sheetClose" aria-label="Fechar"><svg class="vicon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="bevel" stroke-linecap="square" aria-hidden="true"><use href="#i-x"/></svg></button>
+      </div>
+      <input id="sheetSearch" type="search" placeholder="Buscar peça…" autocomplete="off" />
+      <div class="sheet-quick" id="sheetQuick"></div>
+      <div class="sheet-list" id="sheetList"></div>
+    </div>
+  </div>
+  <div class="slot-actions" id="slotActions" role="menu" hidden></div>
+  <div class="part-preview" id="partPreview" role="tooltip" hidden></div>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <script src="/js/shared.js"></script>

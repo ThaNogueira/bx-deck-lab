@@ -803,7 +803,8 @@
   function emptySlot() { return { mode:'standard', blade:'', lock:'', main:'', assist:'', over:'', ratchet:'', bit:'', rib:'' }; }
   function emptyDeck() { return [emptySlot(),emptySlot(),emptySlot()]; }
   function loadJSON(key, fallback) { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } }
-  function saveState() { localStorage.setItem('bx_current_deck', JSON.stringify(deck)); }
+  const undoStack=[]; let undoSkip=false; let lastSavedDeck=JSON.stringify(deck);
+  function saveState() { const s=JSON.stringify(deck); localStorage.setItem('bx_current_deck', s); if(typeof trackUndo==='function')trackUndo(s); }
   function clone(x){ return JSON.parse(JSON.stringify(x)); }
   function deckBeyNames(dk){ return (dk||[]).map(slot=>slotParts(slot).map(id=>PARTS[id]?.display||id)); }
   function saveSession(){
@@ -1134,21 +1135,41 @@
       const from=+el.dataset.slot, to=from+(+el.dataset.dir); if(to<0||to>2)return;
       [deck[from],deck[to]]=[deck[to],deck[from]]; saveState(); renderAll(); toast('Ordem dos Beys alterada.');
     }));
-    grid.querySelectorAll('.drag-handle').forEach(el=>{
-      el.addEventListener('dragstart',e=>{dragSourceSlot=+el.dataset.slot;e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',String(dragSourceSlot));});
-      el.addEventListener('dragend',()=>{dragSourceSlot=null;grid.querySelectorAll('.bey-card').forEach(c=>c.classList.remove('drag-over'));});
-    });
-    grid.querySelectorAll('.bey-card').forEach(card=>{
-      card.addEventListener('dragover',e=>{if(dragSourceSlot===null)return;e.preventDefault();card.classList.add('drag-over');});
-      card.addEventListener('dragleave',()=>card.classList.remove('drag-over'));
-      card.addEventListener('drop',e=>{e.preventDefault();card.classList.remove('drag-over');const to=+card.dataset.deckSlot;const from=dragSourceSlot??+e.dataTransfer.getData('text/plain');if(Number.isInteger(from)&&from!==to){const moved=deck.splice(from,1)[0];deck.splice(to,0,moved);saveState();renderAll();toast('Ordem dos Beys alterada.');}dragSourceSlot=null;});
+    grid.querySelectorAll('.dup-slot').forEach(el=>el.addEventListener('click',()=>duplicateStructure(+el.dataset.slot)));
+    // Slots: clique abre o seletor (celular) ou mira o painel lateral (desktop); × remove; segurar abre ações
+    grid.querySelectorAll('.slot').forEach(sl=>{
+      const bey=+sl.dataset.bey, field=sl.dataset.field, kind=sl.dataset.kind;
+      sl.addEventListener('click',e=>{
+        if(e.target.closest('.slot-x')){ e.stopPropagation(); const n=PARTS[deck[bey][field]]?.display; clearField(bey,field); toast(`${n} removido do Bey ${bey+1}.`); return; }
+        if(sl.dataset.held){delete sl.dataset.held;return;}
+        setActiveSlot(bey);
+        if(isMobileBuilder()){ openSheet(bey,field,kind); return; }
+        // desktop: painel lateral filtrado no tipo, esperando a peça
+        if(panelTarget&&panelTarget.bey===bey&&panelTarget.field===field){ openSheet(bey,field,kind); return; } // segundo clique abre o seletor
+        panelTarget={bey,field,kind};
+        grid.querySelectorAll('.slot.targeted').forEach(x=>x.classList.remove('targeted')); sl.classList.add('targeted');
+        renderPicker.setKind(kind);
+        const s=document.getElementById('pickerSearch'); if(s){ s.value=''; renderPicker(); s.focus({preventScroll:true}); }
+        document.querySelector('.side-panel .picker')?.scrollIntoView({block:'nearest',behavior:'smooth'});
+        const hint=document.getElementById('pickerHint'); if(hint)hint.innerHTML=`Escolha um(a) <b>${escapeHTML(SLOT_LABEL[kind])}</b> para o <b>Bey ${bey+1}</b> — ou arraste até o slot. <a href="#" data-cancel-target>cancelar</a>`;
+      });
+      // segurar (toque) abre ações do slot preenchido
+      let t=null;
+      sl.addEventListener('pointerdown',e=>{ if(e.pointerType==='mouse'||!sl.classList.contains('filled'))return; t=setTimeout(()=>{sl.dataset.held='1';openSlotActions(bey,field,sl);},520); },{passive:true});
+      ['pointerup','pointercancel','pointerleave'].forEach(ev=>sl.addEventListener(ev,()=>clearTimeout(t)));
+      sl.addEventListener('touchmove',()=>clearTimeout(t),{passive:true});
+      sl.addEventListener('contextmenu',e=>{ if(sl.classList.contains('filled')&&!isMobileBuilder()){e.preventDefault();openSlotActions(bey,field,sl);} });
     });
     grid.querySelectorAll('.bey-card').forEach(card=>card.addEventListener('mousedown',e=>{
-      if(e.target.closest('button,select,a'))return;
-      setActiveSlot(+card.dataset.deckSlot);
+      if(e.target.closest('button,select,a,.slot'))return;
+      setActiveSlot(+card.dataset.deckSlot); syncPager();
     }));
+    bindSlotDnD(grid);
+    bindPreview(grid,'.slot.filled',el=>PARTS[deck[+el.dataset.bey]?.[el.dataset.field]]);
     hydrateImages(grid);
     setActiveSlot(activeSlot);
+    if(isMobileBuilder()){ const card=grid.children[activeSlot]; if(card)grid.scrollLeft=card.offsetLeft-grid.offsetLeft; }
+    if(lastPlaced){ const el=grid.querySelector(`.slot[data-bey="${lastPlaced.bey}"][data-field="${lastPlaced.field}"]`); if(el){el.classList.add('pop');setTimeout(()=>el.classList.remove('pop'),700);} lastPlaced=null; }
 
     const v=validateDeck();
     const legalEl=document.getElementById('deckLegality');
@@ -1159,44 +1180,52 @@
       ...v.info.map(x=>`<div class="validation-item"><i>•</i><span>${escapeHTML(x)}</span></div>`),
       ...(v.legal?[`<div class="validation-item"><i>${BX.ic('check', 14)}</i><span>Três Beys completos e sem repetições proibidas.</span></div>`]:[])
     ].join('') || `<div class="validation-item"><i>${BX.ic('check', 14)}</i><span>Nenhum problema detectado.</span></div>`;
+    ['publishDeckBtn','shareDeckBtn'].forEach(id=>document.getElementById(id)?.classList.toggle('glow',v.legal));
+    renderDeckBar(v); syncPager(); syncUndoButtons(); renderDraftNotice();
     renderDeckAnalysis();
+  }
+
+  function renderStage(slot,i){
+    const defs=slotDefs(slot);
+    const used=currentUsage(i);
+    const html=defs.map(d=>{
+      const id=slot[d.field]; const p=id?PARTS[id]:null;
+      const probs=[];
+      if(p){ if(p.banned)probs.push('banida'); if((used[id]||0)>0&&!p.basicLock)probs.push(`repetida (Bey ${deck.findIndex((s,j)=>j!==i&&slotParts(s).includes(id))+1})`); if(!builderShowAll&&(used[id]||0)+1>(inventory[id]||0))probs.push('sem cópia'); }
+      const targeted=panelTarget&&panelTarget.bey===i&&panelTarget.field===d.field;
+      return `<div class="slot sl-${d.field} ${p?'filled':'empty'} ${probs.length?'bad':''} ${targeted?'targeted':''}" role="button" tabindex="0" data-bey="${i}" data-field="${d.field}" data-kind="${d.kind}" aria-label="${escapeAttr(d.label)}: ${escapeAttr(p?p.display:'vazio')}" title="${escapeAttr(p?`${p.display} — ${d.label}${probs.length?' · '+probs.join(', '):''}`:`Escolher ${d.label}`)}">
+        <span class="slot-ring">${p?partArt(p,'slot'):`<span class="slot-plus">${BX.ic('plus',18)}</span>`}</span>
+        <span class="slot-lab">${escapeHTML(d.label)}</span>
+        <span class="slot-name">${p?escapeHTML(p.abbrev&&p.kind==='bit'?p.display:p.display):(targeted?'aguardando…':'escolher')}</span>
+        ${p?`<button type="button" class="slot-x" tabindex="-1" title="Remover ${escapeAttr(p.display)}" aria-label="Remover">${BX.ic('x',11)}</button>`:''}
+        <span class="slot-tip" aria-hidden="true"></span>
+      </div>`;
+    }).join('');
+    return `<div class="stage" data-mode="${slot.mode}" data-over="${defs.some(d=>d.field==='over')?'1':'0'}"><div class="stage-glow"></div>${html}</div>`;
   }
 
   function renderSlot(slot,i) {
     const invalid = validateSlot(slot,i);
-    const main=PARTS[slot.main];
     const isCX=slot.mode==='cx' || slot.mode==='cxrib';
-    const overNeeded=isCX && main?.requiresOver;
     const tipPart=slot.mode==='cxrib' ? PARTS[slot.rib] : PARTS[slot.bit];
     const bitProfile=tipPart ? getBitProfile(tipPart) : null;
-    return `<article class="bey-card ${invalid.length?'invalid':''}" data-deck-slot="${i}">
-      <div class="bey-head"><div class="slot-number"><b><i>${i+1}</i></b> Bey ${i+1}</div><div class="bey-head-actions"><button type="button" class="move-slot" data-slot="${i}" data-dir="-1" ${i===0?'disabled':''} title="Mover para a esquerda">←</button><button type="button" class="drag-handle" draggable="true" data-slot="${i}" title="Arraste para trocar a ordem">⋮⋮</button><button type="button" class="move-slot" data-slot="${i}" data-dir="1" ${i===2?'disabled':''} title="Mover para a direita">→</button><button type="button" class="clear-slot" data-slot="${i}" aria-label="Limpar Bey ${i+1}" title="Limpar este Bey">×</button></div></div>
-      ${renderBeyVisual(slot)}
-      <div class="bey-form">
-        <div class="field"><label>Estrutura</label><select data-slot="${i}" data-field="mode">
-          <option value="standard" ${slot.mode==='standard'?'selected':''}>Blade + Ratchet + Bit</option>
-          <option value="cx" ${slot.mode==='cx'?'selected':''}>CX Custom Line</option>
-          <option value="cxrib" ${slot.mode==='cxrib'?'selected':''}>CX + Ratchet-Integrated Bit</option>
-          <option value="integrated" ${slot.mode==='integrated'?'selected':''}>Ratchet-integrated Blade</option>
-        </select></div>
-        ${slot.mode==='standard'?`
-          <div class="field"><label>Blade <span>da coleção</span></label>${selectHTML('blade',slot.blade,i,'blade','Escolha a lâmina')}</div>
-          <div class="field"><label>Ratchet</label>${selectHTML('ratchet',slot.ratchet,i,'ratchet','Escolha a catraca')}</div>`:''}
-        ${slot.mode==='integrated'?`
-          <div class="field"><label>Integrated Blade</label>${selectHTML('integrated',slot.blade,i,'blade','Escolha a lâmina integrada')}</div>
-          <div class="field"><label>Ratchet</label><select disabled><option>Integrada à lâmina</option></select></div>`:''}
-        ${isCX?`<div class="cx-box">
-          <div class="cx-title"><span>CX Blade</span><span>${overNeeded?'Expand':slot.mode==='cxrib'?'RIB':''}</span></div>
-          <div class="field"><label>Lock Chip</label>${selectHTML('lock',slot.lock,i,'lock','Lock Chip')}</div>
-          <div class="field"><label>Main / Metal Blade</label>${selectHTML('main',slot.main,i,'main','Main Blade')}</div>
-          ${overNeeded?`<div class="field"><label>Over Blade <span>obrigatória</span></label>${selectHTML('over',slot.over,i,'over','Over Blade')}</div>`:''}
-          <div class="field"><label>Assist Blade</label>${selectHTML('assist',slot.assist,i,'assist','Assist Blade')}</div>
-          </div>
-          ${slot.mode==='cx'?`<div class="field"><label>Ratchet</label>${selectHTML('ratchet',slot.ratchet,i,'ratchet','Escolha a catraca')}</div>`:`<div class="field"><label>Ratchet-Integrated Bit</label>${selectHTML('rib',slot.rib,i,'rib','Escolha a peça integrada')}</div>`}`:''}
-        ${slot.mode!=='cxrib'?`<div class="field"><label>Bit</label>${selectHTML('bit',slot.bit,i,'bit','Escolha a ponta')}</div>`:''}
-        ${bitProfile?`<div class="bit-inline-note"><b>${escapeHTML(tipPart?.abbrev||tipPart?.display)}</b><span>${escapeHTML(bitProfile.note)}</span></div>`:''}
+    const filled=slotParts(slot).length, total=slotDefs(slot).filter(d=>d.field!=='over'||PARTS[slot.main]?.requiresOver).length;
+    return `<article class="bey-card v2 ${invalid.length?'invalid':''} ${isComplete(slot)&&!invalid.length?'complete':''}" data-deck-slot="${i}">
+      <div class="bey-head">
+        <div class="slot-number"><b><i>${i+1}</i></b> Bey ${i+1} <small class="bey-progress">${filled}/${total}</small></div>
+        <div class="bey-head-actions">
+          <button type="button" class="move-slot" data-slot="${i}" data-dir="-1" ${i===0?'disabled':''} title="Mover para a esquerda">${BX.ic('back',13)}</button>
+          <button type="button" class="move-slot" data-slot="${i}" data-dir="1" ${i===2?'disabled':''} title="Mover para a direita">${BX.ic('back',13)}</button>
+          <button type="button" class="dup-slot" data-slot="${i}" title="Copiar só a estrutura (${escapeAttr(MODE_LABEL[slot.mode]||'')}) para um Bey vazio">${BX.ic('grid',13)}</button>
+          <button type="button" class="clear-slot" data-slot="${i}" title="Limpar este Bey">${BX.ic('trash',14)}</button>
+        </div>
       </div>
-      <div class="bey-summary"><strong>${escapeHTML(slotName(slot))}</strong><small>${isComplete(slot)?(invalid.length?`${BX.ic('warn', 14)} ${invalid[0]}`:`${BX.ic('check', 14)} Montagem válida`):'Selecione todas as peças necessárias'}</small></div>
+      <div class="bey-structure"><label>Estrutura</label><select data-slot="${i}" data-field="mode" aria-label="Estrutura do Bey ${i+1}">
+        ${Object.entries(MODE_LABEL).map(([k,l])=>`<option value="${k}" ${slot.mode===k?'selected':''}>${l}</option>`).join('')}
+      </select>${isCX&&PARTS[slot.main]?.requiresOver?'<span class="bey-badge">Expand</span>':''}</div>
+      ${renderStage(slot,i)}
+      <div class="bey-summary"><strong>${escapeHTML(slotName(slot))}</strong><small>${isComplete(slot)?(invalid.length?`${BX.ic('warn', 14)} ${escapeHTML(invalid[0])}`:`${BX.ic('check', 14)} Montagem válida`):`Toque num slot para escolher a peça (${filled}/${total})`}</small></div>
+      ${bitProfile?`<div class="bit-inline-note"><b>${escapeHTML(tipPart?.abbrev||tipPart?.display)}</b><span>${escapeHTML(bitProfile.note)}</span></div>`:''}
       ${renderBeyAnalysis(slot)}
     </article>`;
   }
@@ -1999,6 +2028,381 @@
     el.innerHTML=`<span><strong>${distinct}</strong> peças • <strong>${v.complete}/3</strong> no deck</span>`;
   }
 
+  // =====================================================================================
+  // Builder UI v2 — camada de interação. As regras (validateDeck/validateSlot/availableParts/
+  // buildSlotWith/applyPartToSlot/saveState) continuam as mesmas; aqui só muda como o usuário
+  // escolhe e encaixa peças: slots visuais, paginação no celular, bottom sheet filtrado,
+  // arrastar e soltar no desktop, desfazer, favoritas/recentes, prévia e atalhos.
+  // =====================================================================================
+  const SLOT_LABEL={blade:'Blade',integrated:'Integrated Blade',lock:'Lock Chip',main:'Main Blade',assist:'Assist Blade',over:'Over Blade',ratchet:'Ratchet',bit:'Bit',rib:'Ratchet + Bit'};
+  const MODE_LABEL={standard:'Blade + Ratchet + Bit',cx:'CX Custom Line',cxrib:'CX + Ratchet-Integrated Bit',integrated:'Ratchet-integrated Blade'};
+  const isMobileBuilder=()=>window.matchMedia('(max-width: 820px)').matches;
+
+  /** Slots que a estrutura atual do Bey pede (mesma regra de isComplete/slotParts). */
+  function slotDefs(slot){
+    const isCX=slot.mode==='cx'||slot.mode==='cxrib';
+    const d=[];
+    if(slot.mode==='standard')d.push({field:'blade',kind:'blade'});
+    if(slot.mode==='integrated')d.push({field:'blade',kind:'integrated'});
+    if(isCX){
+      d.push({field:'lock',kind:'lock'},{field:'main',kind:'main'});
+      if(PARTS[slot.main]?.requiresOver||slot.over)d.push({field:'over',kind:'over'});
+      d.push({field:'assist',kind:'assist'});
+    }
+    if(slot.mode==='cxrib')d.push({field:'rib',kind:'rib'});
+    else{ if(slot.mode!=='integrated')d.push({field:'ratchet',kind:'ratchet'}); d.push({field:'bit',kind:'bit'}); }
+    return d.map(x=>({...x,label:SLOT_LABEL[x.kind]}));
+  }
+  /** Em qual outro Bey a peça já está (regra de não repetição). -1 se livre. */
+  function usedInOtherBey(partId,beyIdx,ignoreBey=-1){
+    const p=PARTS[partId]; if(!p||p.basicLock)return -1;
+    return deck.findIndex((s,j)=>j!==beyIdx&&j!==ignoreBey&&slotParts(s).includes(partId));
+  }
+  function blockReason(p,beyIdx,ignoreBey=-1){
+    const j=usedInOtherBey(p.id,beyIdx,ignoreBey);
+    if(j>=0)return `${p.display} já está no Bey ${j+1}`;
+    if(!builderShowAll){
+      const used=currentUsage(beyIdx); const left=(inventory[p.id]||0)-(used[p.id]||0);
+      if(left<=0)return `Sem cópia livre de ${p.display} na sua coleção`;
+    }
+    return '';
+  }
+  function fieldForKind(slot,kind){ return slotDefs(buildSlotWith(slot,{id:'__probe',kind})).find(d=>d.kind===kind)?.field||null; }
+
+  // ---- Desfazer (últimos 10 passos) ----
+  function trackUndo(serialized){
+    if(undoSkip||serialized===lastSavedDeck){lastSavedDeck=serialized;return;}
+    undoStack.push(lastSavedDeck); if(undoStack.length>10)undoStack.shift();
+    lastSavedDeck=serialized; syncUndoButtons();
+  }
+  function undoDeck(){
+    if(!undoStack.length){toast('Nada para desfazer.');return;}
+    deck=JSON.parse(undoStack.pop()); undoSkip=true; saveState(); undoSkip=false;
+    syncUndoButtons(); renderAll(); toast('Desfeito.');
+  }
+  function syncUndoButtons(){ document.querySelectorAll('[data-undo]').forEach(b=>{b.disabled=!undoStack.length;}); }
+
+  // ---- Favoritas e recentes ----
+  const favParts=new Set(loadJSON('bx_fav_parts',[]));
+  let recentParts=loadJSON('bx_recent_parts',[]);
+  function toggleFav(id){ if(favParts.has(id))favParts.delete(id); else favParts.add(id); localStorage.setItem('bx_fav_parts',JSON.stringify([...favParts])); }
+  function pushRecent(id){ recentParts=[id,...recentParts.filter(x=>x!==id)].slice(0,14); localStorage.setItem('bx_recent_parts',JSON.stringify(recentParts)); }
+  const parentOf=(id)=>{const p=PARTS[id];return p?(p.parentId?PARTS[p.parentId]||p:p):null;};
+
+  // ---- Som leve ao encaixar ----
+  let sfxOn=localStorage.getItem('bx_sfx')!=='0'; let sfxCtx=null;
+  function sfx(kind='place'){
+    if(!sfxOn)return;
+    try{
+      sfxCtx=sfxCtx||new (window.AudioContext||window.webkitAudioContext)();
+      const t=sfxCtx.currentTime,o=sfxCtx.createOscillator(),g=sfxCtx.createGain();
+      o.type='sine';
+      if(kind==='remove'){o.frequency.setValueAtTime(520,t);o.frequency.exponentialRampToValueAtTime(300,t+.09);}
+      else{o.frequency.setValueAtTime(760,t);o.frequency.exponentialRampToValueAtTime(1180,t+.07);}
+      g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.045,t+.012);g.gain.exponentialRampToValueAtTime(.0001,t+.14);
+      o.connect(g).connect(sfxCtx.destination);o.start(t);o.stop(t+.15);
+    }catch{}
+  }
+  function syncSfxBtn(){ const b=document.getElementById('sfxBtn'); if(b){b.innerHTML=BX.ic(sfxOn?'megaphone':'ban',13); b.title=sfxOn?'Som ao encaixar peça: ligado':'Som ao encaixar peça: desligado'; b.classList.toggle('off',!sfxOn);} }
+
+  // ---- Colocar / remover peças (sempre via buildSlotWith / applyPartToSlot) ----
+  let lastPlaced=null; // {bey, field} para a micro-animação
+  let panelTarget=null; // slot esperando peça do painel lateral (desktop)
+  function placePart(p,bey){
+    const reason=blockReason(p,bey); if(reason){toast(reason);return false;}
+    const field=fieldForKind(deck[bey],p.kind);
+    lastPlaced={bey,field}; panelTarget=null;
+    applyPartToSlot(p,bey); pushRecent(p.parentId||p.id); sfx('place');
+    return true;
+  }
+  function clearField(bey,field){
+    if(!deck[bey][field])return;
+    deck[bey][field]=''; if(field==='main')deck[bey].over='';
+    saveState(); sfx('remove'); renderAll();
+  }
+  /** Primeiro slot compatível vazio no deck (clique no painel sem alvo). */
+  function firstEmptyFor(kind){
+    for(let i=0;i<deck.length;i++){ const d=slotDefs(deck[i]).find(x=>x.kind===kind); if(d&&!deck[i][d.field])return i; }
+    return -1;
+  }
+  /** Clique numa peça do painel lateral: alvo marcado > primeiro slot compatível vazio > Bey ativo. */
+  async function placeFromPanel(p){
+    const c=await chooseColor(p); if(!c)return;
+    let bey;
+    if(panelTarget&&panelTarget.kind===c.kind)bey=panelTarget.bey;
+    else { const e=firstEmptyFor(c.kind); bey=e>=0?e:activeSlot; }
+    if(placePart(c,bey))toast(`${c.display}${c.colorLabel?` (${c.colorLabel})`:''} → Bey ${bey+1}${(inventory[c.id]||0)?'':' (fora da sua coleção)'}`);
+  }
+  /** Troca/move entre slots compatíveis de Beys diferentes. */
+  function swapSlots(from,to){
+    if(from.bey===to.bey&&from.field===to.field)return;
+    const pa=PARTS[deck[from.bey][from.field]]; if(!pa)return;
+    const pbId=deck[to.bey][to.field]; const pb=pbId?PARTS[pbId]:null;
+    const r1=usedInOtherBey(pa.id,to.bey,from.bey); if(r1>=0){toast(`${pa.display} já está no Bey ${r1+1}.`);return;}
+    if(pb){const r2=usedInOtherBey(pb.id,from.bey,to.bey); if(r2>=0){toast(`${pb.display} já está no Bey ${r2+1}.`);return;}}
+    const oldFrom=clone(deck[from.bey]);
+    deck[to.bey]=buildSlotWith(deck[to.bey],pa);
+    if(pb)deck[from.bey]=buildSlotWith(oldFrom,pb); else { deck[from.bey][from.field]=''; if(from.field==='main')deck[from.bey].over=''; }
+    lastPlaced={bey:to.bey,field:to.field};
+    saveState(); sfx('place'); renderAll();
+    toast(pb?`${pa.display} ↔ ${pb.display} trocados.`:`${pa.display} movido para o Bey ${to.bey+1}.`);
+  }
+  function duplicateStructure(i){
+    const j=deck.findIndex((s,k)=>k!==i&&!slotParts(s).length);
+    if(j<0){toast('Não há Bey vazio para receber a estrutura.');return;}
+    deck[j]=emptySlot(); deck[j].mode=deck[i].mode; saveState(); renderAll();
+    toast(`Estrutura "${MODE_LABEL[deck[i].mode]}" copiada para o Bey ${j+1}.`);
+  }
+
+  // ---- Prévia da peça (hover no desktop, segurar no celular) ----
+  let previewTimer=null;
+  function partPreviewHtml(p){
+    const s=p.stats||{}; const has=s.atk!=null||s.def!=null||s.sta!=null;
+    const owned=inventory[p.id]||0;
+    const type=p.type||(has?inferType(s):'');
+    return `<div class="pp-top">${partArt(p,'pp')}<div><b>${escapeHTML(p.display)}</b><small>${escapeHTML(KIND_LABEL[p.kind]||p.kind)}${type?` · ${escapeHTML(type)}`:''}</small>${p.abbrev&&p.abbrev!==p.display?`<small>abrev. ${escapeHTML(p.abbrev)}</small>`:''}</div></div>
+      ${has?`<div class="pp-stats">${[['ATK',s.atk],['DEF',s.def],['STA',s.sta],['DASH',s.dash],['BRST',s.burst]].filter(([,v])=>v!=null&&v!=='').map(([l,v])=>`<span><i>${l}</i><b>${escapeHTML(String(v))}</b></span>`).join('')}</div>`:''}
+      <div class="pp-foot">${owned?`${BX.ic('check',12)} você tem ×${owned}`:`${BX.ic('backpack',12)} fora da sua coleção`}${p.banned?` · <em>banida (WBO)</em>`:''}${favParts.has(p.parentId||p.id)?` · ${BX.ic('star',12)} favorita`:''}</div>`;
+  }
+  function showPreview(p,anchor){
+    const el=document.getElementById('partPreview'); if(!el||!p)return;
+    el.innerHTML=partPreviewHtml(p); el.hidden=false; hydrateImages(el);
+    const r=anchor.getBoundingClientRect(); const w=el.offsetWidth||260,h=el.offsetHeight||140;
+    let x=r.right+10,y=r.top;
+    if(x+w>window.innerWidth-8)x=r.left-w-10; if(x<8)x=Math.max(8,Math.min(r.left,window.innerWidth-w-8));
+    if(y+h>window.innerHeight-8)y=window.innerHeight-h-8; if(y<8)y=8;
+    el.style.left=`${x}px`; el.style.top=`${y}px`;
+  }
+  function hidePreview(){ clearTimeout(previewTimer); const el=document.getElementById('partPreview'); if(el)el.hidden=true; }
+  function bindPreview(root,selector,getPart){
+    root.querySelectorAll(selector).forEach(el=>{
+      if(el.dataset.pv)return; el.dataset.pv='1';
+      el.addEventListener('mouseenter',()=>{ if(isMobileBuilder())return; clearTimeout(previewTimer); previewTimer=setTimeout(()=>{const p=getPart(el); if(p)showPreview(p,el);},380); });
+      el.addEventListener('mouseleave',hidePreview);
+      // segurar no celular
+      let t=null;
+      el.addEventListener('pointerdown',e=>{ if(e.pointerType==='mouse')return; t=setTimeout(()=>{const p=getPart(el); if(p){showPreview(p,el); el.dataset.held='1';}},450); },{passive:true});
+      const end=()=>{clearTimeout(t); if(el.dataset.held){delete el.dataset.held; setTimeout(hidePreview,900);}};
+      el.addEventListener('pointerup',end); el.addEventListener('pointercancel',end); el.addEventListener('pointerleave',end);
+      el.addEventListener('touchmove',()=>clearTimeout(t),{passive:true});
+    });
+  }
+
+  // ---- Bottom sheet: seletor filtrado por tipo (celular; Enter no desktop também abre) ----
+  let sheetTarget=null; // {bey, field, kind}
+  function sheetItems(kind,bey){
+    const used=currentUsage(bey);
+    let items=PARENTS().filter(p=>p.kind===kind&&(builderShowAll||(inventory[p.id]||0)>0));
+    const q=equivalentKey(document.getElementById('sheetSearch')?.value||'');
+    if(q)items=items.filter(p=>[p.name,p.display,p.abbrev,...(p.aliases||[])].some(x=>x&&equivalentKey(x).includes(q)));
+    items.sort((a,b)=>(favParts.has(b.id)-favParts.has(a.id))||(((inventory[b.id]||0)>0)-((inventory[a.id]||0)>0))||a.display.localeCompare(b.display));
+    return items.map(p=>{
+      const owned=inventory[p.id]||0;
+      const other=usedInOtherBey(p.id,bey);
+      const left=owned-(used[p.id]||0);
+      const disabled=other>=0||(!builderShowAll&&left<=0);
+      const why=other>=0?`em Bey ${other+1}`:(!builderShowAll&&left<=0?'sem cópia livre':'');
+      return {p,owned,disabled,why,current:deck[bey][sheetTarget?.field||'']===p.id};
+    });
+  }
+  function sheetItemHtml({p,owned,disabled,why,current}){
+    return `<button type="button" class="sh-item ${disabled?'disabled':''} ${current?'current':''}" data-part="${escapeAttr(p.id)}" ${disabled?'data-disabled="1"':''} title="${escapeAttr(p.display)}">
+      ${partArt(p,'sh')}
+      <span class="sh-txt"><b>${escapeHTML(p.display)}</b><small>${p.abbrev&&p.abbrev!==p.display?escapeHTML(p.abbrev)+' · ':''}${builderShowAll?(owned?`${BX.ic('check',11)} na coleção${owned>1?` ×${owned}`:''}`:`${BX.ic('backpack',11)} não tenho`):`×${owned} na coleção`}${p.banned?' · <em>banida</em>':''}</small></span>
+      ${why?`<span class="sh-why">${escapeHTML(why)}</span>`:current?`<span class="sh-why cur">${BX.ic('check',12)} atual</span>`:''}
+      <i class="sh-fav ${favParts.has(p.id)?'on':''}" data-fav="${escapeAttr(p.id)}" title="Favoritar">${BX.ic('star',14)}</i>
+    </button>`;
+  }
+  function renderSheet(){
+    if(!sheetTarget)return;
+    const {bey,kind}=sheetTarget;
+    const list=document.getElementById('sheetList'), quick=document.getElementById('sheetQuick');
+    const items=sheetItems(kind,bey);
+    const byId=new Map(items.map(x=>[x.p.id,x]));
+    const favs=[...favParts].map(id=>byId.get(id)).filter(Boolean);
+    const rec=recentParts.map(id=>byId.get(id)).filter(x=>x&&!favParts.has(x.p.id)).slice(0,8);
+    const chip=(x,cls='')=>`<button type="button" class="sh-chip ${cls} ${x.disabled?'disabled':''}" data-part="${escapeAttr(x.p.id)}" ${x.disabled?'data-disabled="1"':''} title="${escapeAttr(x.p.display)}${x.why?' — '+escapeAttr(x.why):''}">${partArt(x.p,'chip')}<span>${escapeHTML(x.p.abbrev||x.p.display)}</span></button>`;
+    quick.innerHTML=(favs.length?`<div class="sh-row"><small>${BX.ic('star',11)} Favoritas</small><div>${favs.map(x=>chip(x,'fav')).join('')}</div></div>`:'')
+      +(rec.length?`<div class="sh-row"><small>${BX.ic('clock',11)} Recentes</small><div>${rec.map(x=>chip(x)).join('')}</div></div>`:'');
+    list.innerHTML=items.slice(0,220).map(sheetItemHtml).join('')||`<div class="empty-state">Nenhuma peça desse tipo${builderShowAll?'':' na sua coleção'}.</div>`;
+    document.getElementById('sheetCount').textContent=`${items.length} peça(s)`;
+    hydrateImages(quick); hydrateImages(list);
+    bindPreview(list,'.sh-item',el=>PARTS[el.dataset.part]);
+  }
+  function openSheet(bey,field,kind){
+    sheetTarget={bey,field,kind};
+    const sh=document.getElementById('slotSheet'); if(!sh)return;
+    document.getElementById('sheetEyebrow').textContent=`BEY ${bey+1} · ${(MODE_LABEL[deck[bey].mode]||'').toUpperCase()}`;
+    document.getElementById('sheetTitle').textContent=`Escolher ${SLOT_LABEL[kind]||kind}`;
+    const s=document.getElementById('sheetSearch'); s.value=''; s.placeholder=`Buscar ${KIND_LABEL[kind]?.toLowerCase()||'peça'}…`;
+    sh.hidden=false; document.body.classList.add('sheet-open');
+    renderSheet();
+    if(!isMobileBuilder())setTimeout(()=>s.focus(),50);
+  }
+  function closeSheet(){ const sh=document.getElementById('slotSheet'); if(sh&&!sh.hidden){sh.hidden=true;} document.body.classList.remove('sheet-open'); sheetTarget=null; hidePreview(); }
+  async function pickFromSheet(id){
+    const p=PARTS[id]; if(!p||!sheetTarget)return;
+    const {bey}=sheetTarget;
+    const c=await chooseColor(p); if(!c)return;
+    if(placePart(c,bey)){ closeSheet(); toast(`${c.display}${c.colorLabel?` (${c.colorLabel})`:''} → Bey ${bey+1}`); }
+  }
+  (function bindSheet(){
+    const sh=document.getElementById('slotSheet'); if(!sh)return;
+    sh.addEventListener('click',e=>{
+      if(e.target===sh){closeSheet();return;}
+      const fav=e.target.closest('[data-fav]'); if(fav){e.stopPropagation();toggleFav(fav.dataset.fav);renderSheet();renderPicker();return;}
+      const it=e.target.closest('[data-part]'); if(!it)return;
+      if(it.dataset.disabled){toast(it.querySelector('.sh-why')?.textContent||it.title||'Peça indisponível para este Bey.');return;}
+      pickFromSheet(it.dataset.part);
+    });
+    document.getElementById('sheetClose')?.addEventListener('click',closeSheet);
+    document.getElementById('sheetSearch')?.addEventListener('input',renderSheet);
+    // arrastar o "grip" para baixo fecha
+    let y0=null; const grip=sh.querySelector('.sheet-head');
+    grip?.addEventListener('touchstart',e=>{y0=e.touches[0].clientY;},{passive:true});
+    grip?.addEventListener('touchmove',e=>{ if(y0!=null&&e.touches[0].clientY-y0>70){y0=null;closeSheet();} },{passive:true});
+  })();
+
+  // ---- Menu de ações do slot (segurar no celular): mover para outro Bey / remover ----
+  function openSlotActions(bey,field,anchor){
+    const id=deck[bey][field]; const p=PARTS[id]; if(!p)return;
+    const menu=document.getElementById('slotActions'); if(!menu)return;
+    const kind=slotDefs(deck[bey]).find(d=>d.field===field)?.kind;
+    const moves=deck.map((s,j)=>{ if(j===bey)return ''; const f=slotDefs(s).find(d=>d.kind===kind)?.field||null; const occ=f&&s[f]?PARTS[s[f]]:null; const blocked=!f||usedInOtherBey(id,j,bey)>=0; if(!f)return `<button type="button" disabled title="A estrutura do Bey ${j+1} não tem slot de ${escapeAttr(SLOT_LABEL[kind]||kind)}">${BX.ic('share',14)}Bey ${j+1}: estrutura sem ${escapeHTML(SLOT_LABEL[kind]||kind)}</button>`; return `<button type="button" data-move="${j}" ${blocked?'disabled':''}>${BX.ic('share',14)}${occ?`Trocar com ${escapeHTML(occ.display)} (Bey ${j+1})`:`Mover para o Bey ${j+1}`}</button>`; }).join('');
+    menu.innerHTML=`<div class="sa-head">${partArt(p,'chip')}<div><b>${escapeHTML(p.display)}</b><small>Bey ${bey+1} · ${escapeHTML(SLOT_LABEL[kind]||field)}</small></div></div>${moves}<button type="button" data-preview>${BX.ic('eye',14)}Ver detalhes</button><button type="button" data-remove class="danger">${BX.ic('trash',14)}Remover do Bey</button>`;
+    menu.hidden=false; hydrateImages(menu);
+    const r=anchor.getBoundingClientRect(); const w=menu.offsetWidth||240,h=menu.offsetHeight||160;
+    let x=r.left+r.width/2-w/2,y=r.bottom+8; x=Math.max(8,Math.min(x,window.innerWidth-w-8)); if(y+h>window.innerHeight-8)y=Math.max(8,r.top-h-8);
+    menu.style.left=`${x}px`; menu.style.top=`${y}px`;
+    const close=()=>{menu.hidden=true;document.removeEventListener('pointerdown',off,true);};
+    const off=(e)=>{ if(!menu.contains(e.target))close(); };
+    setTimeout(()=>document.addEventListener('pointerdown',off,true),0);
+    menu.onclick=(e)=>{
+      const mv=e.target.closest('[data-move]'); if(mv){close(); const j=+mv.dataset.move; const f=slotDefs(deck[j]).find(d=>d.kind===kind)?.field; if(f)swapSlots({bey,field},{bey:j,field:f}); return;}
+      if(e.target.closest('[data-remove]')){close(); clearField(bey,field); toast(`${p.display} removido do Bey ${bey+1}.`); return;}
+      if(e.target.closest('[data-preview]')){close(); showPreview(p,anchor); setTimeout(hidePreview,2500); }
+    };
+  }
+
+  // ---- Arrastar e soltar (desktop) ----
+  let dragPart=null, dragFrom=null;
+  function dragStartPart(p,from=null){
+    dragPart=p; dragFrom=from;
+    document.body.classList.add('bx-dragging');
+    document.querySelectorAll('#deckGrid .slot').forEach(s=>{ s.classList.toggle('compat',s.dataset.kind===p.kind&&!(from&&+s.dataset.bey===from.bey&&s.dataset.field===from.field)); });
+  }
+  function dragEndPart(){
+    dragPart=null; dragFrom=null; document.body.classList.remove('bx-dragging');
+    document.querySelectorAll('#deckGrid .slot').forEach(s=>{s.classList.remove('compat','over','deny'); const t=s.querySelector('.slot-tip'); if(t)t.textContent='';});
+  }
+  function bindSlotDnD(grid){
+    grid.querySelectorAll('.slot').forEach(sl=>{
+      const bey=+sl.dataset.bey, field=sl.dataset.field, kind=sl.dataset.kind;
+      if(sl.classList.contains('filled')){
+        sl.setAttribute('draggable','true');
+        sl.addEventListener('dragstart',e=>{ const p=PARTS[deck[bey][field]]; if(!p){e.preventDefault();return;} e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain',p.id); dragStartPart(p,{bey,field}); sl.classList.add('dragging'); });
+        sl.addEventListener('dragend',()=>{sl.classList.remove('dragging');dragEndPart();});
+      }
+      sl.addEventListener('dragover',e=>{
+        if(!dragPart||dragPart.kind!==kind)return;
+        if(dragFrom&&dragFrom.bey===bey&&dragFrom.field===field)return;
+        e.preventDefault();
+        let reason='';
+        if(dragFrom){ const r=usedInOtherBey(dragPart.id,bey,dragFrom.bey); if(r>=0)reason=`${dragPart.display} já está no Bey ${r+1}`; const pbId=deck[bey][field]; if(!reason&&pbId){const r2=usedInOtherBey(pbId,dragFrom.bey,bey); if(r2>=0)reason=`${PARTS[pbId]?.display} já está no Bey ${r2+1}`;} }
+        else reason=blockReason(dragPart,bey);
+        sl.classList.toggle('deny',!!reason); sl.classList.toggle('over',!reason);
+        e.dataTransfer.dropEffect=reason?'none':(dragFrom?'move':'copy');
+        const tip=sl.querySelector('.slot-tip'); if(tip)tip.textContent=reason||(deck[bey][field]?(dragFrom?'Soltar para trocar':'Soltar para substituir'):'Soltar aqui');
+      });
+      sl.addEventListener('dragleave',()=>{sl.classList.remove('over','deny'); const t=sl.querySelector('.slot-tip'); if(t)t.textContent='';});
+      sl.addEventListener('drop',e=>{
+        if(!dragPart||dragPart.kind!==kind)return; e.preventDefault();
+        const denied=sl.classList.contains('deny'); const tip=sl.querySelector('.slot-tip')?.textContent;
+        const p=dragPart, from=dragFrom; dragEndPart();
+        if(denied){toast(tip||'Não dá para soltar aqui.');return;}
+        if(from){swapSlots(from,{bey,field});return;}
+        chooseColor(p).then(c=>{ if(!c)return; if(placePart(c,bey))toast(`${c.display} → Bey ${bey+1}`); });
+      });
+    });
+  }
+
+  // ---- Paginação (celular) e barra de resumo ----
+  function goToBey(i,smooth=true){
+    i=Math.max(0,Math.min(2,i)); setActiveSlot(i);
+    const grid=document.getElementById('deckGrid'); if(!grid)return;
+    if(isMobileBuilder()){ const card=grid.children[i]; if(card){ const left=card.offsetLeft-grid.offsetLeft; grid.scrollTo({left,behavior:smooth?'smooth':'auto'}); if(smooth)setTimeout(()=>{ if(Math.abs(grid.scrollLeft-left)>8)grid.scrollTo({left,behavior:'auto'}); },420); } }
+    else grid.querySelector(`.bey-card[data-deck-slot="${i}"]`)?.scrollIntoView({block:'nearest',inline:'nearest',behavior:'smooth'});
+    syncPager();
+  }
+  function syncPager(){
+    const t=document.getElementById('pagerTitle'); if(t)t.textContent=`Bey ${activeSlot+1}`;
+    document.querySelectorAll('#pagerDots i').forEach((d,k)=>d.classList.toggle('on',k===activeSlot));
+    document.querySelectorAll('#deckBar .db-bey').forEach((b,k)=>b.classList.toggle('active',k===activeSlot));
+    const prev=document.querySelector('#beyPager [data-pg="-1"]'),next=document.querySelector('#beyPager [data-pg="1"]');
+    if(prev)prev.disabled=activeSlot===0; if(next)next.disabled=activeSlot===2;
+  }
+  function renderDeckBar(v){
+    const bar=document.getElementById('deckBar'); if(!bar)return;
+    const beys=deck.map((slot,i)=>{
+      const parts=slotParts(slot).map(id=>PARTS[id]).filter(Boolean);
+      const inv=validateSlot(slot,i);
+      const st=isComplete(slot)?(inv.length?'bad':'ok'):(parts.length?'part':'empty');
+      const dots=parts.slice(0,4).map(p=>partArt(p,'dot')).join('')||`<span class="db-empty">${BX.ic('plus',12)}</span>`;
+      return `<button type="button" class="db-bey ${st} ${i===activeSlot?'active':''}" data-bey="${i}" title="Ir para o Bey ${i+1}"><span class="db-parts">${dots}</span><small>Bey ${i+1}</small></button>`;
+    }).join('');
+    const cls=v.legal?'good':v.errors.length?'bad':'neutral';
+    const txt=v.legal?`${BX.ic('check',13)} Deck legal`:v.errors.length?`${BX.ic('x',13)} ${v.errors[0]}`:`${v.complete}/3 Beys prontos${v.info.length?` · ${v.info.find(x=>/incompleto/.test(x))||''}`:''}`;
+    bar.innerHTML=`<div class="db-beys">${beys}</div><div class="db-status ${cls}">${txt}</div><button type="button" class="db-undo" data-undo title="Desfazer (últimos 10 passos)" ${undoStack.length?'':'disabled'}>${BX.ic('rotate',15)}</button>`;
+    hydrateImages(bar);
+    document.getElementById('pagerDots').innerHTML=[0,1,2].map(k=>`<i class="${k===activeSlot?'on':''}"></i>`).join('');
+  }
+  (function bindPager(){
+    const grid=document.getElementById('deckGrid'); if(!grid)return;
+    let st=null;
+    const syncFromScroll=()=>{ if(!isMobileBuilder())return; const gl=grid.getBoundingClientRect().left; let best=0,bd=1e9; [...grid.children].forEach((c,k)=>{const d=Math.abs(c.getBoundingClientRect().left-gl); if(d<bd){bd=d;best=k;}}); if(best!==activeSlot){setActiveSlot(best);syncPager();} };
+    grid.addEventListener('scroll',()=>{ clearTimeout(st); st=setTimeout(syncFromScroll,80); },{passive:true});
+    grid.addEventListener('scrollend',syncFromScroll);
+    grid.addEventListener('touchend',()=>setTimeout(syncFromScroll,380),{passive:true});
+    document.getElementById('beyPager')?.addEventListener('click',e=>{ const b=e.target.closest('[data-pg]'); if(b)goToBey(activeSlot+(+b.dataset.pg)); });
+    document.getElementById('pagerDots')?.addEventListener('click',e=>{ const dots=[...e.currentTarget.querySelectorAll('i')]; const k=dots.indexOf(e.target); if(k>=0)goToBey(k); });
+    document.getElementById('deckBar')?.addEventListener('click',e=>{ const b=e.target.closest('.db-bey'); if(b){goToBey(+b.dataset.bey);return;} if(e.target.closest('[data-undo]'))undoDeck(); });
+    document.getElementById('sfxBtn')?.addEventListener('click',()=>{sfxOn=!sfxOn;localStorage.setItem('bx_sfx',sfxOn?'1':'0');syncSfxBtn();if(sfxOn)sfx('place');toast(sfxOn?'Som ao encaixar: ligado.':'Som ao encaixar: desligado.');});
+    syncSfxBtn();
+    document.getElementById('undoDeckBtn')?.addEventListener('click',undoDeck);
+    window.addEventListener('resize',()=>{ if(isMobileBuilder())goToBey(activeSlot,false); });
+  })();
+
+  // ---- Rascunho recuperado (o deck já persiste em localStorage; aqui só avisamos e damos a opção de descartar) ----
+  function renderDraftNotice(){
+    const el=document.getElementById('draftNotice'); if(!el)return;
+    const has=deck.some(s=>slotParts(s).length);
+    const seen=sessionStorage.getItem('bx_builder_seen');
+    if(!seen&&has){
+      el.hidden=false;
+      el.innerHTML=`<span>${BX.ic('save',14)} <b>Rascunho recuperado.</b> Continuamos de onde você parou.</span><span class="dn-actions"><button type="button" class="btn ghost" data-dn="keep">Continuar</button><button type="button" class="btn ghost danger" data-dn="discard">${BX.ic('trash',13)} Descartar</button></span>`;
+      el.onclick=(e)=>{ const b=e.target.closest('[data-dn]'); if(!b)return; el.hidden=true; if(b.dataset.dn==='discard'){deck=emptyDeck();saveState();renderAll();toast('Rascunho descartado.');} };
+    } else el.hidden=true;
+    sessionStorage.setItem('bx_builder_seen','1');
+  }
+
+  // ---- Atalhos de teclado (desktop) ----
+  document.addEventListener('keydown',e=>{
+    if(currentView!=='builder')return;
+    const tag=(e.target.tagName||'').toLowerCase(); const typing=['input','textarea','select'].includes(tag)||e.target.isContentEditable;
+    const sheetOpen=!document.getElementById('slotSheet')?.hidden;
+    if(e.key==='Escape'){ if(sheetOpen){closeSheet();e.preventDefault();return;} if(panelTarget){panelTarget=null;renderBuilder();return;} hidePreview(); return; }
+    if((e.ctrlKey||e.metaKey)&&!e.shiftKey&&e.key.toLowerCase()==='z'){ if(typing)return; e.preventDefault(); undoDeck(); return; }
+    if(typing||sheetOpen)return;
+    if(document.querySelector('.modal-backdrop:not([hidden]), .slot-picker-backdrop:not([hidden]), .bx-dialog-backdrop:not([hidden])'))return;
+    const focusSlot=e.target.closest?.('.slot');
+    if(e.key==='ArrowLeft'||e.key==='ArrowRight'){ if(focusSlot&&e.shiftKey)return; e.preventDefault(); goToBey(activeSlot+(e.key==='ArrowRight'?1:-1)); return; }
+    if(focusSlot&&(e.key==='Enter'||e.key===' ')){ e.preventDefault(); const bey=+focusSlot.dataset.bey,field=focusSlot.dataset.field,kind=focusSlot.dataset.kind; setActiveSlot(bey); openSheet(bey,field,kind); return; }
+    if(focusSlot&&(e.key==='Delete'||e.key==='Backspace')){ e.preventDefault(); const bey=+focusSlot.dataset.bey,field=focusSlot.dataset.field; if(deck[bey][field]){const n=PARTS[deck[bey][field]]?.display;clearField(bey,field);toast(`${n} removido.`);} return; }
+  });
+
+  // Fecha a prévia ao rolar ou tocar fora
+  document.addEventListener('scroll',hidePreview,{passive:true,capture:true});
+
   // ---------- Picker de peças (quadradinhos com foto) — builder e coleção ----------
   const PICKER_KINDS=[['','Tudo'],['blade','Blades'],['integrated','Integradas'],['lock','Lock Chips'],['over','Over'],['main','Main'],['assist','Assist'],['ratchet','Ratchets'],['bit','Bits'],['rib','RIB']];
   let activeSlot=0;
@@ -2057,34 +2461,47 @@
       let items=PARENTS().filter(p=>!st.kind||p.kind===st.kind);
       if(q)items=items.filter(p=>[p.name,p.display,p.abbrev,...(p.aliases||[])].some(x=>x&&equivalentKey(x).includes(q)));
       if(st.ownedOnly||cfg.onlyOwned)items=items.filter(p=>(inventory[p.id]||0)>0);
-      items.sort((a,b)=>((inventory[b.id]||0)>0)-((inventory[a.id]||0)>0)||a.display.localeCompare(b.display));
+      items.sort((a,b)=>(cfg.favorites?(favParts.has(b.id)-favParts.has(a.id)):0)||((inventory[b.id]||0)>0)-((inventory[a.id]||0)>0)||a.display.localeCompare(b.display));
       const shown=items.slice(0,160);
       grid.innerHTML=shown.map(p=>{
         const owned=inventory[p.id]||0;
         const stt=cfg.tileState?cfg.tileState(p):null;
-        return `<button class="picker-tile ${owned?'owned':''} ${stt?.disabled?'disabled':''}" data-part="${escapeAttr(p.id)}" ${stt?.disabled?'data-disabled="1"':''} title="${escapeAttr(p.display)} — ${KIND_LABEL[p.kind]||p.kind}${owned?` (você tem ×${owned})`:''}${stt?.title?` — ${escapeAttr(stt.title)}`:''}">
+        return `<button class="picker-tile ${owned?'owned':''} ${stt?.disabled?'disabled':''} ${cfg.favorites&&favParts.has(p.id)?'fav':''}" data-part="${escapeAttr(p.id)}" ${cfg.draggable&&!stt?.disabled?'draggable="true"':''} ${stt?.disabled?'data-disabled="1"':''} title="${escapeAttr(p.display)} — ${KIND_LABEL[p.kind]||p.kind}${owned?` (você tem ×${owned})`:''}${stt?.title?` — ${escapeAttr(stt.title)}`:''}">
           ${stt?.badge?`<i class="picker-left ${stt.disabled?'out':''}">${escapeHTML(stt.badge)}</i>`:''}
           ${partArt(p,'tile')}
           <span class="picker-tile-name">${escapeHTML(p.display)}</span>
-          ${owned?`<i class="picker-owned">${BX.ic('check', 14)}${owned>1?` ×${owned}`:''}</i><em class="picker-have">na coleção</em>`:''}
+          ${owned?`<i class="picker-owned">${BX.ic('check', 14)}${owned>1?` ×${owned}`:''}</i><em class="picker-have">na coleção</em>`:(cfg.ownership?`<i class="picker-noown" title="Não está na sua coleção">${BX.ic('backpack', 11)}</i>`:'')}
           ${p.banned?'<i class="picker-banned">!</i>':''}
+          ${cfg.favorites?`<i class="tile-fav ${favParts.has(p.id)?'on':''}" data-fav="${escapeAttr(p.id)}" title="${favParts.has(p.id)?'Tirar das favoritas':'Favoritar'}">${BX.ic('star', 12)}</i>`:''}
         </button>`;
       }).join('')||'<div class="empty-state">Nenhuma peça com esses filtros.</div>';
       const hint=document.getElementById(cfg.hint);
       if(hint)hint.innerHTML=`${items.length} peça(s)${items.length>shown.length?` • mostrando ${shown.length}`:''} — ${cfg.hintText()}`;
-      grid.querySelectorAll('.picker-tile').forEach(b=>b.addEventListener('click',()=>{const p=PARTS[b.dataset.part];if(!p)return;if(b.dataset.disabled){toast(cfg.disabledText?cfg.disabledText(p):`${p.display} já está reservada em outro deck.`);return;}cfg.onPick(p);}));
+      grid.querySelectorAll('.picker-tile').forEach(b=>b.addEventListener('click',(e)=>{
+        const fav=e.target.closest('[data-fav]'); if(fav){e.stopPropagation();toggleFav(fav.dataset.fav);render();return;}
+        const p=PARTS[b.dataset.part];if(!p)return;if(b.dataset.disabled){toast(cfg.disabledText?cfg.disabledText(p):`${p.display} já está reservada em outro deck.`);return;}cfg.onPick(p);
+      }));
+      if(cfg.draggable)grid.querySelectorAll('.picker-tile[draggable]').forEach(b=>{
+        b.addEventListener('dragstart',e=>{const p=PARTS[b.dataset.part];if(!p){e.preventDefault();return;}e.dataTransfer.effectAllowed='copy';e.dataTransfer.setData('text/plain',p.id);hidePreview();dragStartPart(p);b.classList.add('dragging');});
+        b.addEventListener('dragend',()=>{b.classList.remove('dragging');dragEndPart();});
+      });
+      if(cfg.preview)bindPreview(grid,'.picker-tile',el=>PARTS[el.dataset.part]);
       hydrateImages(grid);
     }
     document.getElementById(cfg.search)?.addEventListener('input',render);
+    render.setKind=(k)=>{ st.kind=k||''; const filters=document.getElementById(cfg.filters); filters?.querySelectorAll('[data-kind]').forEach(x=>x.classList.toggle('active',x.dataset.kind===st.kind)); };
+    render.getKind=()=>st.kind;
     return render;
   }
 
   // Builder: clique coloca no Bey ativo
   const renderPicker=makePicker({
     search:'pickerSearch',filters:'pickerFilters',grid:'pickerGrid',hint:'pickerHint',
-    hintText:()=>`clique para colocar no <b>Bey ${activeSlot+1}</b>.`,
-    onPick:async(p)=>{const c=await chooseColor(p);if(!c)return;applyPartToSlot(c,activeSlot);toast(`${c.display}${c.colorLabel?` (${c.colorLabel})`:''} → Bey ${activeSlot+1}${(inventory[c.id]||0)?'':' (fora da sua coleção)'}`);},
+    draggable:true,favorites:true,ownership:true,preview:true,
+    hintText:()=>panelTarget?`escolha um(a) <b>${escapeHTML(SLOT_LABEL[panelTarget.kind]||'')}</b> para o <b>Bey ${panelTarget.bey+1}</b> — ou arraste até o slot. <a href="#" data-cancel-target>cancelar</a>`:`clique para preencher o primeiro slot livre compatível (ou o <b>Bey ${activeSlot+1}</b>); arraste para escolher o slot.`,
+    onPick:placeFromPanel,
   });
+  document.getElementById('pickerHint')?.addEventListener('click',e=>{ if(e.target.closest('[data-cancel-target]')){e.preventDefault();panelTarget=null;renderPicker.setKind('');renderPicker();renderBuilder();} });
 
   // Coleção: clique adiciona +1 cópia
   const renderSessPicker=makePicker({
