@@ -14,19 +14,21 @@
   const esc = BX.esc;
   const cents = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? Math.round(n * 100) : null; };
 
+  const I = (n) => BX.icon(n, 15);
   const SECTIONS = [
-    ['dash', '📊 Dashboard', true],
-    ['users', '👥 Usuários', isAdmin],
-    ['moderation', '🛡 Moderação', true],
-    ['reports', '⚑ Denúncias', true],
-    ['parts', '🔩 Peças', isAdmin],
-    ['products', '📦 Produtos', isAdmin],
-    ['tournaments', '🏆 Torneios', true],
-    ['market', '💰 Vendas', true],
-    ['cosmetics', '🎨 Cosméticos', isAdmin],
-    ['home', '🏠 Home & meta', isAdmin],
-    ['settings', '⚙ Configurações', isAdmin],
-    ['logs', '📜 Logs', true],
+    ['dash', I('dashboard') + 'Dashboard', true],
+    ['users', I('users') + 'Usuários', isAdmin],
+    ['moderation', I('shield') + 'Moderação', true],
+    ['reports', I('flag') + 'Denúncias', true],
+    ['community', I('feed') + 'Comunidade', true],
+    ['parts', I('wrench') + 'Peças', isAdmin],
+    ['products', I('package') + 'Produtos', isAdmin],
+    ['tournaments', I('trophy') + 'Torneios', true],
+    ['market', I('money') + 'Vendas', true],
+    ['cosmetics', I('palette') + 'Cosméticos', isAdmin],
+    ['home', I('home') + 'Home & meta', isAdmin],
+    ['settings', I('settings') + 'Configurações', isAdmin],
+    ['logs', I('scroll') + 'Logs', true],
   ];
   let section = location.hash.slice(1) || 'dash';
 
@@ -93,14 +95,14 @@
         <div class="table-wrap"><table class="data-table"><thead>
           <tr><th>Usuário</th><th>E-mail</th><th>Cargo</th><th>Status</th><th>Cadastro</th><th>Ações</th></tr></thead><tbody>
           ${users.map((u) => `<tr>
-            <td><span class="standing-player">${BX.avatarHtml(u, { size: 26 })}<a href="/u/${u.slug}" target="_blank" style="color:white">${esc(u.name)}</a>${u.verified ? ' <span class="badge ok">✔</span>' : ''}</span></td>
+            <td><span class="standing-player">${BX.avatarHtml(u, { size: 26 })}<a href="/u/${u.slug}" target="_blank" style="color:white">${esc(u.name)}</a>${u.verified ? ` <span class="badge ok">${BX.ic('check', 14)}</span>` : ''}</span></td>
             <td class="mono">${esc(u.email)}</td>
             <td><select data-role-of="${u.id}" style="height:28px;width:110px">${['USER', 'ORGANIZER', 'MOD', 'ADMIN'].map((r) => `<option ${u.role === r ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
             <td><span class="status-chip ${u.status}">${u.status}</span>${u.suspendedUntil ? `<small style="display:block;color:var(--muted)">até ${BX.dateFmt(u.suspendedUntil, { day: '2-digit', month: 'short' })}</small>` : ''}</td>
             <td>${BX.dateFmt(u.createdAt, { day: '2-digit', month: 'short', year: '2-digit' })}</td>
             <td><div class="row-actions">
               <button class="btn secondary" data-edit="${u.id}">Editar</button>
-              <button class="btn secondary" data-verify="${u.id}:${!u.verified}">${u.verified ? 'Tirar selo' : '✔ Verificar'}</button>
+              <button class="btn secondary" data-verify="${u.id}:${!u.verified}">${u.verified ? 'Tirar selo' : `${BX.ic('check', 14)} Verificar`}</button>
               ${u.status === 'ACTIVE'
                 ? `<button class="btn secondary" data-suspend="${u.id}">Suspender</button><button class="btn danger-outline" data-ban="${u.id}">Banir</button>`
                 : `<button class="btn secondary" data-activate="${u.id}">Reativar</button>`}
@@ -120,24 +122,24 @@
       on('#ustatus', 'change', (el) => { box.dataset.status = el.value; render(); });
       on('[data-role-of]', 'change', act((el) => BX.api(`/api/admin/users/${el.dataset.roleOf}`, { method: 'PATCH', body: { role: el.value } })));
       on('[data-verify]', 'click', act((el) => { const [id, v] = el.dataset.verify.split(':'); return BX.api(`/api/admin/users/${id}`, { method: 'PATCH', body: { verified: v === 'true' } }); }));
-      on('[data-suspend]', 'click', act((el) => {
-        const reason = prompt('Motivo da suspensão:'); if (reason == null) return Promise.resolve();
-        const days = prompt('Duração em dias (ex.: 7):', '7');
+      on('[data-suspend]', 'click', act(async (el) => {
+        const reason = await BX.promptDialog({ title: 'Suspender usuário', text: 'Motivo da suspensão:', multiline: true, danger: true, okLabel: 'Continuar' }); if (reason == null) return;
+        const days = await BX.promptDialog({ title: 'Duração', text: 'Duração em dias (ex.: 7):', defaultValue: '7', okLabel: 'Suspender', danger: true }); if (days == null) return;
         return BX.api(`/api/admin/users/${el.dataset.suspend}/status`, { method: 'POST', body: { status: 'SUSPENDED', reason, days } });
       }));
-      on('[data-ban]', 'click', act((el) => {
-        const reason = prompt('Motivo do ban PERMANENTE:'); if (reason == null) return Promise.resolve();
+      on('[data-ban]', 'click', act(async (el) => {
+        const reason = await BX.promptDialog({ title: 'Ban permanente', text: 'Motivo do ban PERMANENTE:', multiline: true, danger: true, okLabel: 'Banir' }); if (reason == null) return;
         return BX.api(`/api/admin/users/${el.dataset.ban}/status`, { method: 'POST', body: { status: 'BANNED', reason } });
       }));
       on('[data-activate]', 'click', act((el) => BX.api(`/api/admin/users/${el.dataset.activate}/status`, { method: 'POST', body: { status: 'ACTIVE' } })));
-      on('[data-resetmedia]', 'click', act((el) => {
-        const what = prompt('Resetar o quê? (avatar, banner, nome — separe por vírgula)', 'avatar');
+      on('[data-resetmedia]', 'click', act(async (el) => {
+        const what = await BX.promptDialog({ title: 'Resetar perfil', text: 'Resetar o quê? (avatar, banner, nome — separe por vírgula)', defaultValue: 'avatar', okLabel: 'Resetar' });
         if (!what) return Promise.resolve();
         return BX.api(`/api/admin/users/${el.dataset.resetmedia}/reset-media`, { method: 'POST', body: { avatar: /avatar/.test(what), banner: /banner/.test(what), name: /nome/.test(what) } });
       }));
-      on('[data-del]', 'click', act((el) => {
+      on('[data-del]', 'click', act(async (el) => {
         const [id, email] = el.dataset.del.split(':');
-        const typed = prompt(`⚠ EXCLUSÃO DEFINITIVA da conta e de todo o conteúdo.\nPara confirmar, digite o e-mail exato:\n${email}`);
+        const typed = await BX.promptDialog({ title: 'Exclusão definitiva', text: `Apaga a conta e todo o conteúdo. Não tem volta.\nPara confirmar, digite o e-mail exato:\n${email}`, danger: true, okLabel: 'Excluir conta' });
         if (typed == null) return Promise.resolve();
         return BX.api(`/api/admin/users/${id}`, { method: 'DELETE', body: { confirmEmail: typed } });
       }));
@@ -182,7 +184,7 @@
             ${q.decks.map((d) => row('deck', d.id, `<a href="/deck/${d.slug}" target="_blank" style="color:white">${esc(d.title)}</a>`, `por ${esc(d.author?.name)} • ${BX.dateFmt(d.createdAt)}`, d.status === 'HIDDEN')).join('')}
             ${q.combos.map((c) => row('combo', c.id, esc(c.title), `por ${esc(c.author?.name)}${c.forSale ? ' • à venda' : ''}`, c.status === 'HIDDEN')).join('')}
             ${q.listings.map((l) => row('listing', l.id, `${esc(l.part)} ${l.priceCents != null ? `— ${BX.money(l.priceCents)}` : ''}`, `vendedor: ${esc(l.seller?.name)}`, l.hidden)).join('')}
-            ${!q.decks.length && !q.combos.length && !q.listings.length ? '<div class="empty-state">Nada na fila. 🎉</div>' : ''}
+            ${!q.decks.length && !q.combos.length && !q.listings.length ? `<div class="empty-state">Nada na fila. ${BX.ic('party', 14)}</div>` : ''}
           </div>
         </div>
         <div class="panel-card"><p class="eyebrow">PERFIS NOVOS</p>
@@ -204,19 +206,61 @@
           <div class="org-match-row ${r.status !== 'OPEN' ? 'done' : ''}">
             <b style="font:800 10px var(--display);color:var(--orange)">${r.targetType}</b>
             <div style="font-size:12px">
-              <b>${esc(r.reason)}</b>
-              <small style="display:block;color:var(--muted)">alvo: <span class="mono">${esc(r.targetId)}</span> • por ${esc(r.reporter?.name || 'anônimo')} • ${BX.dateFmt(r.createdAt)}${r.resolution ? ` • resolução: ${esc(r.resolution)}` : ''}</small>
+              <b>${r.category ? `<span class="status-chip" style="margin-right:6px">${{ INAPPROPRIATE: 'Impróprio', SPAM: 'Spam', SCAM: 'Golpe', HARASSMENT: 'Assédio', OTHER: 'Outro' }[r.category] || r.category}</span>` : ''}${esc(r.reason)}</b>
+              ${r.target ? `<small style="display:block;margin-top:3px"><a href="${esc(r.target.url)}" target="_blank" rel="noopener" style="color:var(--cyan)">${esc(r.target.title || '(sem título)')}</a> <span style="color:var(--muted)">• ${esc(r.target.author || '')} • status ${esc(r.target.status || '')}</span></small>` : `<small style="display:block;color:var(--muted)">alvo: <span class="mono">${esc(r.targetId)}</span>${{ DECK: ` • <a href="/deck/${esc(r.targetId)}" target="_blank" style="color:var(--cyan)">abrir</a>`, USER: '', TOURNAMENT: ` • <a href="/torneio/${esc(r.targetId)}" target="_blank" style="color:var(--cyan)">abrir</a>` }[r.targetType] || ''}</small>`}
+              <small style="display:block;color:var(--muted)">por ${esc(r.reporter?.name || 'anônimo')} • ${BX.dateFmt(r.createdAt)}${r.resolution ? ` • resolução: ${esc(r.resolution)}` : ''}</small>
             </div>
             ${r.status === 'OPEN' ? `<div class="row-actions">
-              <button class="btn secondary" data-resolve="${r.id}:RESOLVED">Resolver</button>
-              <button class="btn secondary" data-resolve="${r.id}:IGNORED">Ignorar</button>
+              ${r.targetType === 'POST' && r.target && r.target.status !== 'REMOVED' ? `<button class="btn secondary" data-hidepost="${r.targetId}" title="Ocultar o post">${I('eye')} Ocultar post</button>` : ''}
+              ${r.targetType === 'COMMENT' && r.target && r.target.status !== 'REMOVED' ? `<button class="btn secondary" data-hidecm="${r.targetId}" title="Remover o comentário">${I('trash')} Remover</button>` : ''}
+              <button class="btn secondary" data-resolve="${r.id}:RESOLVED">${I('check')} Resolver</button>
+              <button class="btn secondary" data-resolve="${r.id}:IGNORED">${I('x')} Ignorar</button>
             </div>` : `<span class="status-chip">${r.status}</span>`}
-          </div>`).join('') || '<div class="empty-state">Nenhuma denúncia aqui. 🎉</div>'}`;
+          </div>`).join('') || '<div class="empty-state">Nenhuma denúncia aqui.</div>'}`;
       on('[data-rs]', 'click', (el) => { box.dataset.rstatus = el.dataset.rs; render(); });
-      on('[data-resolve]', 'click', act((el) => {
+      on('[data-hidepost]', 'click', act((el) => BX.api(`/api/admin/posts/${el.dataset.hidepost}/status`, { method: 'POST', body: { status: 'HIDDEN' } })));
+      on('[data-hidecm]', 'click', act((el) => BX.api(`/api/admin/comments/${el.dataset.hidecm}/status`, { method: 'POST', body: { status: 'REMOVED' } })));
+      on('[data-resolve]', 'click', act(async (el) => {
         const [id, status2] = el.dataset.resolve.split(':');
-        const resolution = status2 === 'RESOLVED' ? prompt('O que foi feito? (opcional)') || '' : '';
+        let resolution = '';
+        if (status2 === 'RESOLVED') { resolution = await BX.promptDialog({ title: 'Resolver denúncia', text: 'O que foi feito? (opcional)', placeholder: 'ex.: post ocultado, usuário avisado' }); if (resolution == null) return; }
         return BX.api(`/api/admin/reports/${id}/resolve`, { method: 'POST', body: { status: status2, resolution } });
+      }));
+    },
+
+    // ------------------------------------------------------- 2.3b Comunidade
+    async community() {
+      const status = box.dataset.cstatus || 'PENDING';
+      const { posts } = await BX.api(`/api/admin/posts?status=${status}`);
+      const LABEL = { PENDING: 'Pendentes', SCANNING: 'Analisando', VISIBLE: 'Visíveis', HIDDEN: 'Ocultos', REMOVED: 'Removidos', ALL: 'Todos' };
+      const flagTxt = (f) => {
+        if (!f) return '';
+        const hits = (f.results || []).filter((r) => r.flagged).map((r) => `${r.engine || 'triagem'}: ${(r.hits || []).join(', ')}${r.scores ? ' (' + Object.entries(r.scores).filter(([k]) => ['Porn', 'Hentai', 'Sexy', 'sexual_activity', 'sexual_display', 'erotica', 'gore'].includes(k)).map(([k, v]) => `${k} ${Math.round(v * 100)}%`).join(', ') + ')' : ''}`);
+        return hits.length ? `<small style="display:block;color:var(--orange)">${I('warn')} ${esc(hits.join(' · '))}</small>` : `<small style="display:block;color:var(--muted)">${f.scanned ? `${f.scanned} imagem(ns) analisada(s), nada sinalizado` : 'imagens não analisadas'}</small>`;
+      };
+      box.innerHTML = `
+        <div class="pill-toggle" style="margin-bottom:14px">${Object.keys(LABEL).map((s) => `<button data-cs="${s}" class="${status === s ? 'active' : ''}">${LABEL[s]}</button>`).join('')}</div>
+        <p class="muted" style="font-size:12px;margin:0 0 12px">Posts <b>pendentes</b> foram segurados pela triagem automática de imagens e só o autor vê. Aprove para publicar ou oculte/remova. <a href="/icones" style="color:var(--cyan)">Guia de ícones</a>.</p>
+        ${posts.map((p) => `
+          <div class="org-match-row ${p.status === 'PENDING' ? 'conflict' : ''} ${['HIDDEN', 'REMOVED'].includes(p.status) ? 'done' : ''}">
+            <span class="tag-chip sm ${p.tag.toLowerCase()}" style="justify-self:start">${BX.icon((BX.ICON_GROUPS['Tags da comunidade'] || []).includes(p.tag.toLowerCase()) ? p.tag.toLowerCase() : 'feed', 12)}</span>
+            <div style="font-size:12px;min-width:0">
+              <b><a href="${esc(p.url)}" target="_blank" rel="noopener" style="color:inherit">${esc(p.title)}</a></b> <span class="status-chip ${p.status}">${p.status}</span>
+              <small style="display:block;color:var(--muted)">${esc(p.tagLabel)} • por ${esc(p.author?.name || '?')} • ${BX.dateFmt(p.createdAt)} • ${(p.media || []).length} mídia(s) • ${p.commentCount} comentário(s)</small>
+              ${flagTxt(p.flag)}
+              ${(p.media || []).filter((m) => m.type !== 'embed').length ? `<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">${(p.media || []).filter((m) => m.type !== 'embed').map((m) => m.type === 'video' ? `<video src="${esc(m.url)}" style="height:64px;border-radius:6px" muted></video>` : `<a href="${esc(m.url)}" target="_blank"><img src="${esc(m.url)}" alt="" loading="lazy" style="height:64px;width:64px;object-fit:cover;border-radius:6px"></a>`).join('')}</div>` : ''}
+            </div>
+            <div class="row-actions">
+              ${p.status !== 'VISIBLE' ? `<button class="btn secondary" data-pstatus="${p.id}:VISIBLE">${I('check')} Aprovar</button>` : ''}
+              ${p.status !== 'HIDDEN' ? `<button class="btn secondary" data-pstatus="${p.id}:HIDDEN">${I('eye')} Ocultar</button>` : ''}
+              ${p.status !== 'REMOVED' ? `<button class="btn secondary" data-pstatus="${p.id}:REMOVED">${I('trash')} Remover</button>` : ''}
+            </div>
+          </div>`).join('') || `<div class="empty-state">${{ PENDING: 'Nenhum post pendente.', SCANNING: 'Nenhuma imagem em análise.', VISIBLE: 'Nenhum post visível.', HIDDEN: 'Nenhum post oculto.', REMOVED: 'Nenhum post removido.', ALL: 'Nenhum post ainda.' }[status]}</div>`}`;
+      on('[data-cs]', 'click', (el) => { box.dataset.cstatus = el.dataset.cs; render(); });
+      on('[data-pstatus]', 'click', act(async (el) => {
+        const [id, st] = el.dataset.pstatus.split(':');
+        if (st === 'REMOVED' && !(await BX.confirmDialog({ title: 'Remover este post?', text: 'O autor será notificado. A ação fica no log.', okLabel: 'Remover', danger: true }))) return;
+        return BX.api(`/api/admin/posts/${id}/status`, { method: 'POST', body: { status: st } });
       }));
     },
 
@@ -230,7 +274,7 @@
           <input id="pq" placeholder="Buscar peça…" value="${esc(q)}" />
           <select id="pkind"><option value="">Todas</option>${KINDS.map((k) => `<option ${box.dataset.pkind === k ? 'selected' : ''}>${k}</option>`).join('')}</select>
           <button class="btn primary" id="newPart">+ Nova peça</button>
-          <button class="btn secondary" id="mergeParts">⇄ Mesclar duplicadas</button>
+          <button class="btn secondary" id="mergeParts">${BX.ic('rotate', 14)} Mesclar duplicadas</button>
         </div>
         <div class="table-wrap"><table class="data-table"><thead>
           <tr><th>Peça</th><th>Categoria</th><th>Tipo</th><th>Flags</th><th>Ações</th></tr></thead><tbody>
@@ -278,9 +322,9 @@
         return BX.api(`/api/admin/parts/${el.dataset.img}/image`, { method: 'POST', body: fd });
       }));
       on('[data-delpart]', 'click', act((el) => confirm('Excluir esta peça? Ela some das coleções e relações.') ? BX.api(`/api/admin/parts/${el.dataset.delpart}`, { method: 'DELETE' }) : Promise.resolve()));
-      on('#mergeParts', 'click', act(() => {
-        const from = prompt('Nome/slug da peça DUPLICADA (que será apagada):');
-        const to = from != null ? prompt('Nome/slug da peça CANÔNICA (que fica):') : null;
+      on('#mergeParts', 'click', act(async () => {
+        const from = await BX.promptDialog({ title: 'Mesclar peças', text: 'Nome/slug da peça DUPLICADA (que será apagada):', okLabel: 'Continuar' });
+        const to = from != null ? await BX.promptDialog({ title: 'Mesclar peças', text: 'Nome/slug da peça CANÔNICA (que fica):', okLabel: 'Mesclar', danger: true }) : null;
         if (!from || !to) return Promise.resolve();
         const idx = BX.partTag._idx;
         const f = idx.byName.get(BX.norm(from)); const g = idx.byName.get(BX.norm(to));
@@ -356,7 +400,7 @@
             <td>${(p.category || '—').toLowerCase().replace('_', ' ')}</td>
             <td><div class="row-actions">
               <button class="btn secondary" data-editprod="${p.id}">Editar</button>
-              <button class="btn secondary" data-relation="${p.id}">🔩 Peças</button>
+              <button class="btn secondary" data-relation="${p.id}">${BX.ic('wrench', 14)} Peças</button>
               <label class="btn secondary" style="cursor:pointer">Imagem<input type="file" hidden accept="image/*" data-pimg="${p.id}"></label>
               <button class="btn danger-outline" data-delprod="${p.id}">Excluir</button>
             </div></td>
@@ -479,8 +523,8 @@
           </tr>`).join('')}
         </tbody></table></div>
         <small style="display:block;color:var(--muted);margin-top:8px;font-size:10px">Como admin, você tem os poderes do organizador em qualquer torneio: resolver conflitos, remover jogadores, reabrir partidas e corrigir placares direto na aba Gestão do torneio.</small>`;
-      on('[data-transfer]', 'click', act((el) => {
-        const user = prompt('Transferir organização para (@ do perfil ou e-mail):');
+      on('[data-transfer]', 'click', act(async (el) => {
+        const user = await BX.promptDialog({ title: 'Transferir organização', text: 'Para quem? (@ do perfil ou e-mail)', okLabel: 'Transferir' });
         return user ? BX.api(`/api/tournaments/${el.dataset.transfer}/transfer`, { method: 'POST', body: { user } }) : Promise.resolve();
       }));
       on('[data-cancelt]', 'click', act((el) => confirm('Cancelar este torneio?') ? BX.api(`/api/tournaments/${el.dataset.cancelt}/cancel`, { method: 'POST' }) : Promise.resolve()));
@@ -494,7 +538,7 @@
           <div style="margin-top:10px">${m.items.map((i) => `
             <div class="org-match-row ${i.hidden ? 'done' : ''}">
               <b style="font:800 10px var(--display);color:var(--green)">${BX.money(i.priceCents) || '—'}</b>
-              <div style="font-size:12px"><b>${esc(i.part)}</b><small style="display:block;color:var(--muted)">${esc(i.seller?.name)}${!i.seller?.canSell ? ' • 🚫 vendas bloqueadas' : ''}${i.hidden ? ' • oculto' : ''}</small></div>
+              <div style="font-size:12px"><b>${esc(i.part)}</b><small style="display:block;color:var(--muted)">${esc(i.seller?.name)}${!i.seller?.canSell ? ` • ${BX.ic('ban', 14)} vendas bloqueadas` : ''}${i.hidden ? ' • oculto' : ''}</small></div>
               <div class="row-actions">
                 <button class="btn secondary" data-hideitem="${i.id}:${!i.hidden}">${i.hidden ? 'Mostrar' : 'Ocultar'}</button>
                 <button class="btn danger-outline" data-blocksell='${esc(JSON.stringify({ id: i.seller.id, canSell: !i.seller.canSell }))}'>${i.seller?.canSell ? 'Bloquear vendas do usuário' : 'Desbloquear vendas'}</button>
@@ -525,12 +569,12 @@
             <div class="org-match-row ${c.active ? '' : 'done'}">
               ${kind === 'FRAME'
                 ? BX.avatarHtml({ name: 'X' }, { size: 34, frame: c })
-                : `<span class="sticker">${c.imageUrl ? `<img src="${esc(c.imageUrl)}">` : esc(c.styleKey || '★')}</span>`}
+                : `<span class="sticker">${c.imageUrl ? `<img src="${esc(c.imageUrl)}">` : BX.stickerIcon(c.styleKey)}</span>`}
               <div style="font-size:12px"><b>${esc(c.name)}</b><small style="display:block;color:var(--muted)">${c.isDefault ? 'padrão (todos têm)' : 'exclusivo (por concessão)'}${c.active ? '' : ' • desativado'}</small></div>
               <div class="row-actions">
                 <button class="btn secondary" data-cact="${c.id}:${!c.active}">${c.active ? 'Desativar' : 'Ativar'}</button>
                 <button class="btn secondary" data-cdef="${c.id}:${!c.isDefault}">${c.isDefault ? 'Tornar exclusivo' : 'Tornar padrão'}</button>
-                ${!c.isDefault ? `<button class="btn secondary" data-cgrant="${c.id}">🎁 Conceder</button>` : ''}
+                ${!c.isDefault ? `<button class="btn secondary" data-cgrant="${c.id}">${BX.ic('gift', 14)} Conceder</button>` : ''}
                 <button class="btn danger-outline" data-cdel="${c.id}">Excluir</button>
               </div>
             </div>`).join('') || '<div class="empty-state">Nenhum.</div>'}</div>
@@ -542,7 +586,7 @@
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
             <div><label>Nome</label><input id="cName" /></div>
             <div><label>Tipo</label><select id="cKind"><option value="FRAME">Moldura</option><option value="STICKER">Sticker</option></select></div>
-            <div><label>Emoji/chave de estilo (opcional)</label><input id="cStyle" placeholder="⚡ ou xtreme" /></div>
+            <div><label>Emoji/chave de estilo (opcional)</label><input id="cStyle" placeholder="ou xtreme" /></div>
           </div>
           <div><label>Imagem (opcional — PNG com transparência fica ótimo)</label><input type="file" id="cFile" accept="image/*" style="height:auto;padding:8px" /></div>
           <div class="config-check"><input type="checkbox" id="cDefault" /> <span>Disponível para todos (padrão)</span></div>
@@ -551,8 +595,8 @@
       on('[data-cact]', 'click', act((el) => { const [id, active] = el.dataset.cact.split(':'); return BX.api(`/api/admin/cosmetics/${id}`, { method: 'PATCH', body: { active: active === 'true' } }); }));
       on('[data-cdef]', 'click', act((el) => { const [id, isDefault] = el.dataset.cdef.split(':'); return BX.api(`/api/admin/cosmetics/${id}`, { method: 'PATCH', body: { isDefault: isDefault === 'true' } }); }));
       on('[data-cdel]', 'click', act((el) => confirm('Excluir cosmético?') ? BX.api(`/api/admin/cosmetics/${el.dataset.cdel}`, { method: 'DELETE' }) : Promise.resolve()));
-      on('[data-cgrant]', 'click', act((el) => {
-        const user = prompt('Conceder para (@ do perfil ou e-mail):');
+      on('[data-cgrant]', 'click', act(async (el) => {
+        const user = await BX.promptDialog({ title: 'Conceder', text: 'Conceder para (@ do perfil ou e-mail):', okLabel: 'Conceder' });
         return user ? BX.api(`/api/admin/cosmetics/${el.dataset.cgrant}/grant`, { method: 'POST', body: { user } }) : Promise.resolve();
       }));
       box.querySelector('#cCreate').onclick = act(() => {
@@ -579,19 +623,19 @@
           <div class="section-title-row"><div><p class="eyebrow">DESTAQUES DA HOME</p><h2 style="font-size:20px">Decks fixados</h2></div></div>
           <div style="margin-top:10px">${decks.map((d) => `
             <div class="org-match-row">
-              <b style="font:800 12px var(--display);color:${d.featured ? 'var(--yellow)' : '#5a6270'}">${d.featured ? '★' : '—'}</b>
+              <b style="font:800 12px var(--display);color:${d.featured ? 'var(--yellow)' : '#5a6270'}">${d.featured ? `${BX.ic('star', 14)}` : '—'}</b>
               <div style="font-size:12px"><b>${esc(d.title)}</b><small style="display:block;color:var(--muted)">por ${esc(d.author?.name)}</small></div>
               <div class="row-actions">
                 ${d.featured
                   ? `<button class="btn secondary" data-unfeat="${d.id}">Tirar da home</button>`
-                  : `<button class="btn secondary" data-feat="${d.id}">★ Fixar na home</button>`}
+                  : `<button class="btn secondary" data-feat="${d.id}">${BX.ic('star', 14)} Fixar na home</button>`}
               </div>
             </div>`).join('') || '<div class="empty-state">Nenhum deck publicado ainda.</div>'}</div>
         </div>
         <div class="panel-card" style="margin-bottom:14px">
           <div class="section-title-row">
             <div><p class="eyebrow">SINCRONIZAÇÃO DO CATÁLOGO</p><h2 style="font-size:20px">Produtos + peças + imagens</h2></div>
-            <button class="btn primary" id="syncNow">↻ Sincronizar agora</button>
+            <button class="btn primary" id="syncNow">${BX.ic('refresh', 14)} Sincronizar agora</button>
           </div>
           <div style="margin-top:10px">${logs.map((l) => `
             <div class="org-match-row ${l.ok ? '' : 'conflict'}">
@@ -613,7 +657,7 @@
           </div>
           <div style="margin-top:12px">${announcements.map((a) => `
             <div class="org-match-row ${a.active ? '' : 'done'}">
-              <b>📣</b>
+              <b>${BX.ic('megaphone', 14)}</b>
               <div style="font-size:12px"><b>${esc(a.message)}</b><small style="display:block;color:var(--muted)">${a.startsAt ? `de ${BX.dateFmt(a.startsAt)} ` : ''}${a.endsAt ? `até ${BX.dateFmt(a.endsAt)}` : ''}${a.active ? '' : ' • desativado'}</small></div>
               <div class="row-actions">
                 <button class="btn secondary" data-atoggle="${a.id}:${!a.active}">${a.active ? 'Desativar' : 'Ativar'}</button>
@@ -728,7 +772,7 @@
             <details style="border-bottom:1px solid #232833;padding:8px 0">
               <summary style="cursor:pointer;font-size:12px"><b style="color:var(--red)">${esc(e.message)}</b> <small style="color:var(--muted)">${esc(e.path || '')} • ${BX.dateFmt(e.createdAt)}</small></summary>
               <pre class="mono" style="white-space:pre-wrap;color:var(--muted);margin:8px 0 0">${esc(e.stack || 'sem stack')}</pre>
-            </details>`).join('') || '<div class="empty-state">Nenhum erro registrado. 🎉</div>'}</div>
+            </details>`).join('') || `<div class="empty-state">Nenhum erro registrado. ${BX.ic('party', 14)}</div>`}</div>
         </div>`;
       let t;
       on('#lq', 'input', (el) => { clearTimeout(t); t = setTimeout(() => { box.dataset.lq = el.value; render(); }, 350); });

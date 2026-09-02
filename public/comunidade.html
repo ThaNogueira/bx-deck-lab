@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="referrer" content="no-referrer" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;0,700;0,800;1,700&family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;0,700;0,800;1,700&family=Inter:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'">
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;0,700;0,800;1,700&family=Inter:wght@400;500;600;700&display=swap"></noscript>
+  <meta name="theme-color" content="#090a0f" />
+  <title>Comunidade — BX Deck Lab</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="noise"></div>
+  <header id="topbar"></header>
+  <main id="app"><div class="empty-state">Carregando comunidade…</div></main>
+  <div class="modal-backdrop" id="composerModal" hidden></div>
+  <script src="/js/shared.js"></script>
+  <script>
+    (async () => {
+      BX.renderTopbar('/comunidade');
+      const app = document.getElementById('app');
+      const { esc, icon, ic } = BX;
+      const meta = await BX.api('/api/community/meta');
+      const me = await BX.me().catch(() => null);
+      const TAGS = meta.tags;
+      const REACT = { FIRE: ['fire', 'Fogo'], TOP: ['top', 'Top'], LOL: ['lol', 'Risada'], WOW: ['wow', 'Uau'] };
+      const postId = location.pathname.startsWith('/comunidade/p/') ? BX.pathPart(2) : null;
+
+      // ---------------- estado do feed (URL: ?sort=&tag=) ----------------
+      const params = new URLSearchParams(location.search);
+      let sort = ['recent', 'top', 'hot'].includes(params.get('sort')) ? params.get('sort') : 'hot';
+      let tag = TAGS[params.get('tag')] ? params.get('tag') : '';
+      let offset = 0;
+      let loading = false;
+      const syncUrl = () => { const p = new URLSearchParams(); if (sort !== 'hot') p.set('sort', sort); if (tag) p.set('tag', tag); history.replaceState(null, '', '/comunidade' + (p.toString() ? '?' + p : '')); };
+
+      const tagChip = (k, { sm = false, link = false, active = false } = {}) => {
+        const t = TAGS[k]; if (!t) return '';
+        const cls = `tag-chip ${sm ? 'sm' : ''} ${k.toLowerCase()} ${active ? 'active' : ''}`;
+        return link ? `<a class="${cls}" href="/comunidade?tag=${k}">${icon(t.icon, 14)}${esc(t.label)}</a>` : `<button type="button" class="${cls}" data-tag="${k}">${icon(t.icon, 14)}${esc(t.label)}</button>`;
+      };
+      const timeAgo = (d) => {
+        const s = (Date.now() - new Date(d).getTime()) / 1000;
+        if (s < 60) return 'agora';
+        if (s < 3600) return `${Math.floor(s / 60)} min`;
+        if (s < 86400) return `${Math.floor(s / 3600)} h`;
+        if (s < 7 * 86400) return `${Math.floor(s / 86400)} d`;
+        return BX.dateFmt(d, { day: '2-digit', month: 'short' });
+      };
+      const linkify = (text) => esc(text || '')
+        .replace(/(https?:\/\/[^\s<]+)/g, (u) => `<a href="${u}" target="_blank" rel="noopener nofollow">${u}</a>`)
+        .replace(/(^|[\s(])@([a-z0-9][a-z0-9-]{1,40})/gi, (m, pre, slug) => `${pre}<a class="mention" href="/u/${slug}">@${slug}</a>`);
+
+      // ---------------- mídia ----------------
+      function mediaHtml(p) {
+        const media = p.media || [];
+        if (!media.length) return '';
+        const visual = media.filter((m) => m.type !== 'embed');
+        const embeds = media.filter((m) => m.type === 'embed');
+        let html = '';
+        if (visual.length === 1) html += `<div class="post-media">${oneMedia(visual[0])}</div>`;
+        else if (visual.length > 1) {
+          html += `<div class="post-media carousel" data-carousel>
+            <div class="carousel-track">${visual.map(oneMedia).join('')}</div>
+            <button class="carousel-nav prev" data-dir="-1" aria-label="Anterior">${icon('back', 18)}</button>
+            <button class="carousel-nav next" data-dir="1" aria-label="Próxima">${icon('chevron', 18)}</button>
+            <div class="carousel-dots">${visual.map((_, i) => `<i class="${i === 0 ? 'on' : ''}"></i>`).join('')}</div>
+            <span class="media-count">1/${visual.length}</span>
+          </div>`;
+        }
+        for (const e of embeds) {
+          html += `<div class="post-media"><div class="yt-embed" data-yt="${esc(e.id)}" style="background-image:url('https://i.ytimg.com/vi/${esc(e.id)}/hqdefault.jpg')" role="button" aria-label="Reproduzir vídeo"><span class="yt-play">${icon('play', 28)}</span></div></div>`;
+        }
+        return html;
+      }
+      const oneMedia = (m) => m.type === 'video'
+        ? `<video controls preload="metadata" playsinline src="${esc(m.url)}"></video>`
+        : `<img src="${esc(m.url)}" alt="" loading="lazy" decoding="async">`;
+
+      function pollHtml(p) {
+        const poll = p.poll; if (!poll) return '';
+        const max = Math.max(...poll.options.map((o) => o.votes));
+        const canVote = me && !poll.ended;
+        const showResults = poll.ended || poll.myVote || !me;
+        const left = poll.endsAt ? new Date(poll.endsAt).getTime() - Date.now() : null;
+        const leftTxt = poll.ended ? 'Encerrada' : left != null ? (left > 86400e3 ? `Encerra em ${Math.ceil(left / 86400e3)} d` : `Encerra em ${Math.max(1, Math.ceil(left / 3600e3))} h`) : '';
+        return `<div class="poll" data-poll="${p.id}">
+          ${poll.options.map((o) => `<button type="button" class="poll-opt ${o.id === poll.myVote ? 'mine' : ''} ${poll.ended && o.votes === max && max > 0 ? 'win' : ''}" style="--pct:${showResults ? o.pct : 0}%" data-opt="${o.id}" ${canVote ? '' : 'disabled'}><span>${esc(o.text)}</span>${showResults ? `<b>${o.pct}%</b>` : ''}</button>`).join('')}
+          <span class="poll-meta">${icon('poll', 12, 'inline')} ${poll.total} voto${poll.total === 1 ? '' : 's'} · ${leftTxt}${!me && !poll.ended ? ' · entre para votar' : ''}</span>
+        </div>`;
+      }
+
+      function saleHtml(p) {
+        const s = p.sale; if (!s) return '';
+        return `<div class="sale-box">
+          <div class="sale-price">${s.priceCents ? BX.money(s.priceCents) : (s.trade ? 'Troca' : 'A combinar')}<small>${s.trade && s.priceCents ? 'ou troca' : 'preço'}</small></div>
+          <div class="sale-info">${s.condition ? `<b>Estado:</b> ${esc(s.condition)}<br>` : ''}${s.contact ? `<b>Contato:</b> ${esc(s.contact)}` : '<b>Contato:</b> pelo perfil'}</div>
+          ${s.whatsappUrl ? `<a class="btn primary" href="${esc(s.whatsappUrl)}" target="_blank" rel="noopener" style="text-decoration:none">${icon('whatsapp', 16)}Chamar</a>` : `<a class="btn secondary" href="/u/${esc(p.author.slug)}" style="text-decoration:none">${icon('profile', 16)}Perfil</a>`}
+        </div>`;
+      }
+
+      function reactionsHtml(target, kind) {
+        const r = target.reactions;
+        return `<span class="react-group" data-rt="${kind}" data-rid="${target.id}">${Object.entries(REACT).map(([k, [ico, label]]) => `<button type="button" class="react-btn ${r.mine === k ? 'on' : ''}" data-kind="${k}" title="${label}" aria-label="${label}">${icon(ico, 15)}${r.counts[k] ? `<span>${r.counts[k]}</span>` : ''}</button>`).join('')}</span>`;
+      }
+
+      function postCard(p, { full = false } = {}) {
+        const long = (p.body || '').length > 420 || (p.body || '').split('\n').length > 6;
+        return `<article class="post-card ${p.tag === 'SALE' ? 'sale' : ''} ${p.status !== 'VISIBLE' ? 'pending' : ''}" data-post="${p.id}" id="p-${p.id}">
+          <header class="post-head">
+            ${BX.avatarHtml(p.author, { size: 38 })}
+            <div class="post-who"><a href="/u/${esc(p.author.slug)}">${esc(p.author.name)}</a><small>${timeAgo(p.createdAt)}${p.author.verified ? ' · verificado' : ''}</small></div>
+            ${tagChip(p.tag, { sm: true, link: true })}
+          </header>
+          ${p.status === 'SCANNING' ? `<div class="post-status-note">${icon('pending', 14)} Publicando: analisando as imagens (leva alguns segundos).</div>` : ''}
+          ${p.status === 'PENDING' ? `<div class="post-status-note">${icon('warn', 14)} Em revisão pela moderação: a triagem automática sinalizou uma imagem. Só você vê este post por enquanto.</div>` : ''}
+          <h2 class="post-title">${full ? esc(p.title) : `<a href="/comunidade/p/${p.id}">${esc(p.title)}</a>`}</h2>
+          ${p.body ? `<p class="post-body ${!full && long ? 'clamp' : ''}">${linkify(p.body)}</p>${!full && long ? `<button type="button" class="post-more" data-more>ver mais</button>` : ''}` : ''}
+          ${mediaHtml(p)}
+          ${pollHtml(p)}
+          ${saleHtml(p)}
+          <footer class="post-actions">
+            ${reactionsHtml(p, 'POST')}
+            <a class="act-btn" href="/comunidade/p/${p.id}#comentarios">${icon('comment', 15)}<span data-cc>${p.commentCount}</span></a>
+            <button type="button" class="act-btn" data-share="${esc(p.url)}" title="Compartilhar">${icon('share', 15)}</button>
+            <button type="button" class="act-btn right" data-report="${p.id}" title="Denunciar">${icon('flag', 15)}</button>
+            ${(p.mine || p.canModerate) ? `<button type="button" class="act-btn" data-del="${p.id}" title="Apagar">${icon('trash', 15)}</button>` : ''}
+          </footer>
+        </article>`;
+      }
+
+      // ---------------- composer ----------------
+      const modal = document.getElementById('composerModal');
+      function openComposer() {
+        if (!me) { BX.requireLogin('/comunidade'); return; }
+        let files = [];
+        let chosenTag = tag || 'CLIP';
+        modal.hidden = false;
+        modal.innerHTML = `<div class="modal color-modal composer-modal" role="dialog" aria-label="Novo post" style="max-width:640px">
+          <button class="modal-close" data-x>×</button>
+          <p class="eyebrow">NOVO POST</p>
+          <div class="composer">
+            <div><label>Tag</label><div class="tag-chips" id="cTags">${Object.keys(TAGS).map((k) => tagChip(k, { sm: true, active: k === chosenTag })).join('')}</div></div>
+            <div><label>Título</label><input id="cTitle" maxlength="140" placeholder="Um título curto e direto" /></div>
+            <div><label>Texto</label><textarea id="cBody" maxlength="5000" placeholder="Conta a história, marca alguém com @usuario…"></textarea></div>
+            <div>
+              <label>Mídia (até 6: imagens, GIF, vídeo curto)</label>
+              <div class="file-drop" id="cDrop">${icon('image', 22)}<span>Arraste ou clique para escolher</span><small>PNG, JPG, WebP, GIF, MP4 ou WebM · até 40 MB cada</small></div>
+              <input id="cFiles" type="file" accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm" multiple hidden />
+              <div class="media-preview" id="cPreview"></div>
+            </div>
+            <div><label>Vídeo do YouTube (link)</label><input id="cEmbed" placeholder="https://youtube.com/watch?v=…" /></div>
+            <div class="composer-row">
+              <button type="button" class="btn secondary" id="cPollBtn">${icon('poll', 15)}Adicionar enquete</button>
+            </div>
+            <div class="poll-builder" id="cPoll" hidden>
+              <label>Enquete</label>
+              <div id="cPollOpts"><div class="row"><input placeholder="Opção 1" maxlength="80"></div><div class="row"><input placeholder="Opção 2" maxlength="80"></div></div>
+              <div class="composer-row"><button type="button" class="btn ghost" id="cPollAdd">${icon('plus', 14)}Opção</button><select id="cPollHours" aria-label="Duração"><option value="24">1 dia</option><option value="72" selected>3 dias</option><option value="168">7 dias</option><option value="336">14 dias</option></select></div>
+            </div>
+            <div class="sale-fields" id="cSale" hidden>
+              <div><label>Preço (R$)</label><input id="cPrice" inputmode="decimal" placeholder="ex.: 120,00" /></div>
+              <div><label>Estado</label><select id="cCond">${meta.saleConditions.map((c) => `<option>${esc(c)}</option>`).join('')}</select></div>
+              <div class="full"><label>Contato (WhatsApp com DDD, ou @)</label><input id="cContact" placeholder="11999998888" /></div>
+              <label class="confirm-remember full" style="margin:0"><input type="checkbox" id="cTrade"> <span>Aceito troca</span></label>
+            </div>
+            <div class="confirm-actions"><button class="btn secondary" data-x>Cancelar</button><button class="btn primary" id="cSend">${icon('publish', 15)}Publicar</button></div>
+          </div>
+        </div>`;
+        const q = (s) => modal.querySelector(s);
+        const syncTag = () => { q('#cSale').hidden = chosenTag !== 'SALE'; q('#cTags').querySelectorAll('[data-tag]').forEach((b) => b.classList.toggle('active', b.dataset.tag === chosenTag)); };
+        syncTag();
+        q('#cTags').addEventListener('click', (e) => { const b = e.target.closest('[data-tag]'); if (b) { chosenTag = b.dataset.tag; syncTag(); } });
+        const preview = () => { q('#cPreview').innerHTML = files.map((f, i) => `<div class="mp">${f.type.startsWith('video/') ? `<video src="${URL.createObjectURL(f)}" muted></video>` : `<img src="${URL.createObjectURL(f)}" alt="">`}<button type="button" data-rm="${i}" aria-label="Remover">${icon('x', 12)}</button></div>`).join(''); };
+        const addFiles = (list) => { files = [...files, ...list].slice(0, 6); preview(); };
+        q('#cDrop').onclick = () => q('#cFiles').click();
+        q('#cFiles').onchange = (e) => addFiles([...e.target.files]);
+        q('#cDrop').addEventListener('dragover', (e) => { e.preventDefault(); q('#cDrop').classList.add('over'); });
+        q('#cDrop').addEventListener('dragleave', () => q('#cDrop').classList.remove('over'));
+        q('#cDrop').addEventListener('drop', (e) => { e.preventDefault(); q('#cDrop').classList.remove('over'); addFiles([...e.dataTransfer.files]); });
+        q('#cPreview').addEventListener('click', (e) => { const b = e.target.closest('[data-rm]'); if (b) { files.splice(+b.dataset.rm, 1); preview(); } });
+        q('#cPollBtn').onclick = () => { q('#cPoll').hidden = !q('#cPoll').hidden; q('#cPollBtn').innerHTML = q('#cPoll').hidden ? `${icon('poll', 15)}Adicionar enquete` : `${icon('x', 15)}Remover enquete`; };
+        q('#cPollAdd').onclick = () => { const n = q('#cPollOpts').children.length; if (n >= 8) return; q('#cPollOpts').insertAdjacentHTML('beforeend', `<div class="row"><input placeholder="Opção ${n + 1}" maxlength="80"></div>`); };
+        modal.onclick = (e) => { if (e.target === modal || e.target.closest('[data-x]')) { modal.hidden = true; modal.innerHTML = ''; modal.onclick = null; } };
+        q('#cSend').onclick = async () => {
+          const fd = new FormData();
+          fd.append('tag', chosenTag);
+          fd.append('title', q('#cTitle').value.trim());
+          fd.append('body', q('#cBody').value.trim());
+          fd.append('embedUrl', q('#cEmbed').value.trim());
+          if (!q('#cPoll').hidden) fd.append('poll', JSON.stringify({ options: [...q('#cPollOpts').querySelectorAll('input')].map((i) => i.value), hours: q('#cPollHours').value }));
+          if (chosenTag === 'SALE') fd.append('sale', JSON.stringify({ price: q('#cPrice').value, condition: q('#cCond').value, contact: q('#cContact').value, trade: q('#cTrade').checked }));
+          files.forEach((f) => fd.append('media', f));
+          q('#cSend').disabled = true; q('#cSend').textContent = 'Publicando…';
+          try {
+            const res = await fetch('/api/posts', { method: 'POST', body: fd });
+            const j = await res.json();
+            if (!res.ok) throw new Error(j.error || 'Não deu para publicar.');
+            modal.hidden = true; modal.innerHTML = '';
+            BX.toast(j.post.status === 'SCANNING' ? 'Post enviado! Analisando as imagens…' : 'Post publicado!');
+            location.href = `/comunidade/p/${j.post.id}`;
+          } catch (e) { BX.toast(e.message); q('#cSend').disabled = false; q('#cSend').innerHTML = `${icon('publish', 15)}Publicar`; }
+        };
+      }
+
+      // ---------------- interações (delegação) ----------------
+      async function react(group, kind) {
+        if (!me) { BX.requireLogin(location.pathname); return; }
+        const rt = group.dataset.rt, id = group.dataset.rid;
+        try {
+          const { reactions } = await BX.api(`/api/${rt === 'POST' ? 'posts' : 'comments'}/${id}/react`, { method: 'POST', body: { kind } });
+          group.querySelectorAll('.react-btn').forEach((b) => { const k = b.dataset.kind; b.classList.toggle('on', reactions.mine === k); b.innerHTML = `${icon(REACT[k][0], 15)}${reactions.counts[k] ? `<span>${reactions.counts[k]}</span>` : ''}`; });
+        } catch (e) { BX.toast(e.message); }
+      }
+      async function share(url) {
+        try { if (navigator.share) await navigator.share({ url }); else { await navigator.clipboard.writeText(url); BX.toast('Link copiado!'); } } catch {}
+      }
+      app.addEventListener('click', async (e) => {
+        const rb = e.target.closest('.react-btn'); if (rb) return react(rb.closest('.react-group'), rb.dataset.kind);
+        const sh = e.target.closest('[data-share]'); if (sh) return share(sh.dataset.share);
+        const rp = e.target.closest('[data-report]'); if (rp) return BX.report('POST', rp.dataset.report, 'este post');
+        const rc = e.target.closest('[data-report-c]'); if (rc) return BX.report('COMMENT', rc.dataset.reportC, 'este comentário');
+        const more = e.target.closest('[data-more]'); if (more) { more.previousElementSibling.classList.remove('clamp'); more.remove(); return; }
+        const del = e.target.closest('[data-del]');
+        if (del) { if (await BX.confirmDialog({ title: 'Apagar este post?', text: 'Ele sai do feed para todo mundo.', okLabel: 'Apagar', danger: true })) { try { await BX.api(`/api/posts/${del.dataset.del}`, { method: 'DELETE' }); BX.toast('Post apagado.'); if (postId) location.href = '/comunidade'; else del.closest('.post-card').remove(); } catch (er) { BX.toast(er.message); } } return; }
+        const nav = e.target.closest('.carousel-nav');
+        if (nav) { const c = nav.closest('[data-carousel]'); const t = c.querySelector('.carousel-track'); t.scrollBy({ left: +nav.dataset.dir * t.clientWidth, behavior: 'smooth' }); return; }
+        const yt = e.target.closest('[data-yt]');
+        if (yt) { yt.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${yt.dataset.yt}?autoplay=1" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen title="Vídeo"></iframe>`; return; }
+        const opt = e.target.closest('.poll-opt');
+        if (opt && !opt.disabled) {
+          const pid = opt.closest('[data-poll]').dataset.poll;
+          try { const { poll } = await BX.api(`/api/posts/${pid}/vote`, { method: 'POST', body: { optionId: opt.dataset.opt } }); const card = opt.closest('.post-card'); const p = (postId ? current.post : feed.find((x) => x.id === pid)); if (p) { p.poll = poll; opt.closest('.poll').outerHTML = pollHtml(p); } } catch (er) { BX.toast(er.message); }
+          return;
+        }
+        const tb = e.target.closest('#feedTags [data-tag]');
+        if (tb) { tag = tag === tb.dataset.tag ? '' : tb.dataset.tag; offset = 0; syncUrl(); renderFeed(); return; }
+        const sb = e.target.closest('[data-sort]');
+        if (sb) { sort = sb.dataset.sort; offset = 0; syncUrl(); renderFeed(); return; }
+        if (e.target.closest('#newPostBtn')) return openComposer();
+        if (e.target.closest('#loadMore')) return loadMore();
+      });
+      app.addEventListener('scroll', (e) => {
+        const t = e.target.closest?.('.carousel-track'); if (!t) return;
+        const i = Math.round(t.scrollLeft / t.clientWidth); const c = t.parentElement;
+        c.querySelectorAll('.carousel-dots i').forEach((d, j) => d.classList.toggle('on', j === i));
+        const mc = c.querySelector('.media-count'); if (mc) mc.textContent = `${i + 1}/${t.children.length}`;
+      }, true);
+
+      // ---------------- feed ----------------
+      let feed = [];
+      function shell(inner) {
+        return `
+          <div class="hero compact">
+            <div><p class="eyebrow">COMUNIDADE</p><h1>Feed da <em>galera</em></h1><p>Clipes, unboxings, resultados, dúvidas e vendas. Marque a tag certa e capriche no título.</p></div>
+            <div class="hero-actions"><button class="btn primary" id="newPostBtn">${icon('plus', 16)}Novo post</button></div>
+          </div>
+          <div class="com-layout">
+            <section>${inner}</section>
+            <aside class="com-side">
+              <div class="panel-card"><h3>Tags</h3><div class="tag-chips" id="sideTags">${Object.keys(TAGS).map((k) => tagChip(k, { sm: true, link: true, active: k === tag })).join('')}</div></div>
+              <div class="panel-card"><h3>Regras da casa</h3><ul class="com-rules"><li>Respeito sempre. Sem ofensa, sem spam.</li><li>Venda/troca só com a tag certa, preço e estado claros.</li><li>Clipe é seu ou com crédito.</li><li>Imagens passam por triagem automática; a moderação revisa denúncias.</li></ul></div>
+              <div class="panel-card"><h3>Reações</h3><div style="display:flex;gap:6px;flex-wrap:wrap">${Object.values(REACT).map(([i, l]) => `<span class="react-btn" style="cursor:default">${icon(i, 15)}${l}</span>`).join('')}</div></div>
+            </aside>
+          </div>`;
+      }
+      function feedToolbar() {
+        return `<div class="com-toolbar">
+          <div class="com-sort">${[['hot', 'bolt', 'Em alta'], ['recent', 'clock', 'Recentes'], ['top', 'fire', 'Mais curtidos']].map(([k, i, l]) => `<button type="button" data-sort="${k}" class="${sort === k ? 'active' : ''}">${icon(i, 14)}${l}</button>`).join('')}</div>
+          <div class="tag-chips" id="feedTags">${tag ? tagChip(tag, { sm: true, active: true }) + `<button type="button" class="tag-chip sm" data-tag="${tag}">${icon('x', 12)}limpar filtro</button>` : '<span style="color:var(--muted);font-size:12px">Todas as tags</span>'}</div>
+        </div>`;
+      }
+      async function renderFeed() {
+        if (!document.getElementById('postList')) app.innerHTML = shell(`${feedToolbar()}<div class="post-list" id="postList"><div class="empty-state">Carregando…</div></div><div style="text-align:center;margin-top:16px" id="moreWrap"></div>`);
+        else app.querySelector('.com-toolbar').outerHTML = feedToolbar();
+        document.getElementById('sideTags').innerHTML = Object.keys(TAGS).map((k) => tagChip(k, { sm: true, link: true, active: k === tag })).join('');
+        loading = true;
+        try {
+          const j = await BX.api(`/api/posts?sort=${sort}&tag=${tag}&offset=0&limit=15`);
+          feed = j.posts; offset = j.nextOffset;
+          document.getElementById('postList').innerHTML = feed.length ? feed.map((p) => postCard(p)).join('') : `<div class="empty-state">Nenhum post ${tag ? `com a tag ${esc(TAGS[tag].label)}` : ''} ainda. Seja o primeiro!</div>`;
+          document.getElementById('moreWrap').innerHTML = offset != null ? `<button class="btn secondary" id="loadMore">Carregar mais</button>` : '';
+        } catch (e) { document.getElementById('postList').innerHTML = `<div class="empty-state">${esc(e.message)}</div>`; }
+        loading = false;
+      }
+      async function loadMore() {
+        if (loading || offset == null) return; loading = true;
+        const j = await BX.api(`/api/posts?sort=${sort}&tag=${tag}&offset=${offset}&limit=15`).catch(() => null);
+        if (j) { feed.push(...j.posts); document.getElementById('postList').insertAdjacentHTML('beforeend', j.posts.map((p) => postCard(p)).join('')); offset = j.nextOffset; document.getElementById('moreWrap').innerHTML = offset != null ? `<button class="btn secondary" id="loadMore">Carregar mais</button>` : ''; }
+        loading = false;
+      }
+
+      // ---------------- página do post + comentários ----------------
+      let current = null;
+      function commentHtml(c, depth) {
+        const removed = c.status !== 'VISIBLE';
+        return `<div class="cm ${depth ? 'reply' : ''} ${removed ? 'removed' : ''}" id="c-${c.id}" data-cid="${c.id}">
+          ${removed ? '<span class="avatar" style="width:32px;height:32px"><b>·</b></span>' : BX.avatarHtml(c.author, { size: 32 })}
+          <div>
+            <div class="cm-head">${removed ? '<small>comentário removido</small>' : `<a href="/u/${esc(c.author.slug)}">${esc(c.author.name)}</a><small>${timeAgo(c.createdAt)}</small>`}</div>
+            <p class="cm-body">${removed ? '—' : linkify(c.body)}</p>
+            ${removed ? '' : `<div class="cm-actions">${reactionsHtml(c, 'COMMENT')}<button type="button" class="act-btn" data-reply="${c.id}" data-to="${esc(c.author.slug)}">${icon('reply', 13)}Responder</button><button type="button" class="act-btn" data-report-c="${c.id}" title="Denunciar">${icon('flag', 13)}</button>${(c.mine || current.post.canModerate) ? `<button type="button" class="act-btn" data-delc="${c.id}" title="Apagar">${icon('trash', 13)}</button>` : ''}</div>`}
+          </div>
+        </div>`;
+      }
+      function commentsTree(list) {
+        const kids = new Map();
+        list.forEach((c) => { const k = c.parentId || ''; if (!kids.has(k)) kids.set(k, []); kids.get(k).push(c); });
+        const walk = (pid, depth) => (kids.get(pid) || []).map((c) => commentHtml(c, depth) + walk(c.id, Math.min(depth + 1, 1))).join('');
+        return walk('', 0);
+      }
+      function commentForm(parentId = '', to = '') {
+        if (!me) return `<div class="empty-state" style="margin-top:12px"><a class="btn secondary" href="/entrar" style="text-decoration:none">Entre para comentar</a></div>`;
+        return `<form class="cm-form" data-parent="${parentId}"><textarea name="body" maxlength="2000" placeholder="${parentId ? 'Sua resposta…' : 'Comente… (use @usuario para marcar)'}" required>${to ? `@${to} ` : ''}</textarea><div class="mention-menu" hidden></div><div class="composer-row" style="justify-content:flex-end">${parentId ? '<button type="button" class="btn ghost" data-cancel-reply>Cancelar</button>' : ''}<button class="btn primary">${icon('publish', 14)}Enviar</button></div></form>`;
+      }
+      async function renderPost() {
+        try {
+          const j = await BX.api(`/api/posts/${postId}`);
+          current = j;
+          document.title = `${j.post.title} — Comunidade BX Deck Lab`;
+          app.innerHTML = shell(`<a class="btn ghost" href="/comunidade" style="text-decoration:none;margin-bottom:12px;display:inline-flex">${icon('back', 14)}Voltar ao feed</a>
+            ${postCard(j.post, { full: true })}
+            <section class="comments" id="comentarios">
+              <div class="section-title-row"><div><p class="eyebrow">COMENTÁRIOS</p><h2 id="cmCount">${j.post.commentCount} comentário${j.post.commentCount === 1 ? '' : 's'}</h2></div></div>
+              <div id="cmRoot">${commentForm()}</div>
+              <div id="cmList">${commentsTree(j.comments) || '<div class="empty-state">Ninguém comentou ainda.</div>'}</div>
+            </section>`);
+          if (location.hash.startsWith('#c-')) document.querySelector(location.hash)?.scrollIntoView({ block: 'center' });
+          if (j.post.status === 'SCANNING') setTimeout(renderPost, 4000);
+        } catch (e) { app.innerHTML = `<div class="empty-state">${esc(e.message)} — <a href="/comunidade" style="color:var(--cyan)">voltar</a></div>`; }
+      }
+      app.addEventListener('submit', async (e) => {
+        const f = e.target.closest('.cm-form'); if (!f) return;
+        e.preventDefault();
+        const body = f.body.value.trim(); if (!body) return;
+        const btn = f.querySelector('.btn.primary'); btn.disabled = true;
+        try {
+          const j = await BX.api(`/api/posts/${postId}/comments`, { method: 'POST', body: { body, parentId: f.dataset.parent || null } });
+          current.comments.push(j.comment); current.post.commentCount = j.commentCount;
+          document.getElementById('cmList').innerHTML = commentsTree(current.comments);
+          document.getElementById('cmCount').textContent = `${j.commentCount} comentário${j.commentCount === 1 ? '' : 's'}`; document.querySelectorAll('[data-cc]').forEach((x) => { x.textContent = j.commentCount; });
+          if (f.dataset.parent) f.remove(); else f.body.value = '';
+          document.getElementById(`c-${j.comment.id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        } catch (er) { BX.toast(er.message); btn.disabled = false; }
+      });
+      app.addEventListener('click', async (e) => {
+        const r = e.target.closest('[data-reply]');
+        if (r) { document.querySelectorAll('.cm-form[data-parent]:not([data-parent=""])').forEach((x) => x.remove()); r.closest('.cm').querySelector('.cm-actions').insertAdjacentHTML('afterend', commentForm(r.dataset.reply, r.dataset.to)); r.closest('.cm').querySelector('textarea')?.focus(); return; }
+        if (e.target.closest('[data-cancel-reply]')) { e.target.closest('.cm-form').remove(); return; }
+        const d = e.target.closest('[data-delc]');
+        if (d && await BX.confirmDialog({ title: 'Apagar comentário?', okLabel: 'Apagar', danger: true })) {
+          try { const j = await BX.api(`/api/comments/${d.dataset.delc}`, { method: 'DELETE' }); const c = current.comments.find((x) => x.id === d.dataset.delc); if (c) { c.status = 'REMOVED'; } current.post.commentCount = j.commentCount; document.getElementById('cmList').innerHTML = commentsTree(current.comments); document.getElementById('cmCount').textContent = `${j.commentCount} comentário${j.commentCount === 1 ? '' : 's'}`; document.querySelectorAll('[data-cc]').forEach((x) => { x.textContent = j.commentCount; }); } catch (er) { BX.toast(er.message); }
+        }
+      });
+      // menções: @ + 2 letras abre sugestões
+      let mentionTimer = 0;
+      app.addEventListener('input', (e) => {
+        const ta = e.target; if (ta.tagName !== 'TEXTAREA' || !ta.closest('.cm-form')) return;
+        const menu = ta.closest('.cm-form').querySelector('.mention-menu');
+        const m = ta.value.slice(0, ta.selectionStart).match(/@([a-z0-9-]{2,30})$/i);
+        clearTimeout(mentionTimer);
+        if (!m) { menu.hidden = true; return; }
+        mentionTimer = setTimeout(async () => {
+          const { users } = await BX.api(`/api/users/search?q=${encodeURIComponent(m[1])}`).catch(() => ({ users: [] }));
+          if (!users.length) { menu.hidden = true; return; }
+          menu.hidden = false;
+          menu.innerHTML = users.map((u) => `<button type="button" data-slug="${esc(u.slug)}">${BX.avatarHtml(u, { size: 22 })}<span>${esc(u.name)} <small style="color:var(--muted)">@${esc(u.slug)}</small></span></button>`).join('');
+          menu.onclick = (ev) => { const b = ev.target.closest('[data-slug]'); if (!b) return; const pos = ta.selectionStart; const before = ta.value.slice(0, pos).replace(/@[a-z0-9-]{2,30}$/i, `@${b.dataset.slug} `); ta.value = before + ta.value.slice(pos); menu.hidden = true; ta.focus(); ta.setSelectionRange(before.length, before.length); };
+        }, 220);
+      });
+
+      if (postId) renderPost(); else renderFeed();
+    })();
+  </script>
+</body>
+</html>

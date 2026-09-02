@@ -183,7 +183,15 @@ router.get('/api/admin/reports', MOD, ah(async (req, res) => {
   const reporterIds = [...new Set(reports.map((r) => r.reporterId).filter(Boolean))];
   const reporters = await prisma.user.findMany({ where: { id: { in: reporterIds } } });
   const byId = new Map(reporters.map((u) => [u.id, publicUser(u)]));
-  res.json({ reports: reports.map((r) => ({ ...r, reporter: byId.get(r.reporterId) ?? null })) });
+  const postIds = reports.filter((r) => r.targetType === 'POST').map((r) => r.targetId);
+  const commentIds = reports.filter((r) => r.targetType === 'COMMENT').map((r) => r.targetId);
+  const [posts, comments] = await Promise.all([
+    postIds.length ? prisma.post.findMany({ where: { id: { in: postIds } }, include: { author: true } }) : [],
+    commentIds.length ? prisma.comment.findMany({ where: { id: { in: commentIds } }, include: { author: true } }) : [],
+  ]);
+  const postBy = new Map(posts.map((p) => [p.id, { title: p.title, status: p.status, author: p.author?.name, url: `/comunidade/p/${p.id}` }]));
+  const commentBy = new Map(comments.map((c) => [c.id, { title: c.body.slice(0, 120), status: c.status, author: c.author?.name, url: `/comunidade/p/${c.postId}#c-${c.id}` }]));
+  res.json({ reports: reports.map((r) => ({ ...r, reporter: byId.get(r.reporterId) ?? null, target: r.targetType === 'POST' ? postBy.get(r.targetId) ?? null : r.targetType === 'COMMENT' ? commentBy.get(r.targetId) ?? null : null })) });
 }));
 
 router.post('/api/admin/reports/:id/resolve', MOD, ah(async (req, res) => {

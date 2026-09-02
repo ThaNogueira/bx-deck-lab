@@ -58,15 +58,16 @@ router.get('/api/market', ah(async (_req, res) => {
 /** Denúncias (2.3): qualquer usuário logado pode denunciar conteúdo. */
 router.post('/api/reports', requireUser, ah(async (req, res) => {
   const b = req.body || {};
-  const targetType = ['DECK', 'USER', 'LISTING', 'COMBO', 'TOURNAMENT'].includes(b.targetType) ? b.targetType : null;
+  const targetType = ['DECK', 'USER', 'LISTING', 'COMBO', 'TOURNAMENT', 'POST', 'COMMENT'].includes(b.targetType) ? b.targetType : null;
   const targetId = String(b.targetId || '').slice(0, 64);
-  const reason = String(b.reason || '').trim().slice(0, 500);
+  const category = ['INAPPROPRIATE', 'SPAM', 'SCAM', 'HARASSMENT', 'OTHER'].includes(b.category) ? b.category : null;
+  const reason = String(b.reason || '').trim().slice(0, 500) || (category ? { INAPPROPRIATE: 'Conteúdo impróprio', SPAM: 'Spam / propaganda', SCAM: 'Golpe / venda falsa', HARASSMENT: 'Assédio / ofensa', OTHER: 'Outro' }[category] : '');
   if (!targetType || !targetId || !reason) return res.status(422).json({ error: 'Denúncia incompleta.' });
   const recent = await prisma.report.count({
     where: { reporterId: req.user.id, createdAt: { gt: new Date(Date.now() - 3_600_000) } },
   });
   if (recent >= 10) return res.status(429).json({ error: 'Muitas denúncias na última hora — aguarde um pouco.' });
-  await prisma.report.create({ data: { reporterId: req.user.id, targetType, targetId, reason } });
+  await prisma.report.create({ data: { reporterId: req.user.id, targetType, targetId, reason, category } });
   res.json({ ok: true });
 }));
 

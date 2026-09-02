@@ -125,7 +125,7 @@
         <span class="morb">
           ${p.img ? `<img loading="lazy" decoding="async" width="120" height="120" src="${esc(p.img)}" alt="${esc(p.display)}">` : `<b>${esc((p.abbrev || p.display.slice(0, 2)).toUpperCase())}</b>`}
           <i class="mscore">${s.score}</i>
-          ${i === 0 ? '<i class="mcrown">★</i>' : ''}
+          ${i === 0 ? `<i class="mcrown">${BX.ic('star', 14)}</i>` : ''}
         </span>
         <span class="mname">${esc(p.display)}</span>
       </span>
@@ -185,7 +185,7 @@
         </div>
         <div class="card-grid" style="margin-bottom:22px">${decks.map((d) => `
           <a class="list-card" href="/deck/${d.slug}">
-            <div style="display:flex;justify-content:space-between;gap:8px"><h3>${esc(d.title)}</h3>${d.featured ? '<span class="badge owned">★</span>' : ''}</div>
+            <div style="display:flex;justify-content:space-between;gap:8px"><h3>${esc(d.title)}</h3>${d.featured ? `<span class="badge owned">${BX.ic('star', 14)}</span>` : ''}</div>
             ${BX.deckPreview(d.beys, { u: 54, parts: d.parts })}
             <div class="list-card-foot">
               <span class="author-line">${BX.avatarHtml(d.author, { size: 22 })}<span style="color:#c4cad3">${esc(d.author?.name || '?')}</span></span>
@@ -327,7 +327,7 @@
     document.getElementById('pubPreview').innerHTML = `
       <div class="pub-beys">${filled.map((s, i) => `
         <div class="pub-bey"><b>Bey ${i + 1}</b><span>${esc(s.name === 'Bey incompleto' ? s.parts.map((p) => p.display).join(' ') : s.name)}</span></div>`).join('')}</div>
-      ${missing.length ? `<p class="pub-warn">⚠ Fora do catálogo do site e não serão publicadas: ${missing.map(esc).join(', ')}</p>` : ''}`;
+      ${missing.length ? `<p class="pub-warn">${BX.ic('warn', 14)} Fora do catálogo do site e não serão publicadas: ${missing.map(esc).join(', ')}</p>` : ''}`;
     modal.hidden = false;
 
     document.getElementById('publishClose').onclick = () => { modal.hidden = true; };
@@ -395,10 +395,10 @@
           <div class="saved-deck">
             <div class="saved-deck-main">
               <h3><a href="/deck/${esc(d.slug)}" style="color:inherit;text-decoration:none">${esc(d.title)}</a></h3>
-              <p>${d.isPublic ? '🌐 público' : '🔒 privado'}${d.folder ? ` • 📁 ${esc(d.folder)}` : ''} • ${d.beys.length} Bey(s)</p>
+              <p>${d.isPublic ? `${BX.ic('globe', 14)} público` : `${BX.ic('lock', 14)} privado`}${d.folder ? ` • ${BX.ic('folder', 14)} ${esc(d.folder)}` : ''} • ${d.beys.length} Bey(s)</p>
             </div>
             <div class="saved-deck-actions">
-              <a class="icon-btn" href="/?editar=${esc(d.slug)}#builder" title="Carregar no builder">↺</a>
+              <a class="icon-btn" href="/?editar=${esc(d.slug)}#builder" title="Carregar no builder">${BX.icon('refresh', 16)}</a>
             </div>
           </div>`).join('')
         : '<div class="empty-state">Nenhum deck ainda — monte um e clique em <b>Salvar deck</b>.</div>';
@@ -454,7 +454,7 @@
               if (!parts.length) { BX.toast('Esse produto ainda não tem as peças mapeadas no catálogo.'); return; }
               const r = window.BXApp.addProductParts(parts);
               BX.toast(`${product.name}: ${r.added} peça(s) adicionada(s) à coleção.`);
-              added.innerHTML = `<div class="col-added"><b>✓ ${esc(product.name)}</b><span>${parts.map((p) => BX.partTag({ ...p, display: p.displayName, img: p.imageUrl }, { size: 22 })).join('')}</span></div>` + added.innerHTML;
+              added.innerHTML = `<div class="col-added"><b>${BX.ic('check', 14)} ${esc(product.name)}</b><span>${parts.map((p) => BX.partTag({ ...p, display: p.displayName, img: p.imageUrl }, { size: 22 })).join('')}</span></div>` + added.innerHTML;
             } catch (e) { BX.toast(e.message); }
             finally { b.disabled = false; }
           }));

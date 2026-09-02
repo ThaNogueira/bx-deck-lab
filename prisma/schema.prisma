@@ -45,6 +45,11 @@ model User {
   entries        TournamentPlayer[]
   cosmetics      CosmeticGrant[]
   favoritePart   Part?             @relation(fields: [favoritePartId], references: [id], onDelete: SetNull)
+  posts          Post[]
+  comments       Comment[]
+  reactions      Reaction[]
+  pollVotes      PollVote[]
+  notifications  Notification[]    @relation("notifTarget")
 }
 
 model AuthSession {
@@ -279,6 +284,7 @@ model Report {
   targetType  String // DECK | USER | LISTING | COMBO | TOURNAMENT
   targetId    String
   reason      String
+  category    String? // INAPPROPRIATE | SPAM | SCAM | HARASSMENT | OTHER
   status      String    @default("OPEN") // OPEN | RESOLVED | IGNORED
   resolution  String?
   handledById String?
@@ -370,4 +376,87 @@ model PhysicalDeck {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Comunidade (feed estilo Reddit + YouTube)
+// ---------------------------------------------------------------------------
+
+model Post {
+  id            String    @id @default(cuid())
+  authorId      String
+  tag           String // CLIP | UNBOXING | CHANNEL | SALE | RESULT | CHAMPION | HELP | OFFTOPIC
+  title         String
+  body          String?
+  mediaJson     String    @default("[]") // [{type:image|gif|video|embed, url, poster?}]
+  pollJson      String? // {options:[{id,text}], endsAt}
+  saleJson      String? // {priceCents, condition, contact}
+  status        String    @default("VISIBLE") // VISIBLE | PENDING (triagem automática) | HIDDEN | REMOVED
+  flagJson      String? // resultado da triagem automática de imagem
+  reactionCount Int       @default(0)
+  commentCount  Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  author        User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  comments      Comment[]
+  votes         PollVote[]
+
+  @@index([status, createdAt])
+  @@index([tag, status])
+  @@index([authorId])
+}
+
+model Comment {
+  id            String    @id @default(cuid())
+  postId        String
+  authorId      String
+  parentId      String?
+  body          String
+  status        String    @default("VISIBLE") // VISIBLE | HIDDEN | REMOVED
+  reactionCount Int       @default(0)
+  createdAt     DateTime  @default(now())
+  post          Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author        User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([postId, createdAt])
+}
+
+model Reaction {
+  id         String   @id @default(cuid())
+  userId     String
+  targetType String // POST | COMMENT
+  targetId   String
+  kind       String // FIRE | TOP | LOL | WOW
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, targetType, targetId])
+  @@index([targetType, targetId])
+}
+
+model PollVote {
+  id        String   @id @default(cuid())
+  postId    String
+  userId    String
+  optionId  String
+  createdAt DateTime @default(now())
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId])
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String // quem recebe
+  type      String // REACTION | COMMENT | REPLY | MENTION | POST_APPROVED | POST_HIDDEN | REPORT_RESOLVED
+  actorId   String?
+  postId    String?
+  commentId String?
+  text      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation("notifTarget", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
 }

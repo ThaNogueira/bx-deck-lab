@@ -54,7 +54,7 @@
             <a class="list-card" href="/deck/${d.slug}">
               <div style="display:flex;justify-content:space-between;gap:8px">
                 <h2>${BX.esc(d.title)}</h2>
-                ${d.featured ? '<span class="badge owned">★ destaque</span>' : ''}
+                ${d.featured ? `<span class="badge owned">${BX.ic('star', 14)} destaque</span>` : ''}
               </div>
               ${BX.deckPreview(d.beys, { u: 50 })}
               ${d.description ? `<p class="muted" style="margin:0">${BX.esc(d.description.slice(0, 120))}${d.description.length > 120 ? '…' : ''}</p>` : ''}

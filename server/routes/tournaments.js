@@ -59,7 +59,7 @@ function matchDto(m) {
   };
 }
 
-async function loadTournament(slug) {
+export async function loadTournament(slug) {
   return prisma.tournament.findUnique({
     where: { slug },
     include: {
@@ -79,7 +79,7 @@ function winsMap(t) {
   return wins;
 }
 
-function standingsOf(t) {
+export function standingsOf(t) {
   const wins = winsMap(t);
   const losses = new Map(t.players.map((p) => [p.id, 0]));
   const oppIds = new Map(t.players.map((p) => [p.id, []]));

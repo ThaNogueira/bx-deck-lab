@@ -56,22 +56,22 @@
       function render() {
         const frameObj = frames().find((f) => f.id === current.frameId) || null;
         app.innerHTML = `
-          ${BX.qs('bemvindo') ? `<div class="source-banner" style="margin-bottom:16px"><strong>Bem-vindo(a) ao BX Deck Lab! 🌀</strong> Sua conta foi criada — personalize seu perfil abaixo e importe sua coleção no montador.</div>` : ''}
+          ${BX.qs('bemvindo') ? `<div class="source-banner" style="margin-bottom:16px"><strong>Bem-vindo(a) ao BX Deck Lab! ${BX.ic('spiral', 14)}</strong> Sua conta foi criada — personalize seu perfil abaixo e importe sua coleção no montador.</div>` : ''}
           <div class="profile-banner">${bannerInner(current)}
-            <button class="btn secondary no-print" id="bannerBtn" style="position:absolute;right:14px;bottom:12px;z-index:3">🖼 Trocar banner</button>
+            <button class="btn secondary no-print" id="bannerBtn" style="position:absolute;right:14px;bottom:12px;z-index:3">${BX.ic('image', 14)} Trocar banner</button>
           </div>
           <div class="profile-head">
             ${BX.avatarHtml(current, { size: 92, frame: frameObj })}
             <div class="profile-id">
-              <h1>${BX.esc(current.name)} ${current.verified ? '<span class="badge ok">✔ verificado</span>' : ''} <span class="role-chip ${current.role}">${current.role}</span></h1>
+              <h1>${BX.esc(current.name)} ${current.verified ? `<span class="badge ok">${BX.ic('check', 14)} verificado</span>` : ''} <span class="role-chip ${current.role}">${current.role}</span></h1>
               <p>@${BX.esc(current.slug)} • ${BX.esc(current.email)}</p>
               <div class="sticker-row" style="margin-top:8px">${selStickers.map((id) => {
                 const s = stickers().find((x) => x.id === id);
-                return s ? `<span class="sticker" title="${BX.esc(s.name)}">${s.imageUrl ? `<img src="${BX.esc(s.imageUrl)}">` : BX.esc(s.styleKey || '★')}</span>` : '';
+                return s ? `<span class="sticker" title="${BX.esc(s.name)}">${s.imageUrl ? `<img src="${BX.esc(s.imageUrl)}">` : BX.stickerIcon(s.styleKey)}</span>` : '';
               }).join('')}</div>
             </div>
             <div class="profile-head-actions">
-              <button class="btn secondary" id="avatarBtn">📷 Trocar foto</button>
+              <button class="btn secondary" id="avatarBtn">${BX.ic('camera', 14)} Trocar foto</button>
               <a class="btn ghost" href="/u/${BX.esc(current.slug)}">Ver perfil público</a>
               <button class="btn ghost" id="logoutBtn">Sair</button>
             </div>
@@ -104,7 +104,7 @@
                   <label>Stickers do perfil (até 8)</label>
                   <div class="choice-row">${stickers().map((s) => `
                     <div class="choice-item ${selStickers.includes(s.id) ? 'selected' : ''}" data-sticker="${s.id}">
-                      <span class="sticker">${s.imageUrl ? `<img src="${BX.esc(s.imageUrl)}">` : BX.esc(s.styleKey || '★')}</span><small>${BX.esc(s.name)}</small>
+                      <span class="sticker">${s.imageUrl ? `<img src="${BX.esc(s.imageUrl)}">` : BX.stickerIcon(s.styleKey)}</span><small>${BX.esc(s.name)}</small>
                     </div>`).join('')}</div>
                 </div>
                 <div class="inline-actions"><button class="btn primary" id="saveProfile">Salvar perfil</button></div>
@@ -136,9 +136,9 @@
               </div>
               <div class="panel-card">
                 <p class="eyebrow">DICAS</p>
-                <div class="mini-rule"><span>📷</span><p><strong>Avatar e banner animados:</strong> GIF, WebP animado e vídeos curtos (MP4/WebM) até 10 MB.</p></div>
-                <div class="mini-rule"><span>💬</span><p><strong>Vendas via WhatsApp:</strong> cadastre seu número para o botão “Tenho interesse” aparecer nos seus anúncios.</p></div>
-                <div class="mini-rule"><span>🏆</span><p><strong>Molduras exclusivas</strong> podem ser concedidas em premiações de torneios.</p></div>
+                <div class="mini-rule"><span>${BX.ic('camera', 14)}</span><p><strong>Avatar e banner animados:</strong> GIF, WebP animado e vídeos curtos (MP4/WebM) até 10 MB.</p></div>
+                <div class="mini-rule"><span>${BX.ic('whatsapp', 14)}</span><p><strong>Vendas via WhatsApp:</strong> cadastre seu número para o botão “Tenho interesse” aparecer nos seus anúncios.</p></div>
+                <div class="mini-rule"><span>${BX.ic('trophy', 14)}</span><p><strong>Molduras exclusivas</strong> podem ser concedidas em premiações de torneios.</p></div>
               </div>
             </div>
           </div>

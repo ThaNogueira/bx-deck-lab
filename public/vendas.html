@@ -53,7 +53,7 @@
               <div class="author-line">${BX.avatarHtml(i.seller, { size: 24 })}<a href="/u/${i.seller.slug}">${BX.esc(i.seller.name)}</a></div>
               <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:auto">
                 <span class="price">${i.priceCents != null ? BX.money(i.priceCents) : 'a combinar'}</span>
-                ${i.whatsappUrl ? `<a class="wa-btn" target="_blank" rel="noopener" href="${BX.esc(i.whatsappUrl)}">💬 Tenho interesse</a>` : '<small class="muted">sem WhatsApp cadastrado</small>'}
+                ${i.whatsappUrl ? `<a class="wa-btn" target="_blank" rel="noopener" href="${BX.esc(i.whatsappUrl)}">${BX.ic('whatsapp', 14)} Tenho interesse</a>` : '<small class="muted">sem WhatsApp cadastrado</small>'}
               </div>
             </div>`),
           ...combos.map((c) => `
@@ -64,7 +64,7 @@
               <div class="author-line">${BX.avatarHtml(c.seller, { size: 24 })}<a href="/u/${c.seller.slug}">${BX.esc(c.seller.name)}</a></div>
               <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:auto">
                 <span class="price">${c.priceCents != null ? BX.money(c.priceCents) : 'a combinar'}</span>
-                ${c.whatsappUrl ? `<a class="wa-btn" target="_blank" rel="noopener" href="${BX.esc(c.whatsappUrl)}">💬 Tenho interesse</a>` : ''}
+                ${c.whatsappUrl ? `<a class="wa-btn" target="_blank" rel="noopener" href="${BX.esc(c.whatsappUrl)}">${BX.ic('whatsapp', 14)} Tenho interesse</a>` : ''}
               </div>
             </div>`),
         ];

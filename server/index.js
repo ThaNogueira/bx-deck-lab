@@ -16,6 +16,8 @@ import deckRoutes from './routes/decks.js';
 import tournamentRoutes from './routes/tournaments.js';
 import marketRoutes from './routes/market.js';
 import adminRoutes from './routes/admin.js';
+import communityRoutes from './routes/community.js';
+import { warmModeration } from './moderation.js';
 
 const app = express();
 app.use(compression({ threshold: 1024 })); // gzip/brotli de HTML/CSS/JS/JSON (o Caddy também comprime; aqui cobre dev e acesso direto)
@@ -84,6 +86,8 @@ app.use(deckRoutes);
 app.use(tournamentRoutes);
 app.use(marketRoutes);
 app.use(adminRoutes);
+app.use(communityRoutes);
+warmModeration();
 
 // Uploads e estáticos
 app.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '30d', immutable: true }));
@@ -105,6 +109,8 @@ const PAGES = {
   '/pecas': 'pecas.html',
   '/produtos': 'produtos.html',
   '/torneios': 'torneios.html',
+  '/comunidade': 'comunidade.html',
+  '/icones': 'icones.html',
   '/vendas': 'vendas.html',
   '/admin': 'admin.html',
   '/manutencao': 'manutencao.html',
@@ -125,6 +131,7 @@ const DYNAMIC = [
   ['/t/:slug', 'inscricao.html'],
   ['/torneio/:slug/cartaz', 'cartaz.html'],
   ['/mesa/:slug/:matchId', 'mesa.html'],
+  ['/comunidade/p/:id', 'comunidade.html'],
 ];
 for (const [route, file] of DYNAMIC) {
   app.get(route, (_req, res) => res.sendFile(path.resolve('public', file)));

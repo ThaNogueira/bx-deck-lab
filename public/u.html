@@ -32,6 +32,19 @@
         return;
       }
       const { user, favoritePart, collection, combos, decks } = data;
+      const [postsRes, tourRes] = await Promise.all([
+        BX.api(`/api/users/${encodeURIComponent(slug)}/posts`).catch(() => ({ posts: [] })),
+        BX.api(`/api/users/${encodeURIComponent(slug)}/tournaments`).catch(() => ({ tournaments: [], titles: 0 })),
+      ]);
+      const userPosts = postsRes.posts || [];
+      const userTours = tourRes.tournaments || [];
+      const titles = tourRes.titles || 0;
+      const T_STATUS = { OPEN: 'Inscrições', RUNNING: 'Em andamento', FINISHED: 'Encerrado' };
+      const tourRow = (t) => `<a class="t-row ${t.champion ? 'champ' : ''}" href="/torneio/${BX.esc(t.slug)}">
+        <span class="t-ic">${BX.icon(t.champion ? 'trophy' : t.status === 'RUNNING' ? 'live' : t.status === 'OPEN' ? 'calendar' : 'medal', 18)}</span>
+        <span><b>${BX.esc(t.name)}</b><small>${BX.esc(t.storeName || '')}${t.storeName ? ' • ' : ''}${BX.dateFmt(t.startsAt, { day: '2-digit', month: 'short', year: 'numeric' })} • ${T_STATUS[t.status] || t.status}${t.dropped ? ' • desistiu' : ''}</small></span>
+        <small>${t.champion ? 'Campeão' : t.placement ? `${t.placement}º${t.wins != null ? ` • ${t.wins} V` : ''}` : ''}</small>
+      </a>`;
       document.title = `${user.name} — BX Deck Lab`;
       const me = await BX.me().catch(() => null);
       const idx = await BX.partTagReady();
@@ -75,7 +88,7 @@
                   ${BX.partThumb({ ...p, display: p.displayName, img: p.imageUrl }, 38)}
                   <span class="pcol-name"><b>${BX.esc(p.displayName || '?')}</b>${color}</span>
                   ${i.qty > 1 ? `<span class="pcol-qty">×${i.qty}</span>` : ''}
-                  ${both ? `<span class="pcol-check" title="${exact ? 'Mesma cor' : 'Você também tem'}">✓</span>` : ''}
+                  ${both ? `<span class="pcol-check" title="${exact ? 'Mesma cor' : 'Você também tem'}">${BX.ic('check', 14)}</span>` : ''}
                 </a>`;
               }).join('')}</div>
           </details>`;
@@ -91,7 +104,7 @@
           <div class="muted">${i.qty > 1 ? `${i.qty} unidades • ` : ''}${BX.esc(i.condition || 'condição não informada')}</div>
           <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
             <span class="price">${i.priceCents != null ? BX.money(i.priceCents) : 'a combinar'}</span>
-            ${i.whatsappUrl ? `<a class="wa-btn" target="_blank" rel="noopener" href="${BX.esc(i.whatsappUrl)}">💬 Tenho interesse</a>` : ''}
+            ${i.whatsappUrl ? `<a class="wa-btn" target="_blank" rel="noopener" href="${BX.esc(i.whatsappUrl)}">${BX.ic('whatsapp', 14)} Tenho interesse</a>` : ''}
           </div>
         </div>`;
 
@@ -102,10 +115,10 @@
           <div class="profile-id">
             <h1>${BX.esc(user.name)} ${user.role !== 'USER' ? `<span class="role-chip ${user.role}">${user.role}</span>` : ''}</h1>
             <p>@${BX.esc(user.slug)}${user.bio ? ` — ${BX.esc(user.bio)}` : ''}</p>
-            ${stickers.length ? `<div class="sticker-row" style="margin-top:8px">${stickers.map((s) => `<span class="sticker" title="${BX.esc(s.name)}">${s.imageUrl ? `<img src="${BX.esc(s.imageUrl)}">` : BX.esc(s.styleKey || '★')}</span>`).join('')}</div>` : ''}
+            ${stickers.length ? `<div class="sticker-row" style="margin-top:8px">${stickers.map((s) => `<span class="sticker" title="${BX.esc(s.name)}">${s.imageUrl ? `<img src="${BX.esc(s.imageUrl)}">` : BX.esc(s.styleKey || '') || BX.icon('star', 14)}</span>`).join('')}</div>` : ''}
           </div>
           <div class="profile-head-actions">
-            ${me && me.id === user.id ? '<a class="btn secondary" href="/perfil">Editar meu perfil</a>' : `<button class="btn ghost" id="reportBtn">⚑ Denunciar</button>`}
+            ${me && me.id === user.id ? '<a class="btn secondary" href="/perfil">Editar meu perfil</a>' : `<button class="btn ghost" id="reportBtn">${BX.icon('flag', 15)}Denunciar</button>`}
           </div>
         </div>
         <div class="profile-grid">
@@ -125,7 +138,7 @@
                     ${c.description ? `<p class="muted" style="margin:0">${BX.esc(c.description)}</p>` : ''}
                     ${c.forSale ? `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
                       <span class="price">${c.priceCents != null ? BX.money(c.priceCents) : 'a combinar'}</span>
-                      ${c.whatsappUrl ? `<a class="wa-btn" target="_blank" rel="noopener" href="${BX.esc(c.whatsappUrl)}">💬 Tenho interesse</a>` : ''}
+                      ${c.whatsappUrl ? `<a class="wa-btn" target="_blank" rel="noopener" href="${BX.esc(c.whatsappUrl)}">${BX.icon('whatsapp', 14)} Tenho interesse</a>` : ''}
                     </div>` : ''}
                   </div>`).join('')}</div>
               </div>` : ''}
@@ -159,6 +172,14 @@
                   ? decks.map((d) => `<div class="bey-line deck-line">${d.beys ? BX.deckPreview(d.beys, { u: 26 }) : ''}<span style="flex:1"><a href="/deck/${d.slug}" style="color:white;text-decoration:none;font-weight:700">${BX.esc(d.title)}</a></span><small style="color:var(--muted)">${BX.dateFmt(d.createdAt, { day: '2-digit', month: 'short' })}</small></div>`).join('')
                   : '<div class="empty-state">Nenhum deck publicado.</div>'}
               </div>
+            </div>
+            <div class="panel-card">
+              <div class="section-title-row" style="margin-bottom:8px"><div><p class="eyebrow">TORNEIOS</p><h2 style="font-size:22px">Participações</h2></div>${titles ? `<span class="title-count">${BX.icon('trophy', 14)} ${titles} título${titles === 1 ? '' : 's'}</span>` : ''}</div>
+              <div style="display:grid;gap:6px">${userTours.length ? userTours.slice(0, 12).map(tourRow).join('') : '<div class="empty-state">Ainda não participou de torneios.</div>'}</div>
+            </div>
+            <div class="panel-card">
+              <div class="section-title-row" style="margin-bottom:8px"><div><p class="eyebrow">COMUNIDADE</p><h2 style="font-size:22px">Posts</h2></div></div>
+              <div class="profile-posts">${userPosts.length ? userPosts.slice(0, 10).map((p) => `<a class="mini-post" href="/comunidade/p/${p.id}"><span><b>${BX.esc(p.title)}</b><small>${BX.esc(p.tagLabel)} • ${BX.dateFmt(p.createdAt, { day: '2-digit', month: 'short' })}</small></span><small>${BX.icon('comment', 12)} ${p.commentCount} · ${BX.icon('fire', 12)} ${p.reactions?.total ?? 0}</small></a>`).join('') : '<div class="empty-state">Nenhum post ainda.</div>'}</div>
             </div>
             <div class="panel-card">
               <p class="eyebrow">DESDE</p>

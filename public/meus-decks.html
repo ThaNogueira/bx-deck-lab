@@ -45,12 +45,12 @@
         return `<article class="archive-card physical" data-pid="${esc(String(d.id))}">
           <div class="archive-top">
             <h3>${esc(d.name || `Deck físico ${i + 1}`)}</h3>
-            <span class="vis-toggle off" title="Deck físico salvo na sua conta (Sessão física)">🧰 Físico</span>
+            <span class="vis-toggle off" title="Deck físico salvo na sua conta (Sessão física)">${BX.ic('package', 14)} Físico</span>
           </div>
           ${(d.beys || []).length ? BX.deckPreview(d.beys, { u: 46 }) : ''}
           <ol class="physical-names">${names.map((n) => `<li>${esc(n)}</li>`).join('')}</ol>
           <div class="archive-meta">
-            <span class="folder-chip">🧰 sessão física</span>
+            <span class="folder-chip">${BX.ic('package', 14)} sessão física</span>
             <small>${d.createdAt ? BX.dateFmt(d.createdAt, { day: '2-digit', month: 'short', year: '2-digit' }) : ''}</small>
           </div>
           <div class="archive-actions">
@@ -80,19 +80,19 @@
           <div class="archive-top">
             <h3><a href="/deck/${esc(d.slug)}">${esc(d.title)}</a></h3>
             <button class="vis-toggle ${d.isPublic ? 'on' : 'off'}" data-vis="${d.id}" title="${d.isPublic ? 'Público — clique para tornar privado' : 'Privado — clique para publicar'}">
-              ${d.isPublic ? '🌐 Público' : '🔒 Privado'}
+              ${d.isPublic ? `${BX.ic('globe', 14)} Público` : `${BX.ic('lock', 14)} Privado`}
             </button>
           </div>
           ${BX.deckPreview(beys, { u: 46 })}
           <div class="archive-meta">
-            ${d.folder ? `<span class="folder-chip">📁 ${esc(d.folder)}</span>` : '<span class="folder-chip empty">sem pasta</span>'}
-            ${d.featured ? '<span class="badge owned">★ destaque</span>' : ''}
+            ${d.folder ? `<span class="folder-chip">${BX.ic('folder', 14)} ${esc(d.folder)}</span>` : '<span class="folder-chip empty">sem pasta</span>'}
+            ${d.featured ? `<span class="badge owned">${BX.ic('star', 14)} destaque</span>` : ''}
             <small>${BX.dateFmt(d.createdAt, { day: '2-digit', month: 'short', year: '2-digit' })}</small>
           </div>
           <div class="archive-actions">
             <a class="btn secondary" href="/deck/${esc(d.slug)}">Abrir</a>
             <a class="btn secondary" href="/?editar=${esc(d.slug)}#builder">Editar</a>
-            <button class="btn secondary" data-move="${d.id}">📁 Pasta</button>
+            <button class="btn secondary" data-move="${d.id}">${BX.ic('folder', 14)} Pasta</button>
             <button class="btn secondary" data-dup="${d.id}">Duplicar</button>
             <button class="btn danger-outline" data-del="${d.id}">Excluir</button>
           </div>
@@ -116,8 +116,8 @@
           </div>
 
           <div class="pill-toggle archive-tabs">
-            <button data-tab="online" class="${tab === 'online' ? 'active' : ''}">💾 Meus decks <i>${decks.length}</i></button>
-            <button data-tab="fisicos" class="${tab === 'fisicos' ? 'active' : ''}">🧰 Decks físicos <i>${physicalDecks().length}</i></button>
+            <button data-tab="online" class="${tab === 'online' ? 'active' : ''}">${BX.ic('save', 14)} Meus decks <i>${decks.length}</i></button>
+            <button data-tab="fisicos" class="${tab === 'fisicos' ? 'active' : ''}">${BX.ic('package', 14)} Decks físicos <i>${physicalDecks().length}</i></button>
           </div>
 
           ${tab === 'fisicos' ? `
@@ -134,10 +134,10 @@
                 <div><p class="eyebrow" style="margin:0">PASTAS</p></div>
                 <button class="btn ghost" id="newFolder" title="Criar pasta">+</button>
               </div>
-              <button class="folder-item ${folder === '' ? 'active' : ''}" data-folder="">📚 Todos <i>${decks.length}</i></button>
-              <button class="folder-item ${folder === NO_FOLDER ? 'active' : ''}" data-folder="${NO_FOLDER}">🗂 Sem pasta <i>${count(NO_FOLDER)}</i></button>
-              ${fs.map((f) => `<button class="folder-item ${folder === f ? 'active' : ''}" data-folder="${esc(f)}">📁 ${esc(f)} <i>${count(f)}</i>
-                <span class="folder-edit" data-rename="${esc(f)}" title="Renomear pasta">✎</span></button>`).join('')}
+              <button class="folder-item ${folder === '' ? 'active' : ''}" data-folder="">${BX.ic('book', 14)} Todos <i>${decks.length}</i></button>
+              <button class="folder-item ${folder === NO_FOLDER ? 'active' : ''}" data-folder="${NO_FOLDER}">${BX.ic('archive', 14)} Sem pasta <i>${count(NO_FOLDER)}</i></button>
+              ${fs.map((f) => `<button class="folder-item ${folder === f ? 'active' : ''}" data-folder="${esc(f)}">${BX.ic('folder', 14)} ${esc(f)} <i>${count(f)}</i>
+                <span class="folder-edit" data-rename="${esc(f)}" title="Renomear pasta">${BX.ic('edit', 14)}</span></button>`).join('')}
               <hr />
               <div class="archive-stats">
                 <div><b>${decks.filter((d) => d.isPublic).length}</b><small>públicos</small></div>
@@ -198,7 +198,7 @@
         document.getElementById('newFolder').addEventListener('click', () => {
           const name = prompt('Nome da nova pasta:');
           if (!name?.trim()) return;
-          BX.toast(`Pasta "${name.trim()}" criada — use o botão 📁 de um deck para mover.`);
+          BX.toast(`Pasta "${name.trim()}" criada — use o botão "Pasta" de um deck para mover.`);
           folder = name.trim();
           render();
         });

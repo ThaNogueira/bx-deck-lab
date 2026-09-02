@@ -517,7 +517,7 @@
       if(!shown.length)return'';
       const pct=Math.round(owned/items.length*100);
       return `<section class="chk-section"><div class="chk-head"><div><h2>${KIND_LABEL[kind]||kind}</h2><small>${owned} de ${items.length} • ${pct}%</small></div><div class="chk-bar"><i style="width:${pct}%"></i></div></div><div class="chk-grid">${shown.map(p=>{const qty=inventory[p.id]||0,has=qty>0;
-        return `<div class="chk-item ${has?'owned':'missing'}" data-id="${escapeAttr(p.id)}" title="${escapeAttr(has?`Você tem ${qty}`:'Clique para marcar como tenho (adiciona à coleção)')}">${partArt(p)}<div class="chk-meta"><strong><a class="plink" href="/peca/${slug(p.display||p.name)}">${escapeHTML(p.display)}</a></strong><small>${p.abbrev?escapeHTML(p.abbrev):''}${has&&qty>1?` ×${qty}`:''}${p.banned?' • banida':''}</small></div><span class="chk-mark">${has?'✓':'+'}</span></div>`;}).join('')}</div></section>`;
+        return `<div class="chk-item ${has?'owned':'missing'}" data-id="${escapeAttr(p.id)}" title="${escapeAttr(has?`Você tem ${qty}`:'Clique para marcar como tenho (adiciona à coleção)')}">${partArt(p)}<div class="chk-meta"><strong><a class="plink" href="/peca/${slug(p.display||p.name)}">${escapeHTML(p.display)}</a></strong><small>${p.abbrev?escapeHTML(p.abbrev):''}${has&&qty>1?` ×${qty}`:''}${p.banned?' • banida':''}</small></div><span class="chk-mark">${has?`${BX.ic('check', 14)}`:'+'}</span></div>`;}).join('')}</div></section>`;
     }).join('');
     root.innerHTML=sections||'<div class="empty-state">Nenhuma peça com esses filtros.</div>';
     root.querySelectorAll('.chk-item.missing').forEach(el=>el.addEventListener('click',async e=>{if(e.target.closest('a'))return;const p=PARTS[el.dataset.id];if(!p)return;const c=await chooseColor(p);if(!c)return;changeManualQty(c.id,1);toast(`${c.display}${c.colorLabel?` (${c.colorLabel})`:''} marcada como "tenho".`);}));
@@ -969,7 +969,7 @@
   function selectHTML(kind, value, slotIndex, dataField, placeholder, extra='') {
     const opts=availableParts(kind,slotIndex);
     if(value && PARTS[value] && !opts.some(x=>x.p.id===value)) opts.unshift({p:PARTS[value],disabled:false,qty:inventory[value]||0,missing:!builderShowAll});
-    return `<select data-slot="${slotIndex}" data-field="${dataField}" ${extra}><option value="">${placeholder}</option>${opts.map(({p,disabled,qty,missing})=>`<option value="${p.id}" ${p.id===value?'selected':''} ${disabled && p.id!==value?'disabled':''}>${escapeHTML(p.display)}${p.abbrev && p.abbrev!==p.display?' ['+p.abbrev+']':''}${qty>0?` ✓×${qty}`:builderShowAll?'':' ×0'}${missing?' — NÃO POSSUI':''}${p.banned?' — BANIDA':''}</option>`).join('')}</select>`;
+    return `<select data-slot="${slotIndex}" data-field="${dataField}" ${extra}><option value="">${placeholder}</option>${opts.map(({p,disabled,qty,missing})=>`<option value="${p.id}" ${p.id===value?'selected':''} ${disabled && p.id!==value?'disabled':''}>${escapeHTML(p.display)}${p.abbrev && p.abbrev!==p.display?' ['+p.abbrev+']':''}${qty>0?` ${BX.ic('check', 14)}×${qty}`:builderShowAll?'':' ×0'}${missing?' — NÃO POSSUI':''}${p.banned?' — BANIDA':''}</option>`).join('')}</select>`;
   }
 
 
@@ -1153,12 +1153,12 @@
     const v=validateDeck();
     const legalEl=document.getElementById('deckLegality');
     legalEl.className='legality '+(v.legal?'good':v.errors.length?'bad':'neutral');
-    legalEl.textContent=v.legal?'✓ Deck legal':v.errors.length?'✕ Deck ilegal':`${v.complete}/3 Beys prontos`;
+    legalEl.innerHTML=v.legal?`${BX.ic('check',13)} Deck legal`:v.errors.length?`${BX.ic('x',13)} Deck ilegal`:`${v.complete}/3 Beys prontos`;
     document.getElementById('validationList').innerHTML=[
       ...v.errors.map(x=>`<div class="validation-item err"><i>×</i><span>${escapeHTML(x)}</span></div>`),
       ...v.info.map(x=>`<div class="validation-item"><i>•</i><span>${escapeHTML(x)}</span></div>`),
-      ...(v.legal?[`<div class="validation-item"><i>✓</i><span>Três Beys completos e sem repetições proibidas.</span></div>`]:[])
-    ].join('') || `<div class="validation-item"><i>✓</i><span>Nenhum problema detectado.</span></div>`;
+      ...(v.legal?[`<div class="validation-item"><i>${BX.ic('check', 14)}</i><span>Três Beys completos e sem repetições proibidas.</span></div>`]:[])
+    ].join('') || `<div class="validation-item"><i>${BX.ic('check', 14)}</i><span>Nenhum problema detectado.</span></div>`;
     renderDeckAnalysis();
   }
 
@@ -1196,7 +1196,7 @@
         ${slot.mode!=='cxrib'?`<div class="field"><label>Bit</label>${selectHTML('bit',slot.bit,i,'bit','Escolha a ponta')}</div>`:''}
         ${bitProfile?`<div class="bit-inline-note"><b>${escapeHTML(tipPart?.abbrev||tipPart?.display)}</b><span>${escapeHTML(bitProfile.note)}</span></div>`:''}
       </div>
-      <div class="bey-summary"><strong>${escapeHTML(slotName(slot))}</strong><small>${isComplete(slot)?(invalid.length?`⚠ ${invalid[0]}`:'✓ Montagem válida'):'Selecione todas as peças necessárias'}</small></div>
+      <div class="bey-summary"><strong>${escapeHTML(slotName(slot))}</strong><small>${isComplete(slot)?(invalid.length?`${BX.ic('warn', 14)} ${invalid[0]}`:`${BX.ic('check', 14)} Montagem válida`):'Selecione todas as peças necessárias'}</small></div>
       ${renderBeyAnalysis(slot)}
     </article>`;
   }
@@ -1272,7 +1272,7 @@
       adjustMany([[p.id,-qty]]); toast(`${p.display} removida da coleção.`);
     }));
     const bk=document.getElementById('colBackups');
-    if(bk){const list=collectionBackups();bk.innerHTML=list.length?list.map((b,i)=>`<button class="backup-row" data-restore="${i}" title="Restaurar este backup"><span>${new Date(b.at).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</span><small>${b.count} item(ns) • ${escapeHTML(b.reason||'')}</small><b>↺</b></button>`).join(''):'<small class="muted">Nenhum backup ainda — eles são criados automaticamente quando a coleção muda.</small>';
+    if(bk){const list=collectionBackups();bk.innerHTML=list.length?list.map((b,i)=>`<button class="backup-row" data-restore="${i}" title="Restaurar este backup"><span>${new Date(b.at).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</span><small>${b.count} item(ns) • ${escapeHTML(b.reason||'')}</small><b>${BX.ic('refresh', 14)}</b></button>`).join(''):'<small class="muted">Nenhum backup ainda — eles são criados automaticamente quando a coleção muda.</small>';
       bk.querySelectorAll('[data-restore]').forEach(b=>b.addEventListener('click',()=>{if(confirm('Restaurar este backup? A coleção atual será guardada como backup antes.'))restoreCollectionBackup(+b.dataset.restore);}));}
     document.getElementById('addBeysEmptyBtn')?.addEventListener('click',()=>document.getElementById('addBeysBtn')?.click());
     hydrateImages(root);
@@ -1329,7 +1329,7 @@
     const colorChip=p.parentId?`<span class="color-chip">${escapeHTML(p.colorLabel||'Cor')}</span>`:(item.hasColors?'<span class="color-chip none">sem cor definida</span>':'');
     return `<article class="part-card item ${p.banned?'banned':''}" title="${escapeAttr(partTooltip(p))}">
       <button class="item-remove" data-remove="${escapeAttr(p.id)}" data-qty="${item.qty}" title="Remover da coleção" aria-label="Remover ${escapeAttr(p.display)} da coleção">×</button>
-      <div class="item-photo">${partArt(p)}<button class="item-edit" data-edit="${escapeAttr(p.id)}" title="Editar cor e quantidade" aria-label="Editar">${window.BX?.icon?window.BX.icon('edit',13):'✎'}</button></div>
+      <div class="item-photo">${partArt(p)}<button class="item-edit" data-edit="${escapeAttr(p.id)}" title="Editar cor e quantidade" aria-label="Editar">${window.BX?.icon?window.BX.icon('edit',13):`${BX.ic('edit', 14)}`}</button></div>
       <div class="part-meta"><small>${KIND_LABEL[p.kind] || p.kind}</small><strong><a class="plink" href="/peca/${slug(p.display||p.name)}" title="Ver página da peça">${escapeHTML(p.display)}</a>${p.abbrev?` <span style="color:#707887">${escapeHTML(p.abbrev)}</span>`:''}</strong>
         <div class="item-tags">${colorChip}${p.banned?'<span class="badge banned">Banida</span>':''}${h?.type?`<span class="badge ${cls}">${escapeHTML(h.type)}</span>`:''}</div>
       </div>
@@ -1428,7 +1428,7 @@
     return[];
   }
   function popularOwned(d){return (d.parts||d.combos.map(comboPartsFromText)).reduce((n,parts)=>n+(parts||[]).filter(hasEquivalent).length,0);}
-  function comboOwnedText(parts){parts=parts||[];const n=parts.filter(hasEquivalent).length,total=parts.length||3;return n===total&&total?'✓ Você possui todas as peças-base':n?`${n}/${total} peças-base na coleção`:'Nenhuma peça-base equivalente';}
+  function comboOwnedText(parts){parts=parts||[];const n=parts.filter(hasEquivalent).length,total=parts.length||3;return n===total&&total?`${BX.ic('check', 14)} Você possui todas as peças-base`:n?`${n}/${total} peças-base na coleção`:'Nenhuma peça-base equivalente';}
   function popularSlot(parts,combo='') {
     parts=(parts&&parts.length)?parts:comboPartsFromText(combo);if(!parts.length)return emptySlot();
     if(parts.length===2){const s=emptySlot();s.mode='integrated';s.blade=ensureReferencePart('integrated',parts[0]);s.bit=ensureReferencePart('bit',parts[1]);return s;}
@@ -1559,7 +1559,7 @@
   function renderPopular() {
     const root=document.getElementById('popularGrid');if(!root)return;const shown=metaDecks.slice(0,metaVisible);const count=document.getElementById('metaDeckCount');if(count)count.textContent=`${shown.length} de ${metaDecks.length} cards carregados`;
     root.innerHTML=shown.map((d,idx)=>{const effectiveParts=(d.parts||d.combos.map(comboPartsFromText));const own=popularOwned(d),total=Math.max(1,effectiveParts.reduce((n,p)=>n+(p?.length||3),0)),pct=Math.round(own/total*100),badge=d.sourceType==='aggregate'?'Agregado':'Pódio';const info=[d.date,d.players?`${d.players} jogadores`:'',d.ranked===false?'Unranked':d.ranked?'Ranked':''].filter(Boolean).join(' • ');
-      return `<article class="meta-deck"><div class="meta-head"><div><h2>${escapeHTML(d.player||d.sourceName||'Meta')}</h2><p>${escapeHTML(d.event)}${info?` • ${escapeHTML(info)}`:''}</p><span class="meta-source-badge ${d.sourceType==='aggregate'?'aggregate':'podium'}">${badge} • ${escapeHTML(d.sourceName||'WBO')}</span></div><div class="place">${escapeHTML(d.place||'META')}</div></div><div class="meta-combos">${d.combos.map((c,i)=>`<div class="meta-combo"><div class="combo-num">${i+1}</div>${window.BX?.beyMini&&window.BX.partTag?._idx?window.BX.beyMini(effectiveParts[i]||comboPartsFromText(c),{u:38}):''}<div class="combo-text"><strong>${window.BX?.partTag?._idx?window.BX.comboTags(c,{size:18}):escapeHTML(c)}</strong><small>${comboOwnedText(effectiveParts[i])}</small></div><button class="mini-copy copy-meta-bey" data-i="${idx}" data-bey="${i}" title="Copiar apenas este Bey">Copiar Bey</button></div>`).join('')}</div><div class="meta-foot"><div class="owned-meter"><small>${own}/${total} peças-base equivalentes na sua coleção</small><div><i style="width:${pct}%"></i></div></div><div class="meta-actions"><button class="btn ghost copy-meta" data-i="${idx}">Copiar deck inteiro</button><a class="meta-link" href="${d.source}" target="_blank" rel="noopener">Fonte ↗</a></div></div></article>`;}).join('');
+      return `<article class="meta-deck"><div class="meta-head"><div><h2>${escapeHTML(d.player||d.sourceName||'Meta')}</h2><p>${escapeHTML(d.event)}${info?` • ${escapeHTML(info)}`:''}</p><span class="meta-source-badge ${d.sourceType==='aggregate'?'aggregate':'podium'}">${badge} • ${escapeHTML(d.sourceName||'WBO')}</span></div><div class="place">${escapeHTML(d.place||'META')}</div></div><div class="meta-combos">${d.combos.map((c,i)=>`<div class="meta-combo"><div class="combo-num">${i+1}</div>${window.BX?.beyMini&&window.BX.partTag?._idx?window.BX.beyMini(effectiveParts[i]||comboPartsFromText(c),{u:38}):''}<div class="combo-text"><strong>${window.BX?.partTag?._idx?window.BX.comboTags(c,{size:18}):escapeHTML(c)}</strong><small>${comboOwnedText(effectiveParts[i])}</small></div><button class="mini-copy copy-meta-bey" data-i="${idx}" data-bey="${i}" title="Copiar apenas este Bey">Copiar Bey</button></div>`).join('')}</div><div class="meta-foot"><div class="owned-meter"><small>${own}/${total} peças-base equivalentes na sua coleção</small><div><i style="width:${pct}%"></i></div></div><div class="meta-actions"><button class="btn ghost copy-meta" data-i="${idx}">Copiar deck inteiro</button><a class="meta-link" href="${d.source}" target="_blank" rel="noopener">Fonte ${BX.ic('external', 14)}</a></div></div></article>`;}).join('');
     root.querySelectorAll('.copy-meta').forEach(b=>b.addEventListener('click',()=>copyPopularDeck(+b.dataset.i)));root.querySelectorAll('.copy-meta-bey').forEach(b=>b.addEventListener('click',()=>{const d=metaDecks[+b.dataset.i],parts=d.parts?.[+b.dataset.bey]||comboPartsFromText(d.combos[+b.dataset.bey]);copyBeyToBuilder(popularSlot(parts,d.combos[+b.dataset.bey]),d.combos[+b.dataset.bey]);}));
   }
 
@@ -1799,7 +1799,7 @@
     const v=validateSessionDraft(), reserved=reservedUsage();
     const reservedCount=Object.values(reserved).reduce((a,b)=>a+b,0), total=Object.values(inventory).reduce((a,b)=>a+b,0);
     document.getElementById('sessionSummary').innerHTML=`<div><b>${sessionDecks.length}</b><span>decks montados</span></div><div><b>${reservedCount}</b><span>peças reservadas</span></div><div><b>${Math.max(0,total-reservedCount)}</b><span>peças físicas livres</span></div>`;
-    const leg=document.getElementById('sessionLegality');leg.className='legality '+(v.legal?'good':v.errors.length?'bad':'neutral');leg.textContent=v.legal?(v.warnings.length?'✓ Pode reservar • regra casual':'✓ Pode reservar'):v.errors.length?'✕ Conflito de estoque':`${v.complete}/3 Beys prontos`;
+    const leg=document.getElementById('sessionLegality');leg.className='legality '+(v.legal?'good':v.errors.length?'bad':'neutral');leg.innerHTML=v.legal?(v.warnings.length?`${BX.ic('check', 14)} Pode reservar • regra casual`:`${BX.ic('check', 14)} Pode reservar`):v.errors.length?`${BX.ic('x', 14)} Conflito de estoque`:`${v.complete}/3 Beys prontos`;
     root.innerHTML=sessionDraft.map(renderSessionSlot).join('');
     root.querySelectorAll('select[data-session-slot]').forEach(x=>x.addEventListener('change',onSessionSlotChange));
     root.querySelectorAll('.session-clear-slot').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();sessionDraft[+b.dataset.slot]=emptySlot();saveSession();renderSession();}));hydrateImages(root);
@@ -1860,7 +1860,7 @@
   function confirmThirdPlaceMatch(){
     const match=tournament.thirdPlaceMatch;if(!match||!match.p1||!match.p2){toast('A disputa de 3º lugar ainda não está definida.');return;}
     const s1=Number(match.s1),s2=Number(match.s2);if(!Number.isFinite(s1)||!Number.isFinite(s2)||s1<0||s2<0){toast('Digite placares válidos.');return;}if(s1===s2){toast('O confronto precisa ter um vencedor.');return;}
-    match.winner=s1>s2?match.p1:match.p2;match.confirmed=true;saveTournament();renderTournament();toast(`🥉 ${playerById(match.winner)?.name||'Terceiro lugar'} ficou em 3º.`);
+    match.winner=s1>s2?match.p1:match.p2;match.confirmed=true;saveTournament();renderTournament();toast(`${playerById(match.winner)?.name||'Terceiro lugar'} ficou em 3º.`);
   }
   function standings(){
     const stats={};tournament.players.forEach(p=>stats[p.id]={p,j:0,w:0,l:0,pf:0,pa:0});
@@ -1973,7 +1973,7 @@
     const bracket=document.getElementById('bracket');
     const mainBracket=tournament.rounds.length?tournament.rounds.map((round,r)=>{
       const isFinal=r===tournament.rounds.length-1;
-      const thirdNested=isFinal&&tournament.thirdPlaceEnabled?`<div class="third-place-nested"><div class="third-place-nested-title"><span>🥉</span><b>Disputa de 3º lugar</b></div>${renderThirdPlaceMatch(tournament.thirdPlaceMatch)}</div>`:'';
+      const thirdNested=isFinal&&tournament.thirdPlaceEnabled?`<div class="third-place-nested"><div class="third-place-nested-title"><span>${BX.ic('medal', 14)}</span><b>Disputa de 3º lugar</b></div>${renderThirdPlaceMatch(tournament.thirdPlaceMatch)}</div>`:'';
       return `<section class="bracket-round ${isFinal?'final-round':''}"><h3>${roundTitle(r,tournament.rounds.length)}</h3><div class="round-matches">${round.map((m,i)=>renderBracketMatch(m,r,i)).join('')}${thirdNested}</div></section>`;
     }).join(''):'<div class="empty-state bracket-empty">Inscreva jogadores e clique em “Gerar / sortear chave”.</div>';
     bracket.innerHTML=mainBracket; bracketNatural=null; applyBracketLayout();
@@ -1981,8 +1981,8 @@
     bracket.querySelectorAll('.match-confirm[data-r]').forEach(b=>b.addEventListener('click',()=>confirmTournamentMatch(+b.dataset.r,+b.dataset.m)));
     bracket.querySelectorAll('.third-score').forEach(inp=>inp.addEventListener('input',()=>{if(tournament.thirdPlaceMatch){tournament.thirdPlaceMatch[inp.dataset.side]=inp.value;saveTournament();}}));
     document.getElementById('confirmThirdPlaceBtn')?.addEventListener('click',confirmThirdPlaceMatch);
-    const final=tournament.rounds.at(-1)?.[0],champ=final?.confirmed?playerById(final.winner):null;document.getElementById('tournamentChampion').innerHTML=champ?`🏆 ${escapeHTML(champ.name)}`:'';
-    const third=tournament.thirdPlaceMatch?.confirmed?playerById(tournament.thirdPlaceMatch.winner):null;const thirdChip=document.getElementById('tournamentThirdPlaceResult');if(thirdChip)thirdChip.innerHTML=third?`🥉 ${escapeHTML(third.name)}`:'';
+    const final=tournament.rounds.at(-1)?.[0],champ=final?.confirmed?playerById(final.winner):null;document.getElementById('tournamentChampion').innerHTML=champ?`${BX.ic('trophy', 14)} ${escapeHTML(champ.name)}`:'';
+    const third=tournament.thirdPlaceMatch?.confirmed?playerById(tournament.thirdPlaceMatch.winner):null;const thirdChip=document.getElementById('tournamentThirdPlaceResult');if(thirdChip)thirdChip.innerHTML=third?`${BX.ic('medal', 14)} ${escapeHTML(third.name)}`:'';
   }
   function addTournamentPlayer(){
     const name=document.getElementById('playerNameInput').value.trim(),deckText=document.getElementById('playerDeckInput').value.trim();if(!name){toast('Digite o nome do jogador.');return;}if(tournament.players.length>=(tournament.maxPlayers||8)){toast('O limite configurado de jogadores foi atingido.');return;}
@@ -2042,7 +2042,7 @@
       const filters=document.getElementById(cfg.filters);
       if(filters&&!filters.dataset.ready){
         filters.innerHTML=PICKER_KINDS.map(([k,label])=>`<button class="picker-chip ${k===st.kind?'active':''}" data-kind="${k}">${label}</button>`).join('')
-          +(cfg.onlyOwned?'':`<button class="picker-chip owned-toggle" data-owned="1" title="Mostrar só peças que eu tenho">✓ Tenho</button>`);
+          +(cfg.onlyOwned?'':`<button class="picker-chip owned-toggle" data-owned="1" title="Mostrar só peças que eu tenho">${BX.ic('check', 14)} Tenho</button>`);
         filters.dataset.ready='1';
         filters.querySelectorAll('[data-kind]').forEach(b=>b.addEventListener('click',()=>{
           st.kind=b.dataset.kind;
@@ -2066,7 +2066,7 @@
           ${stt?.badge?`<i class="picker-left ${stt.disabled?'out':''}">${escapeHTML(stt.badge)}</i>`:''}
           ${partArt(p,'tile')}
           <span class="picker-tile-name">${escapeHTML(p.display)}</span>
-          ${owned?`<i class="picker-owned">✓${owned>1?` ×${owned}`:''}</i><em class="picker-have">na coleção</em>`:''}
+          ${owned?`<i class="picker-owned">${BX.ic('check', 14)}${owned>1?` ×${owned}`:''}</i><em class="picker-have">na coleção</em>`:''}
           ${p.banned?'<i class="picker-banned">!</i>':''}
         </button>`;
       }).join('')||'<div class="empty-state">Nenhuma peça com esses filtros.</div>';
@@ -2121,8 +2121,8 @@
         <p>${(d.deck||[]).map(slotName).map(escapeHTML).join(' • ')}</p>
       </div>
       <div class="saved-deck-actions col">
-        <button class="btn secondary" data-phys-import="${i}" title="Carregar este deck no builder">↺ Importar</button>
-        <button class="btn primary" data-phys-publish="${i}" title="Carregar e salvar na sua conta">💾 Publicar</button>
+        <button class="btn secondary" data-phys-import="${i}" title="Carregar este deck no builder">${BX.ic('refresh', 14)} Importar</button>
+        <button class="btn primary" data-phys-publish="${i}" title="Carregar e salvar na sua conta">${BX.ic('save', 14)} Publicar</button>
       </div>
     </div>`).join('');
     el.querySelectorAll('[data-phys-import]').forEach(b=>b.addEventListener('click',()=>{loadPhysicalDeck(+b.dataset.physImport);toast('Deck físico carregado no builder.');}));
@@ -2177,7 +2177,7 @@
   const builderModeBtn=document.getElementById('builderModeBtn');
   function syncBuilderModeBtn(){
     if(!builderModeBtn)return;
-    builderModeBtn.textContent=builderShowAll?'🌐 Catálogo inteiro':'🎒 Só minha coleção';
+    builderModeBtn.innerHTML=builderShowAll?`${BX.ic('globe',14)} Catálogo inteiro`:`${BX.ic('backpack',14)} Só minha coleção`;
     builderModeBtn.title=builderShowAll?'Mostrando todas as peças do catálogo — clique para ver só a sua coleção':'Mostrando só peças que você possui — clique para liberar o catálogo inteiro';
   }
   builderModeBtn?.addEventListener('click',()=>{

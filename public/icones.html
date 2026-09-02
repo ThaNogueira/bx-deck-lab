@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="referrer" content="no-referrer" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;0,700;0,800;1,700&family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;0,700;0,800;1,700&family=Inter:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'">
+  <meta name="theme-color" content="#090a0f" />
+  <title>Guia de ícones — BX Deck Lab</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="noise"></div>
+  <header id="topbar"></header>
+  <main id="app"></main>
+  <script src="/js/shared.js"></script>
+  <script>
+    BX.renderTopbar(null);
+    const { esc, icon } = BX;
+    const app = document.getElementById('app');
+    const SEM = {
+      live: 'Partida em andamento', done: 'Concluída / confirmada', pending: 'Aguardando', conflict: 'Conflito: precisa do juiz', bye: 'Bye (passa direto)', finish: 'Torneio encerrado',
+      fire: 'Reação: fogo', top: 'Reação: top', lol: 'Reação: risada', wow: 'Reação: uau',
+      clip: 'Clipe de Partida', unboxing: 'Unboxing', channel: 'Divulgação de Canal', sale: 'Venda / Troca de Bey', result: 'Resultado de Torneio', champion: 'Campeão', help: 'Dúvida / Ajuda', offtopic: 'Off-topic',
+      flag: 'Denunciar', trash: 'Apagar (destrutivo)', warn: 'Atenção', shield: 'Moderação', ban: 'Banir / bloquear', eye: 'Revisar / visualizar',
+    };
+    app.innerHTML = `
+      <div class="hero compact">
+        <div><p class="eyebrow">DESIGN SYSTEM</p><h1>Guia de <em>ícones</em></h1>
+        <p>Um só traço (1.9px), cantos arredondados, grade 24×24, sem preenchimento. Cada ícone vive no sprite SVG de <code>shared.js</code> e é usado com <code>BX.icon('nome', tamanho)</code>. Nunca usar emoji do sistema: a aparência varia por aparelho e quebra o visual.</p></div>
+      </div>
+      <div class="panel-card" style="margin-bottom:16px">
+        <h3>Como usar</h3>
+        <pre class="mono" style="white-space:pre-wrap;font-size:12px;color:var(--muted);margin:8px 0 0">// JS (páginas):
+const html = BX.icon('trophy', 18);          // &lt;svg class="vicon"&gt;&lt;use href="#i-trophy"/&gt;&lt;/svg&gt;
+btn.innerHTML = BX.icon('check', 15) + 'Confirmar';
+
+// Tamanhos: 12–14 em texto/pills, 15–16 em botões, 18–22 em títulos e navegação.
+// Cor: herda de currentColor. Status usam as variáveis --green (done), --orange (pending), --red (conflict/live), --cyan (info).</pre>
+      </div>
+      <div class="panel-card" style="margin-bottom:16px">
+        <h3>Cores de status (torneio e partida)</h3>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+          <span class="m-status live">${icon('live', 12)} Ao vivo</span>
+          <span class="m-status done">${icon('done', 12)} Concluída</span>
+          <span class="m-status pending">${icon('pending', 12)} Aguardando</span>
+          <span class="m-status ready">${icon('bolt', 12)} Pronta</span>
+          <span class="m-status conflict">${icon('conflict', 12)} Conflito</span>
+          <span class="m-status bye">${icon('bye', 12)} Bye</span>
+        </div>
+        <h3 style="margin-top:18px">Tags da comunidade</h3>
+        <div class="tag-chips" style="margin-top:10px">${['clip','unboxing','channel','sale','result','champion','help','offtopic'].map((k) => `<span class="tag-chip sm ${k}">${icon(k, 14)}${esc(SEM[k])}</span>`).join('')}</div>
+        <h3 style="margin-top:18px">Reações</h3>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">${['fire','top','lol','wow'].map((k) => `<span class="react-btn on" style="cursor:default">${icon(k, 15)}<span>${esc(SEM[k].replace('Reação: ', ''))}</span></span>`).join('')}</div>
+      </div>
+      ${Object.entries(BX.ICON_GROUPS).map(([group, names]) => `
+        <section class="panel-card" style="margin-bottom:16px">
+          <div class="section-title-row" style="margin-bottom:12px"><div><p class="eyebrow">${esc(group.toUpperCase())}</p><h2 style="font-size:22px">${names.length} ícones</h2></div></div>
+          <div class="icon-guide">${names.map((n) => `<button type="button" class="icon-tile" data-name="${n}" title="Copiar BX.icon('${n}')">${icon(n, 26)}<span>${n}</span>${SEM[n] ? `<small>${esc(SEM[n])}</small>` : ''}</button>`).join('')}</div>
+        </section>`).join('')}`;
+    app.addEventListener('click', async (e) => {
+      const t = e.target.closest('.icon-tile'); if (!t) return;
+      try { await navigator.clipboard.writeText(`BX.icon('${t.dataset.name}', 16)`); BX.toast(`Copiado: BX.icon('${t.dataset.name}')`); } catch { BX.toast(t.dataset.name); }
+    });
+  </script>
+</body>
+</html>

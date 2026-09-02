@@ -45,7 +45,7 @@
       app.innerHTML = `
         <div class="hero compact">
           <div>
-            <p class="eyebrow">${deck.isPublic === false ? '🔒 DECK PRIVADO • SÓ VOCÊ VÊ' : 'DECK DA COMUNIDADE'}${deck.featured ? ' • ★ EM DESTAQUE' : ''}</p>
+            <p class="eyebrow">${deck.isPublic === false ? `${BX.ic('lock', 14)} DECK PRIVADO • SÓ VOCÊ VÊ` : 'DECK DA COMUNIDADE'}${deck.featured ? ` • ${BX.ic('star', 14)} EM DESTAQUE` : ''}</p>
             <h1>${BX.esc(deck.title)}</h1>
             <div class="author-line" style="margin-top:10px">
               ${BX.avatarHtml(deck.author, { size: 46 })}
@@ -56,8 +56,8 @@
             </div>
           </div>
           <div class="hero-actions">
-            ${mine ? `<button class="btn secondary" id="visBtn">${deck.isPublic === false ? '🌐 Tornar público' : '🔒 Tornar privado'}</button><a class="btn secondary" href="/deck/${deck.slug}/editar">Editar</a><a class="btn ghost" href="/meus-decks">Meus decks</a>` : ''}
-            ${mine ? `<button class="btn danger-outline" id="delBtn">Excluir</button>` : `<button class="btn ghost" id="reportBtn">⚑ Denunciar</button>`}
+            ${mine ? `<button class="btn secondary" id="visBtn">${deck.isPublic === false ? `${BX.ic('globe', 14)} Tornar público` : `${BX.ic('lock', 14)} Tornar privado`}</button><a class="btn secondary" href="/deck/${deck.slug}/editar">Editar</a><a class="btn ghost" href="/meus-decks">Meus decks</a>` : ''}
+            ${mine ? `<button class="btn danger-outline" id="delBtn">Excluir</button>` : `<button class="btn ghost" id="reportBtn">${BX.ic('flag', 14)} Denunciar</button>`}
           </div>
         </div>
         <div class="deck-viewer" style="margin-bottom:20px">${beysHtml}</div>

@@ -78,7 +78,7 @@
               </div>
               <div class="muted">${brandName[p.brand] || p.brand}${p.category ? ` • ${p.category.toLowerCase().replace('_', ' ')}` : ''}</div>
               <div class="list-card-foot">
-                <a class="google-btn" target="_blank" rel="noopener" href="${BX.esc(p.googleUrl)}">🔎 Buscar no Google</a>
+                <a class="google-btn" target="_blank" rel="noopener" href="${BX.esc(p.googleUrl)}">${BX.ic('search', 14)} Buscar no Google</a>
                 <a href="/produto/${p.slug}" style="margin-left:auto;color:var(--cyan);font-size:11px;text-decoration:none">detalhes →</a>
               </div>
             </div>`).join('')}</div>`
@@ -99,7 +99,7 @@
             <h1 style="font:800 clamp(36px,4.5vw,58px)/.95 var(--display);text-transform:uppercase;margin:2px 0 10px">${BX.esc(part.displayName)}</h1>
             <div class="stat-chips" style="margin-bottom:12px">
               ${part.type ? `<span class="badge ${part.type.toLowerCase()}">${part.type}</span>` : ''}
-              ${part.weightGrams != null ? `<span class="badge">⚖ ${part.weightGrams} g</span>` : ''}
+              ${part.weightGrams != null ? `<span class="badge">${BX.ic('scale', 14)} ${part.weightGrams} g</span>` : ''}
               ${part.abbrev ? `<span class="badge">${BX.esc(part.abbrev)}</span>` : ''}
               ${part.banned ? '<span class="badge banned">Banida por padrão na WBO</span>' : ''}
             </div>

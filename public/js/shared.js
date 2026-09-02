@@ -146,7 +146,7 @@
     const inner = user?.avatarUrl
       ? `<img src="${esc(user.avatarUrl)}" alt="" loading="lazy" decoding="async" width="${size}" height="${size}">`
       : `<b>${esc((user?.name || '?').slice(0, 1).toUpperCase())}</b>`;
-    const badge = user?.verified ? '<i class="verified-badge" title="Verificado">✔</i>' : '';
+    const badge = user?.verified ? `<i class="verified-badge" title="Verificado">${icon('check', 9)}</i>` : '';
     return `<span class="avatar${cls}" style="width:${size}px;height:${size}px">${inner}${frameImg}${badge}</span>`;
   }
 
@@ -412,6 +412,28 @@
     });
   }
 
+  /** Substitui window.prompt: resolve com a string digitada ou null se cancelou. */
+  function promptDialog({ title = 'Informe', text = '', placeholder = '', defaultValue = '', okLabel = 'OK', cancelLabel = 'Cancelar', danger = false, multiline = false } = {}) {
+    return new Promise((resolve) => {
+      let el = document.getElementById('bxConfirmDialog');
+      if (!el) { el = document.createElement('div'); el.id = 'bxConfirmDialog'; el.className = 'modal-backdrop color-dialog'; document.body.appendChild(el); }
+      el.hidden = false;
+      el.innerHTML = `<div class="modal color-modal confirm-modal" role="dialog" aria-modal="true" aria-label="${esc(title)}">
+        <h2 class="confirm-title">${esc(title)}</h2>
+        ${text ? `<p class="color-hint confirm-text" style="white-space:pre-wrap">${esc(text)}</p>` : ''}
+        <form data-form style="margin-top:12px">${multiline ? `<textarea data-in rows="3" placeholder="${esc(placeholder)}">${esc(defaultValue)}</textarea>` : `<input data-in value="${esc(defaultValue)}" placeholder="${esc(placeholder)}">`}</form>
+        <div class="confirm-actions"><button type="button" class="btn secondary" data-cancel>${esc(cancelLabel)}</button><button type="button" class="btn ${danger ? 'danger' : 'primary'}" data-ok>${esc(okLabel)}</button></div>
+      </div>`;
+      const input = el.querySelector('[data-in]');
+      const onKey = (e) => { if (e.key === 'Escape') done(null); };
+      const done = (v) => { el.hidden = true; el.innerHTML = ''; el.onclick = null; document.removeEventListener('keydown', onKey); resolve(v); };
+      el.onclick = (e) => { if (e.target === el || e.target.closest('[data-cancel]')) return done(null); if (e.target.closest('[data-ok]')) done(input.value); };
+      el.querySelector('[data-form]').onsubmit = (e) => { e.preventDefault(); done(input.value); };
+      document.addEventListener('keydown', onKey);
+      input.focus(); input.select?.();
+    });
+  }
+
   /**
    * Dado id/nome/objeto de peça do catálogo do site, pergunta a cor quando a
    * peça tem recolors. Resolve com o id final (filha, ou pai se "padrão") ou
@@ -500,9 +522,121 @@
     publish: '<path d="M3.5 11.6 20.5 4l-4.7 16-4.3-6.1Z"/><path d="M11.5 13.9 20.5 4"/>',
     plus: '<path d="M12 5.5v13M5.5 12h13"/>',
     google: '<circle cx="11.5" cy="11.5" r="6.5"/><path d="m16.5 16.5 4 4M11.5 8.5v6M8.5 11.5h6"/>',
+    clip: '<path d="M3.5 6.5h17v11h-17Z"/><path d="m10.2 9.2 4.6 2.8-4.6 2.8Z"/>',
+    unboxing: '<path d="M4 9.5 12 13.5l8-4V19l-8 3-8-3Z"/><path d="M4 9.5 8 5l8 4 4-2.5M12 13.5V22"/>',
+    channel: '<path d="M12 12.5v8"/><circle cx="12" cy="10.5" r="2"/><path d="M7.5 6a6.4 6.4 0 0 0 0 9M16.5 6a6.4 6.4 0 0 1 0 9M4.7 3.5a10.3 10.3 0 0 0 0 14M19.3 3.5a10.3 10.3 0 0 1 0 14"/>',
+    sale: '<path d="M5 8.5h11l-2.5-2.5M19 15.5H8l2.5 2.5M5 8.5l2.5 2.5M19 15.5l-2.5-2.5"/>',
+    result: '<path d="M3.5 20.5h17M9 20.5v-7h6v7M3.5 20.5v-4H9M15 20.5v-9h5.5v9"/>',
+    champion: '<path d="M7.5 4h9v5.2a4.5 4.5 0 0 1-9 0Z"/><path d="M7.5 5.2h-3v1.6a3.6 3.6 0 0 0 3.2 3.6M16.5 5.2h3v1.6a3.6 3.6 0 0 1-3.2 3.6"/><path d="M12 13.7v3M8.2 20h7.6l-.9-3.3H9.1Z"/>',
+    help: '<circle cx="12" cy="12" r="8.5"/><path d="M9.6 9.7a2.5 2.5 0 1 1 3.6 2.3c-.9.5-1.2 1-1.2 1.9M12 17.2h.01"/>',
+    offtopic: '<path d="M4 5.5h16v10.5h-7.5L8 20v-4H4Z"/><path d="M8.5 11h.01M12 11h.01M15.5 11h.01"/>',
+    fire: '<path d="M12 21c-3.9 0-6.5-2.6-6.5-6.2 0-3 2.2-5.2 3.6-7.1.4 1.4 1.1 2.2 2 2.7C11.4 8 12 5.4 12.6 3c3 2.4 5.9 6.1 5.9 11.6 0 3.7-2.6 6.4-6.5 6.4Z"/><path d="M12 21c-1.8 0-3-1.3-3-3 0-1.6 1.3-2.6 3-4.4 1.7 1.8 3 2.8 3 4.4 0 1.7-1.2 3-3 3Z"/>',
+    top: '<path d="M7 11.2v9.3H3.8v-9.3Z"/><path d="M7 11.2 11.2 3.5c1.6 0 2.6 1.2 2.3 2.8L13 9.4h5.2c1.3 0 2.2 1.2 1.9 2.4l-1.6 6.6c-.3 1.2-1.2 2.1-2.4 2.1H7"/>',
+    lol: '<circle cx="12" cy="12" r="8.5"/><path d="M7.5 13.5h9c-.6 2.6-2.4 4-4.5 4s-3.9-1.4-4.5-4Z"/><path d="M8.5 9.5h2M13.5 9.5h2"/>',
+    wow: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="15" r="2"/><path d="M9 9h.01M15 9h.01"/>',
+    live: '<circle cx="12" cy="12" r="2.2"/><path d="M8.2 8.2a5.4 5.4 0 0 0 0 7.6M15.8 8.2a5.4 5.4 0 0 1 0 7.6M5.4 5.4a9.3 9.3 0 0 0 0 13.2M18.6 5.4a9.3 9.3 0 0 1 0 13.2"/>',
+    done: '<circle cx="12" cy="12" r="8.5"/><path d="m8 12.2 2.6 2.6L16.4 9"/>',
+    pending: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+    conflict: '<path d="M12 4 21 20H3Z"/><path d="M12 10v4.5M12 17.3h.01"/>',
+    bye: '<path d="M5 6v12M9 12l10-6v12Z"/>',
+    finish: '<path d="M6 21V4h12l-1.5 3.5L18 11H6"/><path d="M6 4h3v3.5H6ZM12 4h3v3.5h-3ZM9 7.5h3V11H9ZM15 7.5h3V11h-3Z"/>',
+    flag: '<path d="M6 21V4h11l-1.6 3.6L17 11.2H6"/>',
+    share: '<path d="M4 12v8h16v-8"/><path d="M12 15V4m-4 4 4-4 4 4"/>',
+    comment: '<path d="M4 5.5h16v10.5h-7.5L8 20v-4H4Z"/>',
+    reply: '<path d="M9 7 4 12l5 5"/><path d="M4 12h9a6 6 0 0 1 6 6v1"/>',
+    bell: '<path d="M6.5 16.5V11a5.5 5.5 0 0 1 11 0v5.5l1.5 2H5Z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
+    trash: '<path d="M5 7h14M9 7V4h6v3M7 7l1 13h8l1-13"/><path d="M10 11v6M14 11v6"/>',
+    check: '<path d="m5 12.5 4.5 4.5L19.5 7"/>',
+    x: '<path d="M6 6l12 12M18 6 6 18"/>',
+    warn: '<path d="M12 4 21 20H3Z"/><path d="M12 10v4.5M12 17.3h.01"/>',
+    lock: '<path d="M5.5 11h13v9.5h-13Z"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+    globe: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.6 2.6 3.7 5.4 3.7 8.5s-1.1 5.9-3.7 8.5c-2.6-2.6-3.7-5.4-3.7-8.5S9.4 6.1 12 3.5Z"/>',
+    star: '<path d="m12 3.5 2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 17l-5.4 3 1.2-6-4.5-4.2 6.1-.7Z"/>',
+    save: '<path d="M4.5 4.5h12l3 3v12h-15Z"/><path d="M8 4.5v5h7v-5M8 19.5v-6h8v6"/>',
+    folder: '<path d="M3.5 6.5h6l2 2h9v10h-17Z"/>',
+    camera: '<path d="M3.5 8h4l1.5-2.5h6L16.5 8h4v11h-17Z"/><circle cx="12" cy="13.5" r="3.2"/>',
+    image: '<path d="M3.5 5h17v14h-17Z"/><path d="m3.5 16 5-5 4 4 3-3 5 5"/><circle cx="16" cy="9" r="1.4"/>',
+    video: '<path d="M3.5 7h12v10h-12Z"/><path d="m15.5 10.5 5-3v9l-5-3"/>',
+    poll: '<path d="M4 20h16M7 20V10M12 20V5M17 20v-8"/>',
+    link: '<path d="M10 14 14 10"/><path d="M8.5 15.5 6.7 17.3a3 3 0 0 1-4.2-4.2l3.6-3.6a3 3 0 0 1 4.2 0M15.5 8.5l1.8-1.8a3 3 0 0 1 4.2 4.2l-3.6 3.6a3 3 0 0 1-4.2 0"/>',
+    external: '<path d="M14 4h6v6M20 4 11 13"/><path d="M18 14v6H4V6h6"/>',
+    print: '<path d="M7 8V3.5h10V8M5 8h14v8h-3v4H8v-4H5Z"/><path d="M8 13h8"/>',
+    download: '<path d="M12 3.5v11m-4.5-4 4.5 4.5 4.5-4.5M4 16.5v4h16v-4"/>',
+    upload: '<path d="M12 20.5V9m-4.5 4L12 8.5l4.5 4.5M4 4h16"/>',
+    whatsapp: '<path d="M12 3.5a8.5 8.5 0 0 0-7.3 12.8L3.5 20.5l4.3-1.1A8.5 8.5 0 1 0 12 3.5Z"/><path d="M8.8 8.6c0 3.4 3.2 6.6 6.6 6.6l1.1-1.6-2-1-1 .9c-1.3-.5-2.5-1.7-3-3l.9-1-1-2Z"/>',
+    calendar: '<path d="M4 6h16v14H4Z"/><path d="M4 10h16M8 3.5V6M16 3.5V6"/>',
+    store: '<path d="M4 9.5 5.5 4h13L20 9.5M4 9.5v11h16v-11M4 9.5h16"/><path d="M9.5 20.5v-6h5v6"/>',
+    pin: '<path d="M12 21s-6.5-6.2-6.5-11a6.5 6.5 0 0 1 13 0c0 4.8-6.5 11-6.5 11Z"/><circle cx="12" cy="10" r="2.3"/>',
+    target: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.8"/><circle cx="12" cy="12" r="1.3"/>',
+    settings: '<circle cx="12" cy="12" r="3"/><path d="M12 3.5v2.3M12 18.2v2.3M3.5 12h2.3M18.2 12h2.3M6 6l1.6 1.6M16.4 16.4 18 18M6 18l1.6-1.6M16.4 7.6 18 6"/>',
+    users: '<circle cx="9" cy="8.5" r="3"/><path d="M3.5 19c.9-3.2 2.9-4.7 5.5-4.7s4.6 1.5 5.5 4.7"/><circle cx="16.5" cy="9" r="2.3"/><path d="M15.4 14.4c2.6 0 4.3 1.4 5.1 4.6"/>',
+    dashboard: '<path d="M4 4h7v7H4ZM13 4h7v4h-7ZM13 10h7v10h-7ZM4 13h7v7H4Z"/>',
+    shield: '<path d="M12 3.2 19 6v6.2c0 4.6-3.3 7-7 8.6-3.7-1.6-7-4-7-8.6V6Z"/>',
+    wrench: '<path d="M14.5 3.7a5 5 0 0 0-5.7 6.5L3.5 15.5l3 3 5.3-5.3a5 5 0 0 0 6.5-5.7l-2.8 2.8-2.7-2.7Z"/>',
+    package: '<path d="M12 3 20 7.4v9.2L12 21l-8-4.4V7.4Z"/><path d="M4 7.4 12 12l8-4.6M12 12v9"/>',
+    money: '<path d="M3.5 6.5h17v11h-17Z"/><circle cx="12" cy="12" r="2.8"/><path d="M6.5 9.5h.01M17.5 14.5h.01"/>',
+    palette: '<path d="M12 3.5a8.5 8.5 0 1 0 0 17c1.4 0 2-.9 2-1.9 0-1.2-1-1.6-1-2.7 0-.9.7-1.4 1.6-1.4h1.8c2.3 0 4.1-1.7 4.1-3.9 0-4.1-3.9-7.1-8.5-7.1Z"/><path d="M8 9.5h.01M8 14.5h.01M12 7.5h.01M16 9.5h.01"/>',
+    scroll: '<path d="M6 3.5h12v17H6Z"/><path d="M9 8h6M9 12h6M9 16h4"/>',
+    megaphone: '<path d="M4 10.5v3h3l7 4V6.5l-7 4Z"/><path d="M17.5 9.5a3.5 3.5 0 0 1 0 5M7 13.5l1.5 6h3"/>',
+    gift: '<path d="M4 9.5h16v11H4Z"/><path d="M4 13.5h16M12 9.5v11M12 9.5c-2.5 0-4.5-1.3-4.5-3S9.6 4 12 6.5c2.4-2.5 4.5-1.6 4.5 0s-2 3-4.5 3Z"/>',
+    bolt: '<path d="M13 3.5 5.5 13.5H12L11 20.5l7.5-10H12Z"/>',
+    party: '<path d="M5 20.5 8 9l7 7Z"/><path d="M12 6.5c1-2 3-2 4 0M14.5 11.5c2-1 4 0 4.5 1.5M9.5 4.5v2M18 5.5l1.5-1.5"/>',
+    ban: '<circle cx="12" cy="12" r="8.5"/><path d="m6 6 12 12"/>',
+    medal: '<circle cx="12" cy="15" r="5"/><path d="m8.5 10.5-3-7h4.2L12 8.5l2.3-5H18.5l-3 7"/>',
+    trophy: '<path d="M7.5 4h9v5.2a4.5 4.5 0 0 1-9 0Z"/><path d="M7.5 5.2h-3v1.6a3.6 3.6 0 0 0 3.2 3.6M16.5 5.2h3v1.6a3.6 3.6 0 0 1-3.2 3.6"/><path d="M12 13.7v3M8.2 20h7.6l-.9-3.3H9.1Z"/>',
+    eye: '<path d="M2.5 12c2.4-4.2 5.6-6.3 9.5-6.3s7.1 2.1 9.5 6.3c-2.4 4.2-5.6 6.3-9.5 6.3S4.9 16.2 2.5 12Z"/><circle cx="12" cy="12" r="2.8"/>',
+    refresh: '<path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4v4.5H15"/>',
+    search: '<circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/>',
+    scale: '<path d="M12 3.5v17M5 20.5h14M4 7h16"/><path d="M6.5 7l-3 7h6l-3-7ZM17.5 7l-3 7h6l-3-7Z"/>',
+    screen: '<path d="M3.5 5h17v11h-17Z"/><path d="M8.5 20h7M12 16v4"/>',
+    qr: '<path d="M4 4h6v6H4ZM14 4h6v6h-6ZM4 14h6v6H4Z"/><path d="M14 14h2.5v2.5H14ZM17.5 17.5H20V20h-2.5ZM17.5 14H20M14 20h2.5"/>',
+    rotate: '<path d="M8 4v16m0-16L4.5 7.5M8 4l3.5 3.5M16 20V4m0 16 3.5-3.5M16 20l-3.5-3.5"/>',
+    fullscreen: '<path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/>',
+    back: '<path d="m14.5 6-6 6 6 6"/>',
+    menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
+    dice: '<path d="M4 4h16v16H4Z"/><path d="M8 8h.01M16 8h.01M12 12h.01M8 16h.01M16 16h.01"/>',
+    sparkle: '<path d="M12 3.5 14 10l6.5 2-6.5 2-2 6.5-2-6.5L3.5 12 10 10Z"/>',
+    spiral: '<path d="M12 12a1.5 1.5 0 0 1 3 0c0 1.7-1.6 3-3.4 3A4.6 4.6 0 0 1 7 10.4C7 7.4 9.6 5 13 5a7 7 0 0 1 7 7c0 4.7-3.8 8.5-8.5 8.5A8.5 8.5 0 0 1 3 12"/>',
+    backpack: '<path d="M6.5 8h11v12.5h-11Z"/><path d="M9 8V6a3 3 0 0 1 6 0v2M6.5 14h11M9.5 14v3h5v-3"/>',
+    chevron: '<path d="m6 9.5 6 6 6-6"/>',
+    archive: '<path d="M3.5 5h17v4h-17Z"/><path d="M5 9v11h14V9M10 13h4"/>',
+    info: '<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8h.01"/>',
+    filter: '<path d="M4 5h16l-6.5 8v6l-3 1.5V13Z"/>',
+    more: '<path d="M6 12h.01M12 12h.01M18 12h.01"/>',
+    play: '<path d="m8 5 10 7-10 7Z"/>',
+    list: '<path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/>',
+    grid: '<path d="M4 4h7v7H4ZM13 4h7v7h-7ZM4 13h7v7H4ZM13 13h7v7h-7Z"/>',
+    login: '<path d="M10 4h10v16H10"/><path d="M3.5 12H13m-3.4-3.4L13 12l-3.4 3.4"/>',
+    minus: '<path d="M5.5 12h13"/>',
+    book: '<path d="M4 4.5h6.5a2 2 0 0 1 1.5.7 2 2 0 0 1 1.5-.7H20v14h-6.5a2 2 0 0 0-1.5.7 2 2 0 0 0-1.5-.7H4Z"/><path d="M12 5.2v13.3"/>',
+    clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+    crown: '<path d="m4 18 1-10 4.5 4L12 6l2.5 6L19 8l1 10Z"/><path d="M4 18h16v2H4Z"/>',
+    feed: '<path d="M4 5.5h16v10.5h-7.5L8 20v-4H4Z"/><path d="M8 9.5h8M8 12.5h5"/>',
   };
-  const icon = (name, size = 19) =>
-    `<svg class="vicon" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="bevel" stroke-linecap="square" aria-hidden="true">${ICON_PATHS[name] || ICON_PATHS.pecas}</svg>`;
+  const ICON_GROUPS = {"Navegação":["home","builder","meta","community","feed","popular","tournaments","pecas","produtos","vendas","rules","profile","collection","missing","decks","physical","organizer","admin","logout","login","menu","back","collapse","chevron"],"Tags da comunidade":["clip","unboxing","channel","sale","result","champion","help","offtopic"],"Reações":["fire","top","lol","wow"],"Status de torneio e partida":["live","done","pending","conflict","bye","finish","trophy","medal","crown"],"Ações":["plus","minus","edit","trash","check","x","save","share","link","external","comment","reply","flag","bell","search","filter","refresh","download","upload","print","eye","more","play","fullscreen","rotate","publish","google"],"Objetos e mídia":["image","camera","video","poll","folder","archive","book","scroll","calendar","clock","store","pin","target","globe","lock","star","sparkle","spiral","dice","backpack","screen","qr","whatsapp","megaphone","gift","bolt","party","info","warn","list","grid"],"Administração":["dashboard","users","shield","wrench","package","money","palette","settings","ban","scale"]};
+  const ICON_NAMES = Object.keys(ICON_PATHS);
+  // Sprite único no <body>: cada ícone vira <symbol>, e icon() referencia com <use> (HTML leve, sem repetir paths)
+  function ensureIconSprite() {
+    if (document.getElementById('bxIconSprite')) return;
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.id = 'bxIconSprite'; svg.setAttribute('aria-hidden', 'true'); svg.style.display = 'none';
+    svg.innerHTML = ICON_NAMES.map((n) => `<symbol id="i-${n}" viewBox="0 0 24 24">${ICON_PATHS[n]}</symbol>`).join('');
+    (document.body || document.documentElement).prepend(svg);
+  }
+  if (document.body) ensureIconSprite(); else document.addEventListener('DOMContentLoaded', ensureIconSprite, { once: true });
+  const icon = (name, size = 19, cls = '') =>
+    `<svg class="vicon${cls ? ' ' + cls : ''}" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="bevel" stroke-linecap="square" aria-hidden="true"><use href="#i-${ICON_PATHS[name] ? name : 'pecas'}"/></svg>`;
+  /** Ícone inline no meio de texto (alinhado à linha). */
+  const ic = (name, size = 14) => icon(name, size, 'inline');
+  /** Adesivo/cosmético: chave de estilo antiga (emoji) ou nome de ícone -> ícone do sprite; texto livre continua texto. */
+  const STICKER_EMOJI = { '⚡': 'bolt', '🔥': 'fire', '🌀': 'spiral', '🏆': 'trophy', '💥': 'sparkle', '🛡': 'shield', '⭐': 'star', '★': 'star', '🎯': 'target', '👑': 'crown', '🥇': 'medal', '🎉': 'party', '💎': 'sparkle', '🎲': 'dice', '🔩': 'wrench' };
+  const stickerIcon = (key, size = 16) => {
+    const k = String(key || '').trim().replace(/️/g, '');
+    if (!k) return icon('star', size);
+    if (STICKER_EMOJI[k]) return icon(STICKER_EMOJI[k], size);
+    if (ICON_PATHS[k]) return icon(k, size);
+    return esc(k);
+  };
 
   // -------------------------------------------------------------------------
   // Shell de navegação: sidebar colapsável + topbar + menu do avatar
@@ -515,13 +649,14 @@
     ['community', '/decks', 'Decks da comunidade'],
     ['popular', '/#popular', 'Decks populares'],
     ['tournaments', '/torneios', 'Torneios'],
+    ['feed', '/comunidade', 'Comunidade'],
   ];
   const NAV_CATALOG = [
     ['pecas', '/pecas', 'Peças'],
     ['produtos', '/produtos', 'Produtos'],
     ['vendas', '/vendas', 'Vendas'],
   ];
-  const PATH_KEY = { '/decks': 'community', '/pecas': 'pecas', '/produtos': 'produtos', '/torneios': 'tournaments', '/vendas': 'vendas' };
+  const PATH_KEY = { '/comunidade': 'feed', '/decks': 'community', '/pecas': 'pecas', '/produtos': 'produtos', '/torneios': 'tournaments', '/vendas': 'vendas' };
   const IS_APP_PAGE = () => location.pathname === '/' || location.pathname === '/index.html';
 
   async function userChipHtml() {
@@ -580,14 +715,16 @@
     // Topbar
     mount.className = 'topbar shell';
     mount.innerHTML = `
-      <button class="nav-toggle" id="navToggle" title="Menu" aria-label="Abrir menu" aria-expanded="false" aria-controls="sideNav">☰</button>
+      <button class="nav-toggle" id="navToggle" title="Menu" aria-label="Abrir menu" aria-expanded="false" aria-controls="sideNav">${icon('menu', 22)}</button>
       <button class="nav-toggle nav-back" id="navBack" title="Voltar" aria-label="Voltar" ${history.length > 1 ? '' : 'hidden'}><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
       <a class="brand mini" href="/#home" style="text-decoration:none" aria-label="Início">
         <div class="brand-mark" aria-hidden="true"><span>X</span></div>
       </a>
       <div class="header-status" id="headerStatus"></div>
+      <div class="header-notif" id="headerNotif"></div>
       <div class="header-user" id="headerUser"></div>`;
     document.getElementById('headerUser').innerHTML = await userChipHtml();
+    mountNotifications();
     document.getElementById('navBack')?.addEventListener('click', () => { if (history.length > 1) history.back(); else location.href = '/#home'; });
 
     // Comportamento: colapsar (desktop) / abrir (mobile)
@@ -646,11 +783,45 @@
     const a = s.announcements[0];
     const bar = document.createElement('div');
     bar.className = 'announcement-bar';
-    bar.innerHTML = `<span>📣 ${esc(a.message)}</span>${a.href ? `<a href="${esc(a.href)}">Ver mais →</a>` : ''}<button title="Fechar">×</button>`;
+    bar.innerHTML = `<span>${icon('megaphone', 14, 'inline')} ${esc(a.message)}</span>${a.href ? `<a href="${esc(a.href)}">Ver mais →</a>` : ''}<button title="Fechar">×</button>`;
     bar.querySelector('button').onclick = () => bar.remove();
     const topbar = document.querySelector('.topbar');
     topbar?.parentNode.insertBefore(bar, topbar.nextSibling);
   }
+
+  // ------------------------------------------------------------------------
+  // Notificações (comunidade): sino no topo, contador e painel
+  // ------------------------------------------------------------------------
+  async function mountNotifications() {
+    const box = document.getElementById('headerNotif');
+    if (!box) return;
+    const user = await me().catch(() => null);
+    if (!user) { box.innerHTML = ''; return; }
+    box.innerHTML = `<button class="notif-btn" id="notifBtn" aria-label="Notificações" aria-expanded="false" title="Notificações">${icon('bell', 18)}<b class="notif-badge" id="notifBadge" hidden></b></button>
+      <div class="notif-menu" id="notifMenu" hidden><div class="notif-head"><strong>Notificações</strong><button class="btn ghost" id="notifReadAll">Marcar tudo como lido</button></div><div class="notif-list" id="notifList"><div class="empty-state">Carregando…</div></div></div>`;
+    const btn = document.getElementById('notifBtn');
+    const menu = document.getElementById('notifMenu');
+    const badge = document.getElementById('notifBadge');
+    const setUnread = (n) => { badge.hidden = !n; badge.textContent = n > 99 ? '99+' : String(n); };
+    const poll = async () => { if (document.hidden) return; try { const { unread } = await api('/api/notifications/unread-count'); setUnread(unread); } catch {} };
+    poll(); setInterval(poll, 60_000);
+    const close = () => { menu.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
+    const open = async () => {
+      menu.hidden = false; btn.setAttribute('aria-expanded', 'true');
+      try {
+        const { notifications, unread } = await api('/api/notifications');
+        setUnread(unread);
+        const list = document.getElementById('notifList');
+        list.innerHTML = notifications.length ? notifications.map((n) => `<a class="notif-item ${n.readAt ? '' : 'unread'}" href="${esc(n.url)}">${n.actor ? avatarHtml(n.actor, { size: 30 }) : `<span class="notif-ic">${icon(NOTIF_ICON[n.type] || 'bell', 16)}</span>`}<span><span class="notif-text">${esc(n.text || '')}</span><small>${esc(dateFmt(n.createdAt, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }))}</small></span></a>`).join('') : '<div class="empty-state">Nada por aqui ainda. Interações nos seus posts e menções aparecem aqui.</div>';
+        if (unread) { await api('/api/notifications/read', { method: 'POST', body: {} }).catch(() => {}); setUnread(0); }
+      } catch (e) { document.getElementById('notifList').innerHTML = `<div class="empty-state">${esc(e.message)}</div>`; }
+    };
+    btn.onclick = () => (menu.hidden ? open() : close());
+    document.getElementById('notifReadAll').onclick = async () => { await api('/api/notifications/read', { method: 'POST', body: {} }).catch(() => {}); setUnread(0); menu.querySelectorAll('.notif-item.unread').forEach((el) => el.classList.remove('unread')); };
+    document.addEventListener('click', (e) => { if (!menu.hidden && !box.contains(e.target)) close(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+  }
+  const NOTIF_ICON = { REACTION: 'fire', COMMENT: 'comment', REPLY: 'reply', MENTION: 'users', POST_APPROVED: 'check', POST_HIDDEN: 'warn', POST_PENDING: 'pending', REPORT_RESOLVED: 'flag' };
 
   /** Compat: o montador agora usa o shell completo. */
   const mountUserWidget = () => renderShell();
@@ -659,13 +830,34 @@
   // Denúncias (2.3)
   // -------------------------------------------------------------------------
 
+  const REPORT_CATEGORIES = [['INAPPROPRIATE', 'Conteúdo impróprio'], ['SPAM', 'Spam / propaganda'], ['SCAM', 'Golpe / venda falsa'], ['HARASSMENT', 'Assédio / ofensa'], ['OTHER', 'Outro']];
+  function reportDialog(label) {
+    return new Promise((resolve) => {
+      let el = document.getElementById('bxConfirmDialog');
+      if (!el) { el = document.createElement('div'); el.id = 'bxConfirmDialog'; el.className = 'modal-backdrop color-dialog'; document.body.appendChild(el); }
+      el.hidden = false;
+      el.innerHTML = `<div class="modal color-modal confirm-modal" role="dialog" aria-label="Denunciar">
+        <button class="modal-close" data-x>×</button>
+        <p class="eyebrow">DENUNCIAR</p>
+        <h2 class="confirm-title">Qual é o problema com ${esc(label)}?</h2>
+        <div class="report-cats">${REPORT_CATEGORIES.map(([k, l], i) => `<label class="report-cat"><input type="radio" name="rcat" value="${k}" ${i === 0 ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div>
+        <textarea data-reason rows="3" placeholder="Detalhes (opcional)" style="width:100%;margin-top:10px"></textarea>
+        <div class="confirm-actions"><button class="btn secondary" data-cancel>Cancelar</button><button class="btn danger" data-ok>Enviar denúncia</button></div>
+      </div>`;
+      const done = (v) => { el.hidden = true; el.innerHTML = ''; el.onclick = null; resolve(v); };
+      el.onclick = (e) => {
+        if (e.target === el || e.target.closest('[data-cancel],[data-x]')) return done(null);
+        if (e.target.closest('[data-ok]')) done({ category: el.querySelector('input[name=rcat]:checked')?.value || 'OTHER', reason: el.querySelector('[data-reason]').value.trim() });
+      };
+    });
+  }
   async function report(targetType, targetId, label = 'este conteúdo') {
     const user = await me().catch(() => null);
     if (!user) { location.href = '/entrar'; return; }
-    const reason = prompt(`Por que você quer denunciar ${label}?`);
-    if (!reason?.trim()) return;
+    const r = await reportDialog(label);
+    if (!r) return;
     try {
-      await api('/api/reports', { method: 'POST', body: { targetType, targetId, reason } });
+      await api('/api/reports', { method: 'POST', body: { targetType, targetId, category: r.category, reason: r.reason } });
       toast('Denúncia enviada — a moderação vai revisar. Obrigado!');
     } catch (e) { toast(e.message); }
   }
@@ -686,8 +878,8 @@
   };
 
   window.BX = {
-    api, me, site, esc, norm, toast, money, dateFmt, icon,
-    partsIndex, partTagReady, partTag, comboTags, partThumb, KIND_PT, radar, beyVisual, beyMini, deckPreview, colorDialog, itemDialog, confirmDialog, pickColor, collectionProgress, progressBarHtml, KIND_SORT,
+    api, me, site, esc, norm, toast, money, dateFmt, icon, ic, stickerIcon, ICON_NAMES, ICON_GROUPS,
+    partsIndex, partTagReady, partTag, comboTags, partThumb, KIND_PT, radar, beyVisual, beyMini, deckPreview, colorDialog, itemDialog, confirmDialog, promptDialog, pickColor, collectionProgress, progressBarHtml, KIND_SORT,
     avatarHtml, renderTopbar, renderShell, mountUserWidget, userChipHtml, setActiveNav,
     report, requireLogin, qs, pathPart, ytEmbed,
   };

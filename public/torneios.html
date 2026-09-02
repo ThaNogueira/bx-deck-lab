@@ -74,8 +74,8 @@
                 <span class="status-chip ${t.status}">${{ OPEN: 'inscrições abertas', RUNNING: `rodada ${t.currentRound}`, FINISHED: 'encerrado', CANCELED: 'cancelado' }[t.status]}</span>
               </div>
               <div class="muted">
-                📅 ${BX.dateFmt(t.startsAt, { weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}<br>
-                ${t.storeName ? `🏬 ${BX.esc(t.storeName)}<br>` : ''}${t.address ? `📍 ${BX.esc(t.address)}` : ''}
+                ${BX.ic('calendar', 14)} ${BX.dateFmt(t.startsAt, { weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}<br>
+                ${t.storeName ? `${BX.ic('store', 14)} ${BX.esc(t.storeName)}<br>` : ''}${t.address ? `${BX.ic('pin', 14)} ${BX.esc(t.address)}` : ''}
               </div>
               <div class="list-card-foot">
                 <span>${t.playersCount} inscrito(s)</span>

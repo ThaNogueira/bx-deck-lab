@@ -38,6 +38,16 @@ export const upload = multer({
   },
 });
 
+/** Posts da comunidade: até 6 mídias, vídeo curto até 40MB. */
+export const uploadPost = multer({
+  storage,
+  limits: { fileSize: 40 * 1024 * 1024, files: 6 },
+  fileFilter: (_req, file, cb) => {
+    if (EXT[file.mimetype] && file.mimetype !== 'image/svg+xml') return cb(null, true);
+    cb(new Error('Formato não suportado (use PNG, JPG, WebP, GIF, MP4 ou WebM).'));
+  },
+});
+
 export function uploadedUrl(file) {
   return file ? `/uploads/${file.filename}` : null;
 }

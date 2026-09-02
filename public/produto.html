@@ -77,7 +77,7 @@
             <p>${p.category ? `${p.category.toLowerCase().replace('_', ' ')}. ` : ''}${p.notes ? BX.esc(p.notes) + '. ' : ''}${p.releaseDate ? `Lançamento: ${new Date(p.releaseDate).toLocaleDateString('pt-BR')}.` : ''}</p>
           </div>
           <div class="hero-actions">
-            <a class="google-btn" target="_blank" rel="noopener" href="${BX.esc(p.googleUrl)}">🔎 Buscar preços no Google</a>
+            <a class="google-btn" target="_blank" rel="noopener" href="${BX.esc(p.googleUrl)}">${BX.ic('search', 14)} Buscar preços no Google</a>
           </div>
         </div>
         ${showRadar ? `

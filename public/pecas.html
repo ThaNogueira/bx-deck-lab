@@ -74,7 +74,7 @@
                   <strong>${BX.esc(p.displayName)}</strong>
                   <div class="pcatalog-chips">
                     ${typeBadge(p)}
-                    ${p.weightGrams != null ? `<span class="badge">⚖ ${p.weightGrams}g</span>` : ''}
+                    ${p.weightGrams != null ? `<span class="badge">${BX.ic('scale', 14)} ${p.weightGrams}g</span>` : ''}
                     ${p.abbrev && p.kind === 'BIT' ? `<span class="badge">${BX.esc(p.abbrev)}</span>` : ''}
                     ${p.banned ? '<span class="badge banned">Banida</span>' : ''}
                   </div>

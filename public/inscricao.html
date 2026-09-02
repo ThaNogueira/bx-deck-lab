@@ -41,7 +41,7 @@
         app.innerHTML = `<div class="big-join"><div>
           <p class="eyebrow">${BX.dateFmt(t.startsAt, { weekday: 'long', day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' })}${t.storeName ? ` • ${BX.esc(t.storeName)}` : ''}</p>
           <h1>${BX.esc(t.name)}</h1>
-          ${t.address ? `<p style="color:var(--muted)">📍 ${BX.esc(t.address)}</p>` : ''}
+          ${t.address ? `<p style="color:var(--muted)">${BX.ic('pin', 14)} ${BX.esc(t.address)}</p>` : ''}
           ${inner}
         </div></div>`;
       }
@@ -52,7 +52,7 @@
         return;
       }
       if (joined) {
-        screen(`<p style="color:var(--green);font-weight:800;margin-top:14px">✔ Você já está inscrito!</p>
+        screen(`<p style="color:var(--green);font-weight:800;margin-top:14px">${BX.ic('check', 14)} Você já está inscrito!</p>
           <a class="btn primary" style="margin-top:14px;display:inline-block;text-decoration:none" href="/torneio/${t.slug}">Ir para o torneio</a>`);
         return;
       }
@@ -67,7 +67,7 @@
       document.getElementById('joinBtn').addEventListener('click', async () => {
         try {
           await BX.api(`/api/tournaments/${t.slug}/join`, { method: 'POST' });
-          screen(`<p style="color:var(--green);font:800 30px var(--display);text-transform:uppercase;margin-top:18px">✔ Inscrição confirmada!</p>
+          screen(`<p style="color:var(--green);font:800 30px var(--display);text-transform:uppercase;margin-top:18px">${BX.ic('check', 14)} Inscrição confirmada!</p>
             <a class="btn primary" style="margin-top:14px;display:inline-block;text-decoration:none" href="/torneio/${t.slug}">Ir para o torneio</a>`);
         } catch (e) { BX.toast(e.message); }
       });

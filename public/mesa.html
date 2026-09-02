@@ -64,11 +64,11 @@
         const done = m.status === 'DONE';
         const me = nameOf(m, side), opp = nameOf(m, other(side));
         const unit = rules.perRound ? 'round' : 'partida';
-        if (done) return m.winnerId === m[side]?.id ? '<p>🏆 Vencedor</p>' : '<p class="mesa-muted">Partida encerrada</p>';
+        if (done) return m.winnerId === m[side]?.id ? `<p>${BX.ic('trophy', 14)} Vencedor</p>` : '<p class="mesa-muted">Partida encerrada</p>';
         if (t.status !== 'RUNNING' || m.round !== t.currentRound) return '<p class="mesa-muted">Sem reporte nesta partida agora.</p>';
         if (m.disputed) {
           const claimant = m.disputed.claimedBy === 'P1' ? 'p1' : 'p2';
-          return `<p>⚠ ${BX.esc(nameOf(m, claimant))} reportou vitória e ${BX.esc(nameOf(m, other(claimant)))} contestou.</p><p class="mesa-muted">O organizador resolve pelo painel central.</p>`;
+          return `<p>${BX.ic('warn', 14)} ${BX.esc(nameOf(m, claimant))} reportou vitória e ${BX.esc(nameOf(m, other(claimant)))} contestou.</p><p class="mesa-muted">O organizador resolve pelo painel central.</p>`;
         }
         if (m.pending) {
           const claimant = m.pending.claimedBy === 'P1' ? 'p1' : 'p2';
@@ -80,10 +80,10 @@
           const claim = winnerSide === claimant ? `${BX.esc(nameOf(m, claimant))} diz que venceu ${what}` : `${BX.esc(nameOf(m, claimant))} diz que você venceu ${what}`;
           if (!can[side]) return `<p>${claim}.</p><p class="mesa-muted">Aguardando ${BX.esc(me)} confirmar.</p>`;
           return `<p>${claim}. Confere?</p>
-            <div class="mesa-row"><button class="mesa-btn ok" data-act="confirm" data-side="${side}">✔ Confirmar</button><button class="mesa-btn no" data-act="dispute" data-side="${side}">✖ Contestar</button></div>`;
+            <div class="mesa-row"><button class="mesa-btn ok" data-act="confirm" data-side="${side}">${BX.ic('check', 14)} Confirmar</button><button class="mesa-btn no" data-act="dispute" data-side="${side}">${BX.ic('x', 14)} Contestar</button></div>`;
         }
         if (!can[side]) return `<p class="mesa-muted">${state.viewerSide ? 'Lado do adversário — ele reporta no aparelho dele.' : 'Só quem está na partida (ou a mesa do organizador) reporta aqui.'}</p>`;
-        return `<button class="mesa-btn win" data-act="win" data-side="${side}">🌀 ${rules.perRound ? 'Venci o round' : 'Ganhei'}</button>
+        return `<button class="mesa-btn win" data-act="win" data-side="${side}">${BX.ic('spiral', 14)} ${rules.perRound ? 'Venci o round' : 'Ganhei'}</button>
           <button class="mesa-btn lose" data-act="lose" data-side="${side}">Perdi ${rules.perRound ? 'este round' : 'a partida'}</button>`;
       }
 
@@ -115,8 +115,8 @@
         if (m.disputed || (m.pending && can.organizer)) {
           const r = m.disputed || m.pending;
           parts.push(`<span style="font-size:11px;color:var(--yellow)">JUIZ · round ${r.no}:</span>
-            <button class="mesa-btn judge" data-act="resolve" data-round="${r.id}" data-w="p1">🏆 ${BX.esc(nameOf(m, 'p1'))}</button>
-            <button class="mesa-btn judge" data-act="resolve" data-round="${r.id}" data-w="p2">🏆 ${BX.esc(nameOf(m, 'p2'))}</button>
+            <button class="mesa-btn judge" data-act="resolve" data-round="${r.id}" data-w="p1">${BX.ic('trophy', 14)} ${BX.esc(nameOf(m, 'p1'))}</button>
+            <button class="mesa-btn judge" data-act="resolve" data-round="${r.id}" data-w="p2">${BX.ic('trophy', 14)} ${BX.esc(nameOf(m, 'p2'))}</button>
             <button class="mesa-btn judge" data-act="resolve" data-round="${r.id}" data-w="void">Anular round</button>`);
         } else if (m.status !== 'DONE' && t.status === 'RUNNING' && m.round === t.currentRound) {
           parts.push(`<span style="font-size:11px;color:var(--yellow)">JUIZ:</span>
@@ -141,8 +141,8 @@
             <a href="/torneio/${BX.esc(t.slug)}" title="Voltar ao torneio">‹ ${BX.esc(t.name)}</a>
             <span class="mesa-meta">Mesa ${m.tableNo} · Rodada ${m.round}</span>
             <div class="mesa-bar-actions">
-              <button data-act="flip" title="Girar o lado de cima (aparelho no meio da mesa)" aria-label="Girar lado de cima" aria-pressed="${flip}">⇅</button>
-              <button data-act="fs" title="Tela cheia" aria-label="Tela cheia">⛶</button>
+              <button data-act="flip" title="Girar o lado de cima (aparelho no meio da mesa)" aria-label="Girar lado de cima" aria-pressed="${flip}">${BX.icon('rotate', 22)}</button>
+              <button data-act="fs" title="Tela cheia" aria-label="Tela cheia">${BX.icon('fullscreen', 22)}</button>
             </div>
           </header>
           ${sideHtml('p1')}
@@ -154,7 +154,7 @@
           </div>
           ${sideHtml('p2')}
           ${done ? `<div class="mesa-final" role="status">
-            <div class="trophy">🏆</div>
+            <div class="trophy">${BX.icon('trophy', 110)}</div>
             <h1>${BX.esc(nameOf(m, winnerSide))}</h1>
             <p>venceu ${rules.perRound ? `por ${m.p1Score > m.p2Score ? m.p1Score : m.p2Score} a ${Math.min(m.p1Score, m.p2Score)} em rounds` : 'a partida'} · Mesa ${m.tableNo}, rodada ${m.round}</p>
             <div class="mesa-final-actions">

@@ -64,8 +64,8 @@
         const joined = !!data.me;
         const tabs = [
           ['geral', 'Torneio'],
-          ...(joined && t.status === 'RUNNING' ? [['partida', '🎯 Minha partida']] : []),
-          ...(t.canManage ? [['gestao', '⚙ Gestão']] : []),
+          ...(joined && t.status === 'RUNNING' ? [['partida', `${BX.ic('target', 14)} Minha partida`]] : []),
+          ...(t.canManage ? [['gestao', `${BX.ic('settings', 14)} Gestão`]] : []),
         ];
 
         app.innerHTML = `
@@ -75,14 +75,14 @@
               <h1>${BX.esc(t.name)}</h1>
               <p>
                 <span class="status-chip ${t.status}">${STATUS_PT[t.status]}${t.status === 'RUNNING' ? ` — rodada ${t.currentRound}/${t.roundsPlanned}` : ''}</span>
-                ${t.storeName ? ` 🏬 ${BX.esc(t.storeName)}` : ''}${t.address ? ` • 📍 ${BX.esc(t.address)}` : ''}
+                ${t.storeName ? ` ${BX.ic('store', 14)} ${BX.esc(t.storeName)}` : ''}${t.address ? ` • ${BX.ic('pin', 14)} ${BX.esc(t.address)}` : ''}
                 • ${t.format === 'MD3' ? 'Melhor de 3' : 'Partida simples até 4 pontos'}
               </p>
             </div>
             <div class="hero-actions">
               ${t.status === 'OPEN' && !joined ? `<button class="btn primary" id="joinBtn">Entrar no torneio</button>` : ''}
               ${t.status === 'OPEN' && joined ? `<button class="btn danger-outline" id="leaveBtn">Sair do torneio</button>` : ''}
-              <button class="btn ghost icon-only" id="reportBtn" aria-label="Denunciar torneio" title="Denunciar torneio">⚑</button>
+              <button class="btn ghost icon-only" id="reportBtn" aria-label="Denunciar torneio" title="Denunciar torneio">${BX.icon('flag', 18)}</button>
             </div>
           </div>
           ${tabs.length > 1 ? `<nav class="tabs" style="justify-content:flex-start;margin-bottom:18px" aria-label="Seções do torneio">${tabs.map(([k, label]) => `<button class="tab${view === k ? ' active' : ''}" data-view="${k}" aria-selected="${view === k}">${label}</button>`).join('')}</nav>` : ''}
@@ -196,7 +196,7 @@
       function renderMatch(box, t, myData) {
         const m = myData.match;
         if (m.bye) {
-          box.innerHTML = `<div class="match-screen"><p class="eyebrow">RODADA ${myData.round}</p><div class="match-vs">BYE</div><p style="color:var(--muted)">Você folga nesta rodada e já tem a vitória. Descanse o pulso! 💪</p></div>`;
+          box.innerHTML = `<div class="match-screen"><p class="eyebrow">RODADA ${myData.round}</p><div class="match-vs">BYE</div><p style="color:var(--muted)">Você folga nesta rodada e já tem a vitória. Descanse o pulso! </p></div>`;
           return;
         }
         const done = m.status === 'DONE';
@@ -206,17 +206,17 @@
             <div style="margin:6px 0 2px">${BX.avatarHtml(m.opponent, { size: 84 })}</div>
             <div class="match-vs">VS ${BX.esc(m.opponent?.name || '?')}</div>
             <div class="match-table">Mesa ${m.tableNo}${t.format === 'MD3' && (m.myScore || m.oppScore) ? ` · rounds ${m.myScore}–${m.oppScore}` : ''}</div>
-            ${!done ? `<a class="btn primary mesa-link" href="/mesa/${t.slug}/${m.id}">📺 Abrir tela de mesa</a>` : ''}
+            ${!done ? `<a class="btn primary mesa-link" href="/mesa/${t.slug}/${m.id}">${BX.ic('screen', 14)} Abrir tela de mesa</a>` : ''}
             ${done
               ? `<div class="match-score-zero" style="color:${m.won ? 'var(--green)' : 'var(--red)'}">${m.won ? 'VITÓRIA' : 'DERROTA'}</div><p style="color:var(--muted)">Resultado fechado. Aguarde a próxima rodada.</p>`
               : `<div class="match-score-zero">0 — 0</div>
-                 ${m.status === 'CONFLICT' ? `<div class="conflict-banner">⚠ Os dois jogadores reportaram o mesmo resultado. O organizador foi notificado e vai resolver com vocês.</div>` : ''}
+                 ${m.status === 'CONFLICT' ? `<div class="conflict-banner">${BX.ic('warn', 14)} Os dois jogadores reportaram o mesmo resultado. O organizador foi notificado e vai resolver com vocês.</div>` : ''}
                  ${m.myReport
                    ? `<p style="color:var(--muted)">Você reportou <b style="color:${m.myReport === 'WIN' ? 'var(--green)' : 'var(--red)'}">${m.myReport === 'WIN' ? 'vitória' : 'derrota'}</b>. ${m.opponentReported ? '' : 'Aguardando o oponente…'}</p>`
                    : `<p style="color:var(--muted)">Terminou a partida? Reporte o SEU resultado:</p>
                       <div class="report-row">
-                        <button class="report-btn win" data-report="WIN">✔ Venci</button>
-                        <button class="report-btn loss" data-report="LOSS">✖ Perdi</button>
+                        <button class="report-btn win" data-report="WIN">${BX.ic('check', 14)} Venci</button>
+                        <button class="report-btn loss" data-report="LOSS">${BX.ic('x', 14)} Perdi</button>
                       </div>`}`}
           </div>`;
         box.querySelectorAll('[data-report]').forEach((btn) => btn.addEventListener('click', async () => {
@@ -232,15 +232,15 @@
         const roundMatches = data.matches.filter((m) => m.round === t.currentRound);
         const conflicts = roundMatches.filter((m) => m.status === 'CONFLICT');
         box.innerHTML = `
-          ${conflicts.length ? `<div class="conflict-banner" style="margin-bottom:14px">⚠ <b>${conflicts.length} conflito(s) de resultado</b> nesta rodada — verifique com os jogadores e escolha o vencedor abaixo antes de fechar a rodada.</div>` : ''}
+          ${conflicts.length ? `<div class="conflict-banner" style="margin-bottom:14px">${BX.ic('warn', 14)} <b>${conflicts.length} conflito(s) de resultado</b> nesta rodada — verifique com os jogadores e escolha o vencedor abaixo antes de fechar a rodada.</div>` : ''}
           <div class="profile-grid">
             <div style="display:flex;flex-direction:column;gap:16px">
               <div class="panel-card">
                 <p class="eyebrow">CONTROLE DO TORNEIO</p>
                 <div class="inline-actions" style="justify-content:flex-start;margin-top:12px">
-                  ${t.status === 'OPEN' ? `<button class="btn primary" id="startBtn">▶ Começar (rodada 1)</button>` : ''}
+                  ${t.status === 'OPEN' ? `<button class="btn primary" id="startBtn">${BX.ic('play', 14)} Começar (rodada 1)</button>` : ''}
                   ${t.status === 'RUNNING' && t.currentRound < t.roundsPlanned ? `<button class="btn primary" id="nextBtn">Fechar rodada e parear a próxima</button>` : ''}
-                  ${t.status === 'RUNNING' ? `<button class="btn secondary" id="finishBtn">🏁 Encerrar torneio</button>` : ''}
+                  ${t.status === 'RUNNING' ? `<button class="btn secondary" id="finishBtn">${BX.ic('finish', 14)} Encerrar torneio</button>` : ''}
                   ${t.status !== 'CANCELED' && t.status !== 'FINISHED' ? `<button class="btn danger-outline" id="cancelBtn">Cancelar torneio</button>` : ''}
                 </div>
               </div>
@@ -254,16 +254,16 @@
                     <div class="org-match-row ${m.status === 'CONFLICT' ? 'conflict' : ''} ${m.status === 'DONE' ? 'done' : ''}">
                       <a style="font:800 15px var(--display);color:var(--yellow);text-decoration:none" href="/mesa/${t.slug}/${m.id}" title="Abrir tela de mesa">M${m.tableNo}</a>
                       <div style="font-size:12px">
-                        <b>${BX.esc(m.p1?.user.name || '?')}</b> ${m.p1Reported ? '✓' : ''} vs <b>${BX.esc(m.p2?.user.name || 'BYE')}</b> ${m.p2Reported ? '✓' : ''}
-                        <small style="display:block;color:var(--muted)">${m.status === 'DONE' ? `✔ vencedor: ${BX.esc((m.winnerId === m.p1?.id ? m.p1 : m.p2)?.user.name || '?')}${m.resolvedBy === 'ORGANIZER' ? ' (manual)' : ''}` : m.status === 'CONFLICT' ? '⚠ conflito — escolha o vencedor' : 'aguardando reportes'}</small>
+                        <b>${BX.esc(m.p1?.user.name || '?')}</b> ${m.p1Reported ? `${BX.ic('check', 14)}` : ''} vs <b>${BX.esc(m.p2?.user.name || 'BYE')}</b> ${m.p2Reported ? `${BX.ic('check', 14)}` : ''}
+                        <small style="display:block;color:var(--muted)">${m.status === 'DONE' ? `${BX.ic('check', 14)} vencedor: ${BX.esc((m.winnerId === m.p1?.id ? m.p1 : m.p2)?.user.name || '?')}${m.resolvedBy === 'ORGANIZER' ? ' (manual)' : ''}` : m.status === 'CONFLICT' ? `${BX.ic('warn', 14)} conflito — escolha o vencedor` : 'aguardando reportes'}</small>
                       </div>
                       <div class="row-actions">
                         ${m.status !== 'DONE' && !m.bye ? `
                           ${m.status !== 'CONFLICT' && (m.p1Reported || m.p2Reported) ? `<button class="btn secondary" data-accept="${m.id}">Aceitar reporte único</button>` : ''}
-                          <button class="btn secondary" data-win="${m.id}:${m.p1?.id}">🏆 ${BX.esc(m.p1?.user.name || '')}</button>
-                          <button class="btn secondary" data-win="${m.id}:${m.p2?.id}">🏆 ${BX.esc(m.p2?.user.name || '')}</button>` : ''}
+                          <button class="btn secondary" data-win="${m.id}:${m.p1?.id}">${BX.ic('trophy', 14)} ${BX.esc(m.p1?.user.name || '')}</button>
+                          <button class="btn secondary" data-win="${m.id}:${m.p2?.id}">${BX.ic('trophy', 14)} ${BX.esc(m.p2?.user.name || '')}</button>` : ''}
                         ${m.status === 'DONE' && !m.bye ? `<button class="btn ghost" data-reopen="${m.id}">Reabrir</button>` : ''}
-                        ${!m.bye ? `<button class="btn ghost" data-mesa="${m.id}" title="Abrir a tela de mesa desta partida no dispositivo da mesa (reporta pelos dois lados)">📺 Mesa</button>` : ''}
+                        ${!m.bye ? `<button class="btn ghost" data-mesa="${m.id}" title="Abrir a tela de mesa desta partida no dispositivo da mesa (reporta pelos dois lados)">${BX.ic('screen', 14)} Mesa</button>` : ''}
                       </div>
                     </div>`;
                   }).join('') || '<div class="empty-state">Nenhuma partida nesta rodada.</div>'}
@@ -284,10 +284,10 @@
                 <p class="eyebrow">DIVULGAÇÃO</p>
                 <div class="qr-box" style="margin:12px 0"><img src="/api/tournaments/${t.slug}/qr.svg" alt="QR Code de inscrição"></div>
                 <div class="share-grid">
-                  <button class="btn secondary" id="copyLink">🔗 Copiar link de inscrição</button>
-                  <a class="btn secondary" style="text-decoration:none;text-align:center" href="/torneio/${t.slug}/cartaz" target="_blank">🖨 Cartaz para impressão</a>
-                  <a class="btn secondary" style="text-decoration:none;text-align:center;background:#173a24;border-color:#1faa53" href="${BX.esc(t.whatsappShareUrl)}" target="_blank" rel="noopener">💬 Compartilhar no WhatsApp</a>
-                  <a class="btn secondary" style="text-decoration:none;text-align:center" href="/api/tournaments/${t.slug}/qr.svg" download="qr-${t.slug}.svg">⬇ Baixar QR Code</a>
+                  <button class="btn secondary" id="copyLink">${BX.ic('link', 14)} Copiar link de inscrição</button>
+                  <a class="btn secondary" style="text-decoration:none;text-align:center" href="/torneio/${t.slug}/cartaz" target="_blank">${BX.ic('print', 14)} Cartaz para impressão</a>
+                  <a class="btn secondary" style="text-decoration:none;text-align:center;background:#173a24;border-color:#1faa53" href="${BX.esc(t.whatsappShareUrl)}" target="_blank" rel="noopener">${BX.ic('whatsapp', 14)} Compartilhar no WhatsApp</a>
+                  <a class="btn secondary" style="text-decoration:none;text-align:center" href="/api/tournaments/${t.slug}/qr.svg" download="qr-${t.slug}.svg">${BX.ic('download', 14)} Baixar QR Code</a>
                 </div>
               </div>
               <div class="panel-card form-grid">
