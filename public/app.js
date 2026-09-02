@@ -405,7 +405,9 @@
     (c.parts||[]).forEach(x=>reg(x)); hubImageIndex=c.hubImageIndex||{}; catalogLastSync=c.savedAt||0;
   }
   async function fetchRemoteText(url){
-    const attempts=[url,`https://r.jina.ai/${url}`]; let last;
+    // Sites sem CORS vão direto pelo proxy de leitura (evita erro no console e um round-trip perdido)
+    const noCors=/beycommunity.com|byybladebuilder.com/.test(url);
+    const attempts=noCors?[`https://r.jina.ai/${url}`]:[url,`https://r.jina.ai/${url}`]; let last;
     for(const target of attempts){
       const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),8000);
       try{const r=await fetch(target,{headers:{Accept:'text/plain,text/html,*/*'},signal:controller.signal});if(!r.ok)throw new Error(`HTTP ${r.status}`);const t=await r.text();if(t.length>80)return t;}catch(e){last=e;}finally{clearTimeout(timer);}
@@ -1858,17 +1860,100 @@
     return Object.values(stats).sort((a,b)=>b.w-a.w||(b.pf-b.pa)-(a.pf-a.pa)||b.pf-a.pf||a.p.name.localeCompare(b.p.name));
   }
   function roundTitle(i,total){if(i===total-1)return'Final';if(i===total-2)return'Semifinal';if(i===total-3)return'Quartas';return`Rodada ${i+1}`;}
+  // Status de uma partida da chave: bye / finalizada / em jogo (placar sendo digitado) / pendente / aguardando
+  function matchStatus(match,p1,p2){
+    if(match.bye)return ['bye','BYE'];
+    if(match.confirmed)return ['done','Finalizada'];
+    if(!p1||!p2)return ['pending','Aguardando'];
+    const typed=v=>v!==''&&v!=null;
+    if(typed(match.s1)||typed(match.s2))return ['live','Em jogo'];
+    return ['ready','Pendente'];
+  }
+  function competitorHtml(p,side,match,inputCls,dataAttrs){
+    const hasWinner=match.winner!=null&&match.winner!=='';
+    const pid=match[side==='s1'?'p1':'p2'];
+    const isW=hasWinner&&match.winner===pid;
+    const isL=hasWinner&&match.confirmed&&!isW&&!!p;
+    const name=escapeHTML(p?.name||'Aguardando…');
+    return `<div class="competitor ${isW?'winner':''} ${isL?'loser':''}">${playerAvatar(p,'tiny')}<span title="${name}">${name}</span><input class="${inputCls}" ${dataAttrs} data-side="${side}" type="number" inputmode="numeric" min="0" aria-label="Pontos de ${name}" value="${escapeAttr(match[side])}" ${!match.p1||!match.p2?'disabled':''}></div>`;
+  }
   function renderBracketMatch(match,r,m){
     const p1=playerById(match.p1),p2=playerById(match.p2),waiting=!p1||!p2;
-    if(match.bye)return `<article class="bracket-match bye"><small>BYE</small><div class="competitor winner">${playerAvatar(playerById(match.winner),'tiny')}<span>${escapeHTML(playerById(match.winner)?.name||'—')}</span><b>avança</b></div></article>`;
-    return `<article class="bracket-match ${match.confirmed?'decided':''}"><div class="competitor ${match.winner===match.p1?'winner':''}">${playerAvatar(p1,'tiny')}<span>${escapeHTML(p1?.name||'Aguardando…')}</span><input class="match-score" data-r="${r}" data-m="${m}" data-side="s1" type="number" min="0" value="${escapeAttr(match.s1)}" ${!p1||!p2?'disabled':''}></div><div class="competitor ${match.winner===match.p2?'winner':''}">${playerAvatar(p2,'tiny')}<span>${escapeHTML(p2?.name||'Aguardando…')}</span><input class="match-score" data-r="${r}" data-m="${m}" data-side="s2" type="number" min="0" value="${escapeAttr(match.s2)}" ${!p1||!p2?'disabled':''}></div><button class="match-confirm" data-r="${r}" data-m="${m}" ${waiting?'disabled':''}>${match.confirmed?'Atualizar':'Confirmar'}</button></article>`;
+    const [st,label]=matchStatus(match,p1,p2);
+    const head=`<header class="bm-head"><small>Jogo ${m+1}</small><span class="m-status ${st}">${label}</span></header>`;
+    if(match.bye){const w=playerById(match.winner);const wn=escapeHTML(w?.name||'—');return `<article class="bracket-match bye">${head}<div class="competitor winner">${playerAvatar(w,'tiny')}<span title="${wn}">${wn}</span><b class="rep">avança</b></div></article>`;}
+    const attrs=`data-r="${r}" data-m="${m}"`;
+    return `<article class="bracket-match ${match.confirmed?'decided':''} ${st}">${head}${competitorHtml(p1,'s1',match,'match-score',attrs)}${competitorHtml(p2,'s2',match,'match-score',attrs)}<button class="match-confirm" data-r="${r}" data-m="${m}" ${waiting?'disabled':''}>${match.confirmed?'Atualizar resultado':'Confirmar resultado'}</button></article>`;
   }
   function renderThirdPlaceMatch(match){
     if(!match)return '<div class="empty-state bracket-empty">A disputa será definida quando as duas semifinais terminarem.</div>';
     const p1=playerById(match.p1),p2=playerById(match.p2);
-    return `<article class="bracket-match third-place ${match.confirmed?'decided':''}"><div class="competitor ${match.winner===match.p1?'winner':''}">${playerAvatar(p1,'tiny')}<span>${escapeHTML(p1?.name||'Aguardando…')}</span><input class="third-score" data-side="s1" type="number" min="0" value="${escapeAttr(match.s1)}"></div><div class="competitor ${match.winner===match.p2?'winner':''}">${playerAvatar(p2,'tiny')}<span>${escapeHTML(p2?.name||'Aguardando…')}</span><input class="third-score" data-side="s2" type="number" min="0" value="${escapeAttr(match.s2)}"></div><button class="match-confirm" id="confirmThirdPlaceBtn">${match.confirmed?'Atualizar':'Confirmar'}</button></article>`;
+    const [st,label]=matchStatus(match,p1,p2);
+    return `<article class="bracket-match third-place ${match.confirmed?'decided':''} ${st}"><header class="bm-head"><small>3º lugar</small><span class="m-status ${st}">${label}</span></header>${competitorHtml(p1,'s1',match,'third-score','')}${competitorHtml(p2,'s2',match,'third-score','')}<button class="match-confirm" id="confirmThirdPlaceBtn">${match.confirmed?'Atualizar resultado':'Confirmar resultado'}</button></article>`;
   }
 
+  // ---------- Bracket: modo chave/lista, zoom controlado (botões, Ctrl+roda, pinça) e indicador de rodadas ----------
+  let bracketZoom=Math.min(1.6,Math.max(0.5,+localStorage.getItem('bx_bracket_zoom')||1));
+  let bracketMode=localStorage.getItem('bx_bracket_mode')||(matchMedia('(max-width:700px)').matches?'list':'tree');
+  let bracketNatural=null; // tamanho natural da chave (sem transform), medido 1x por render
+  const bracketEls=()=>({vp:document.getElementById('bracketViewport'),zoom:document.getElementById('bracketZoom'),br:document.getElementById('bracket'),rounds:document.getElementById('bracketRounds'),out:document.getElementById('bracketZoomOut')});
+  function applyBracketLayout(){
+    const {vp,zoom,br,rounds,out}=bracketEls(); if(!vp||!br||!zoom)return;
+    const list=bracketMode==='list';
+    vp.classList.toggle('list',list);
+    const modeBtn=document.getElementById('bracketModeBtn'); if(modeBtn)modeBtn.textContent=list?'Ver como chave':'Ver como lista';
+    const zoomCtl=document.getElementById('bracketZoomCtl'); if(zoomCtl)zoomCtl.hidden=list;
+    vp.classList.remove('zoomed'); br.style.transform=''; zoom.style.width=''; zoom.style.height='';
+    if(!list&&tournament.rounds.length&&Math.abs(bracketZoom-1)>0.01){
+      vp.classList.add('zoomed'); // .bracket vira absolute + width:max-content
+      if(!bracketNatural)bracketNatural={W:br.scrollWidth,H:br.scrollHeight};
+      br.style.transform=`scale(${bracketZoom})`;
+      zoom.style.width=`${Math.ceil(bracketNatural.W*bracketZoom)}px`; zoom.style.height=`${Math.ceil(bracketNatural.H*bracketZoom)}px`;
+    }
+    if(out)out.value=`${Math.round(bracketZoom*100)}%`;
+    if(rounds){
+      const secs=[...br.querySelectorAll('.bracket-round')];
+      rounds.innerHTML=secs.map((s,i)=>`<button type="button" data-round="${i}" class="${i===0?'active':''}">${escapeHTML(s.querySelector('h3')?.textContent||`Rodada ${i+1}`)}</button>`).join('');
+      rounds.hidden=secs.length<2;
+      rounds.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{
+        const sec=secs[+b.dataset.round]; if(!sec)return;
+        if(bracketMode==='list')window.scrollTo({top:sec.getBoundingClientRect().top+window.scrollY-130,behavior:'smooth'});
+        else vp.scrollTo({left:sec.offsetLeft*bracketZoom-14,behavior:'smooth'});
+      }));
+      updateBracketRoundIndicator();
+    }
+  }
+  function updateBracketRoundIndicator(){
+    const {vp,br,rounds}=bracketEls(); if(!vp||!br||!rounds||rounds.hidden)return;
+    const secs=[...br.querySelectorAll('.bracket-round')]; if(!secs.length)return;
+    let idx=0;
+    if(bracketMode==='list'){secs.forEach((s,i)=>{if(s.getBoundingClientRect().top<=150)idx=i;});}
+    else{const x=vp.scrollLeft+vp.clientWidth*0.35;secs.forEach((s,i)=>{if(s.offsetLeft*bracketZoom<=x)idx=i;});}
+    rounds.querySelectorAll('button').forEach((b,i)=>b.classList.toggle('active',i===idx));
+  }
+  function setBracketZoom(z,{persist=true}={}){
+    bracketZoom=Math.min(1.6,Math.max(0.5,Math.round(z*100)/100));
+    if(persist)localStorage.setItem('bx_bracket_zoom',String(bracketZoom));
+    applyBracketLayout();
+  }
+  (function initBracketTools(){
+    const {vp}=bracketEls(); if(!vp)return;
+    document.getElementById('bracketModeBtn')?.addEventListener('click',()=>{bracketMode=bracketMode==='list'?'tree':'list';localStorage.setItem('bx_bracket_mode',bracketMode);applyBracketLayout();});
+    document.getElementById('bracketZoomIn')?.addEventListener('click',()=>setBracketZoom(bracketZoom+0.1));
+    document.getElementById('bracketZoomOutBtn')?.addEventListener('click',()=>setBracketZoom(bracketZoom-0.1));
+    document.getElementById('bracketZoomReset')?.addEventListener('click',()=>setBracketZoom(1));
+    let raf=0; const tick=()=>{cancelAnimationFrame(raf);raf=requestAnimationFrame(updateBracketRoundIndicator);};
+    vp.addEventListener('scroll',tick,{passive:true});
+    window.addEventListener('scroll',()=>{if(bracketMode==='list'&&document.getElementById('view-tournament')?.classList.contains('active'))tick();},{passive:true});
+    // Ctrl+roda do mouse = zoom só do bracket
+    vp.addEventListener('wheel',e=>{if(!e.ctrlKey||bracketMode==='list')return;e.preventDefault();setBracketZoom(bracketZoom+(e.deltaY<0?0.1:-0.1));},{passive:false});
+    // Pinça com dois dedos dentro do bracket (a página em si não dá zoom)
+    let pinch=null; const dist=t=>Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t[1].clientY);
+    vp.addEventListener('touchstart',e=>{if(e.touches.length===2&&bracketMode!=='list'){e.preventDefault();pinch={d:dist(e.touches),z:bracketZoom};}},{passive:false});
+    vp.addEventListener('touchmove',e=>{if(pinch&&e.touches.length===2){e.preventDefault();setBracketZoom(pinch.z*dist(e.touches)/pinch.d,{persist:false});}},{passive:false});
+    vp.addEventListener('touchend',()=>{if(pinch){pinch=null;setBracketZoom(bracketZoom);}});
+    let rz=0; window.addEventListener('resize',()=>{clearTimeout(rz);rz=setTimeout(()=>{bracketNatural=null;if(document.getElementById('view-tournament')?.classList.contains('active'))applyBracketLayout();},150);});
+  })();
   function renderTournament(){
     const maxInput=document.getElementById('tournamentMaxPlayers');if(!maxInput)return;maxInput.value=tournament.maxPlayers||8;
     const thirdToggle=document.getElementById('tournamentThirdPlace');if(thirdToggle)thirdToggle.checked=!!tournament.thirdPlaceEnabled;
@@ -1882,7 +1967,7 @@
       const thirdNested=isFinal&&tournament.thirdPlaceEnabled?`<div class="third-place-nested"><div class="third-place-nested-title"><span>🥉</span><b>Disputa de 3º lugar</b></div>${renderThirdPlaceMatch(tournament.thirdPlaceMatch)}</div>`:'';
       return `<section class="bracket-round ${isFinal?'final-round':''}"><h3>${roundTitle(r,tournament.rounds.length)}</h3><div class="round-matches">${round.map((m,i)=>renderBracketMatch(m,r,i)).join('')}${thirdNested}</div></section>`;
     }).join(''):'<div class="empty-state bracket-empty">Inscreva jogadores e clique em “Gerar / sortear chave”.</div>';
-    bracket.innerHTML=mainBracket;
+    bracket.innerHTML=mainBracket; bracketNatural=null; applyBracketLayout();
     bracket.querySelectorAll('.match-score').forEach(inp=>inp.addEventListener('input',()=>{const m=tournament.rounds[+inp.dataset.r][+inp.dataset.m];m[inp.dataset.side]=inp.value;saveTournament();}));
     bracket.querySelectorAll('.match-confirm[data-r]').forEach(b=>b.addEventListener('click',()=>confirmTournamentMatch(+b.dataset.r,+b.dataset.m)));
     bracket.querySelectorAll('.third-score').forEach(inp=>inp.addEventListener('input',()=>{if(tournament.thirdPlaceMatch){tournament.thirdPlaceMatch[inp.dataset.side]=inp.value;saveTournament();}}));
@@ -2069,6 +2154,7 @@
     document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.id===`view-${target}`));
     currentView=target;
     if(dirtyViews.has(target))renderView(target);
+    else if(target==='tournament'){bracketNatural=null;applyBracketLayout();}
     if(metaJump){
       const sec=document.getElementById('metaSection');
       if(sec){ requestAnimationFrame(()=>sec.scrollIntoView({behavior:'smooth',block:'start'})); return; }

@@ -74,7 +74,7 @@
 
   function partThumb(p, size = 26) {
     const img = p?.img || (p ? localImg(p.display || p.name) : null);
-    if (img) return `<span class="ptag-thumb" style="width:${size}px;height:${size}px"><img loading="lazy" src="${esc(img)}" alt=""></span>`;
+    if (img) return `<span class="ptag-thumb" style="width:${size}px;height:${size}px"><img loading="lazy" decoding="async" width="${size}" height="${size}" src="${esc(img)}" alt=""></span>`;
     const initials = esc((p?.abbrev || (p?.display || '?').slice(0, 2)).toUpperCase());
     return `<span class="ptag-thumb fallback" style="width:${size}px;height:${size}px">${initials}</span>`;
   }
@@ -142,9 +142,9 @@
   function avatarHtml(user, { size = 40, frame = null } = {}) {
     const frameObj = frame ?? user?.cosmetics?.frame ?? null;
     const cls = frameObj?.styleKey ? ` frame-${esc(frameObj.styleKey)}` : '';
-    const frameImg = frameObj?.imageUrl ? `<img class="frame-img" src="${esc(frameObj.imageUrl)}" alt="">` : '';
+    const frameImg = frameObj?.imageUrl ? `<img class="frame-img" src="${esc(frameObj.imageUrl)}" alt="" loading="lazy" decoding="async" width="${size}" height="${size}">` : '';
     const inner = user?.avatarUrl
-      ? `<img src="${esc(user.avatarUrl)}" alt="">`
+      ? `<img src="${esc(user.avatarUrl)}" alt="" loading="lazy" decoding="async" width="${size}" height="${size}">`
       : `<b>${esc((user?.name || '?').slice(0, 1).toUpperCase())}</b>`;
     const badge = user?.verified ? '<i class="verified-badge" title="Verificado">✔</i>' : '';
     return `<span class="avatar${cls}" style="width:${size}px;height:${size}px">${inner}${frameImg}${badge}</span>`;
@@ -250,7 +250,7 @@
     const piece = (p, cls) => {
       if (!p) return '';
       const inner = p.img
-        ? `<img loading="lazy" src="${esc(p.img)}" alt="">`
+        ? `<img loading="lazy" decoding="async" width="${u}" height="${u}" src="${esc(p.img)}" alt="">`
         : `<b>${esc((p.abbrev || p.name.slice(0, 2)).toUpperCase())}</b>`;
       const tag = link && p.slug ? 'a' : 'span';
       const href = link && p.slug ? ` href="/peca/${esc(p.slug)}"` : '';
@@ -553,9 +553,9 @@
     // Topbar
     mount.className = 'topbar shell';
     mount.innerHTML = `
-      <button class="nav-toggle" id="navToggle" title="Menu" aria-label="Abrir menu">☰</button>
+      <button class="nav-toggle" id="navToggle" title="Menu" aria-label="Abrir menu" aria-expanded="false" aria-controls="sideNav">☰</button>
       <button class="nav-toggle nav-back" id="navBack" title="Voltar" aria-label="Voltar" ${history.length > 1 ? '' : 'hidden'}><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
-      <a class="brand mini" href="/#home" style="text-decoration:none">
+      <a class="brand mini" href="/#home" style="text-decoration:none" aria-label="Início">
         <div class="brand-mark" aria-hidden="true"><span>X</span></div>
       </a>
       <div class="header-status" id="headerStatus"></div>
@@ -566,8 +566,10 @@
     // Comportamento: colapsar (desktop) / abrir (mobile)
     const isMobile = () => matchMedia('(max-width: 900px)').matches;
     document.getElementById('navToggle').onclick = () => {
-      if (isMobile()) document.body.classList.toggle('nav-open');
-      else {
+      if (isMobile()) {
+        const open = document.body.classList.toggle('nav-open');
+        document.getElementById('navToggle')?.setAttribute('aria-expanded', String(open));
+      } else {
         document.body.classList.toggle('nav-collapsed');
         localStorage.setItem('bx_nav_collapsed', document.body.classList.contains('nav-collapsed') ? '1' : '0');
       }
@@ -576,7 +578,7 @@
       document.body.classList.toggle('nav-collapsed');
       localStorage.setItem('bx_nav_collapsed', document.body.classList.contains('nav-collapsed') ? '1' : '0');
     };
-    document.getElementById('sideBackdrop').onclick = () => document.body.classList.remove('nav-open');
+    document.getElementById('sideBackdrop').onclick = () => { document.body.classList.remove('nav-open'); document.getElementById('navToggle')?.setAttribute('aria-expanded', 'false'); };
     side.querySelectorAll('a.side-item').forEach((a) => a.addEventListener('click', () => document.body.classList.remove('nav-open')));
 
     // Menu do avatar
@@ -601,6 +603,16 @@
   }
 
   const renderTopbar = renderShell; // compat: páginas antigas chamam renderTopbar('/pecas')
+
+  // UX global: a página não dá zoom por pinça/duplo toque (o CSS trava com touch-action; o iOS
+  // Safari ignora isso e precisa dos eventos gesture*). Zoom controlado existe só dentro do bracket.
+  ['gesturestart', 'gesturechange', 'gestureend'].forEach((ev) => document.addEventListener(ev, (e) => e.preventDefault(), { passive: false }));
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && document.body.classList.contains('nav-open')) {
+      document.body.classList.remove('nav-open');
+      document.getElementById('navToggle')?.setAttribute('aria-expanded', 'false');
+    }
+  });
 
   function renderAnnouncements(s) {
     if (!s?.announcements?.length || document.querySelector('.announcement-bar')) return;

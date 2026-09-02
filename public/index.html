@@ -2,14 +2,16 @@
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="referrer" content="no-referrer" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;0,700;0,800;1,700&family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;0,700;0,800;1,700&family=Inter:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'">
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;0,700;0,800;1,700&family=Inter:wght@400;500;600;700&display=swap"></noscript>
   <meta name="theme-color" content="#0b0c11" />
   <title>BX Deck Lab — Montador de Decks Beyblade X</title>
-  <link rel="preconnect" href="https://beyblade.phstudy.org" crossorigin>
   <link rel="preconnect" href="https://beybladehub.app" crossorigin>
-  <link rel="preconnect" href="https://beycommunity.com" crossorigin>
-  <link rel="preconnect" href="https://r.jina.ai" crossorigin>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -382,7 +384,20 @@
 
       <section class="bracket-section">
         <div class="section-title-row"><div><p class="eyebrow">CHAVE</p><h2>Eliminação simples</h2></div><div class="tournament-result-chips"><div id="tournamentThirdPlaceResult" class="champion-chip third-chip"></div><div id="tournamentChampion" class="champion-chip"></div></div></div>
-        <div id="bracket" class="bracket"></div>
+        <div class="bracket-tools">
+          <div class="bracket-rounds" id="bracketRounds" hidden aria-label="Ir para a rodada"></div>
+          <div class="bracket-actions">
+            <div class="bracket-zoom-ctl" id="bracketZoomCtl" role="group" aria-label="Zoom da chave">
+              <button type="button" id="bracketZoomOutBtn" aria-label="Diminuir zoom">−</button>
+              <output id="bracketZoomOut" aria-live="polite">100%</output>
+              <button type="button" id="bracketZoomIn" aria-label="Aumentar zoom">+</button>
+              <button type="button" id="bracketZoomReset" aria-label="Zoom original" title="Zoom original">⟲</button>
+            </div>
+            <button type="button" class="btn secondary" id="bracketModeBtn">Ver como lista</button>
+          </div>
+        </div>
+        <div class="bracket-viewport" id="bracketViewport"><div class="bracket-zoom" id="bracketZoom"><div id="bracket" class="bracket"></div></div></div>
+        <p class="bracket-scroll-hint">Arraste para o lado para ver as próximas rodadas • pinça ou botões para o zoom da chave.</p>
       </section>
     </section>
 

@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@prisma/client": "^6.16.0",
+    "compression": "^1.8.1",
     "express": "^4.21.0",
     "multer": "^2.0.0",
     "qrcode": "^1.5.4"

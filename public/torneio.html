@@ -2,8 +2,14 @@
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="referrer" content="no-referrer" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;0,700;0,800;1,700&family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;0,700;0,800;1,700&family=Inter:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'">
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;0,700;0,800;1,700&family=Inter:wght@400;500;600;700&display=swap"></noscript>
+  <meta name="theme-color" content="#090a0f" />
   <title>Torneio — BX Deck Lab</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
@@ -17,23 +23,40 @@
       BX.renderTopbar('/torneios');
       const slug = BX.pathPart(1);
       const app = document.getElementById('app');
-      let view = 'geral'; // geral | partida | gestao
+      const VIEWS = ['geral', 'partida', 'gestao'];
+      const hashView = () => { const v = location.hash.slice(1); return VIEWS.includes(v) ? v : 'geral'; };
+      let view = hashView(); // geral | partida | gestao — fica no hash: recarregar/voltar não perde a aba
       let pollTimer = null;
+      let last = null;       // {data, me, myData} do último load — re-render sem nova chamada
+      let lastSig = '';      // assinatura do último payload — poll só re-renderiza se algo mudou
+      let pendingRender = false;
+      const editing = () => { const el = document.activeElement; return !!el && app.contains(el) && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName); };
+      let roundsMode = localStorage.getItem('bx_tmode') || (matchMedia('(max-width:700px)').matches ? 'list' : 'tree');
 
       const STATUS_PT = { OPEN: 'inscrições abertas', RUNNING: 'em andamento', FINISHED: 'encerrado', CANCELED: 'cancelado' };
 
-      async function load() {
-        let data;
-        try {
-          data = await BX.api(`/api/tournaments/${encodeURIComponent(slug)}`);
-        } catch (e) {
-          app.innerHTML = `<div class="empty-state">${BX.esc(e.message)} — <a href="/torneios" style="color:var(--cyan)">ver torneios</a></div>`;
-          return;
+      async function load(prefetched = null) {
+        let data = prefetched;
+        if (!data) {
+          try {
+            data = await BX.api(`/api/tournaments/${encodeURIComponent(slug)}`);
+          } catch (e) {
+            app.innerHTML = `<div class="empty-state">${BX.esc(e.message)} — <a href="/torneios" style="color:var(--cyan)">ver torneios</a></div>`;
+            return;
+          }
         }
         const me = await BX.me().catch(() => null);
         const myMatch = me && data.me ? await BX.api(`/api/tournaments/${encodeURIComponent(slug)}/me`).catch(() => null) : null;
+        const sig = JSON.stringify([data, myMatch]);
+        last = { data, me, myData: myMatch };
+        if (sig === lastSig && prefetched) return; // nada mudou: não mexe na tela
+        lastSig = sig;
+        if (editing()) { pendingRender = true; return; } // não apaga o que a pessoa está digitando
         render(data, me, myMatch);
       }
+      // Depois que a pessoa sai do campo, aplica a atualização que ficou pendente
+      app.addEventListener('focusout', () => { if (pendingRender && last) { pendingRender = false; setTimeout(() => { if (!editing()) render(last.data, last.me, last.myData); }, 150); } });
+      window.addEventListener('hashchange', () => { const v = hashView(); if (v !== view) { view = v; if (last) render(last.data, last.me, last.myData); } });
 
       function render(data, me, myData) {
         const t = data.tournament;
@@ -59,13 +82,13 @@
             <div class="hero-actions">
               ${t.status === 'OPEN' && !joined ? `<button class="btn primary" id="joinBtn">Entrar no torneio</button>` : ''}
               ${t.status === 'OPEN' && joined ? `<button class="btn danger-outline" id="leaveBtn">Sair do torneio</button>` : ''}
-              <button class="btn ghost" id="reportBtn">⚑</button>
+              <button class="btn ghost icon-only" id="reportBtn" aria-label="Denunciar torneio" title="Denunciar torneio">⚑</button>
             </div>
           </div>
-          ${tabs.length > 1 ? `<nav class="tabs" style="justify-content:flex-start;margin-bottom:18px">${tabs.map(([k, label]) => `<button class="tab${view === k ? ' active' : ''}" data-view="${k}">${label}</button>`).join('')}</nav>` : ''}
+          ${tabs.length > 1 ? `<nav class="tabs" style="justify-content:flex-start;margin-bottom:18px" aria-label="Seções do torneio">${tabs.map(([k, label]) => `<button class="tab${view === k ? ' active' : ''}" data-view="${k}" aria-selected="${view === k}">${label}</button>`).join('')}</nav>` : ''}
           <div id="viewBox"></div>`;
 
-        document.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => { view = b.dataset.view; render(data, me, myData); }));
+        document.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => { view = b.dataset.view; history.replaceState(null, '', '#' + view); render(data, me, myData); }));
         document.getElementById('joinBtn')?.addEventListener('click', () => { location.href = `/t/${t.slug}`; });
         document.getElementById('leaveBtn')?.addEventListener('click', async () => {
           if (!confirm('Sair deste torneio?')) return;
@@ -78,6 +101,69 @@
         if (view === 'partida' && myData?.match) renderMatch(box, t, myData);
         else if (view === 'gestao' && t.canManage) renderManage(box, t, data);
         else renderGeneral(box, t, data);
+      }
+
+      function matchStatus(t, m) {
+        if (m.bye) return ['bye', 'BYE'];
+        if (m.status === 'DONE') return ['done', 'Finalizada'];
+        if (m.status === 'CONFLICT') return ['conflict', 'Conflito'];
+        if (t.status === 'RUNNING' && m.round === t.currentRound) return ['live', (m.p1Reported || m.p2Reported) ? 'Ao vivo · 1 reporte' : 'Ao vivo'];
+        return ['pending', 'Pendente'];
+      }
+      function competitor(pl, { won = false, lost = false, reported = false, bye = false } = {}) {
+        const name = BX.esc(pl?.user?.name || (bye ? 'BYE' : '?'));
+        const av = pl ? BX.avatarHtml(pl.user, { size: 28 }) : '<span class="avatar" style="width:28px;height:28px"><b>—</b></span>';
+        const tag = won ? 'venceu' : reported ? 'reportou' : '';
+        return `<div class="competitor ${won ? 'winner' : ''} ${lost ? 'loser' : ''}">${av}<span title="${name}">${name}</span>${tag ? `<b class="rep">${tag}</b>` : '<span></span>'}</div>`;
+      }
+      function renderRounds(t, data) {
+        if (!data.matches?.length) return '';
+        const rounds = [...new Set(data.matches.map((m) => m.round))].sort((a, b) => a - b);
+        const isCur = (r) => t.status === 'RUNNING' && r === t.currentRound;
+        const card = (m) => {
+          const [st, label] = matchStatus(t, m);
+          const done = m.status === 'DONE';
+          return `<article class="bracket-match ${st} ${done ? 'decided' : ''}">
+            <header class="bm-head"><small>Mesa ${m.tableNo}</small><span class="m-status ${st}">${label}</span></header>
+            ${competitor(m.p1, { won: done && m.winnerId === m.p1?.id, lost: done && !!m.winnerId && m.winnerId !== m.p1?.id, reported: !done && m.p1Reported })}
+            ${competitor(m.p2, { won: done && m.winnerId === m.p2?.id, lost: done && !!m.winnerId && m.winnerId !== m.p2?.id, reported: !done && m.p2Reported, bye: m.bye })}
+          </article>`;
+        };
+        const cols = rounds.map((r) => `<section class="bracket-round ${isCur(r) ? 'current' : ''}" data-round="${r}"><h3>Rodada ${r}${isCur(r) ? ' · em andamento' : ''}</h3><div class="round-matches">${data.matches.filter((m) => m.round === r).sort((a, b) => a.tableNo - b.tableNo).map(card).join('')}</div></section>`).join('');
+        return `
+          <div class="section-title-row" style="margin:18px 0 10px"><div><p class="eyebrow">RODADAS</p><h2>Chaveamento</h2></div></div>
+          <div class="bracket-tools">
+            <div class="bracket-rounds" id="tRounds" aria-label="Ir para a rodada" ${rounds.length < 2 ? 'hidden' : ''}>${rounds.map((r, i) => `<button type="button" data-round="${r}" class="${isCur(r) ? 'current' : ''} ${i === 0 ? 'active' : ''}">R${r}${isCur(r) ? ' •' : ''}</button>`).join('')}</div>
+            <div class="bracket-actions"><button type="button" class="btn secondary" id="tModeBtn">${roundsMode === 'list' ? 'Ver como chave' : 'Ver como lista'}</button></div>
+          </div>
+          <div class="bracket-viewport free ${roundsMode === 'list' ? 'list' : ''}" id="tViewport"><div class="bracket">${cols}</div></div>
+          <p class="bracket-scroll-hint">Arraste para o lado para ver as outras rodadas.</p>`;
+      }
+      function wireRounds(box) {
+        const vp = box.querySelector('#tViewport'); if (!vp) return;
+        const pills = [...box.querySelectorAll('#tRounds button')];
+        const secs = [...vp.querySelectorAll('.bracket-round')];
+        box.querySelector('#tModeBtn')?.addEventListener('click', () => { roundsMode = roundsMode === 'list' ? 'tree' : 'list'; localStorage.setItem('bx_tmode', roundsMode); if (last) render(last.data, last.me, last.myData); });
+        pills.forEach((b) => b.addEventListener('click', () => {
+          const sec = secs.find((s) => s.dataset.round === b.dataset.round); if (!sec) return;
+          if (roundsMode === 'list') window.scrollTo({ top: sec.getBoundingClientRect().top + window.scrollY - 130, behavior: 'smooth' });
+          else vp.scrollTo({ left: sec.offsetLeft - 14, behavior: 'smooth' });
+        }));
+        const mark = () => {
+          let idx = 0;
+          if (roundsMode === 'list') secs.forEach((s, i) => { if (s.getBoundingClientRect().top <= 150) idx = i; });
+          else { const x = vp.scrollLeft + vp.clientWidth * 0.35; secs.forEach((s, i) => { if (s.offsetLeft <= x) idx = i; }); }
+          pills.forEach((b, i) => b.classList.toggle('active', i === idx));
+        };
+        let raf = 0; const tick = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(mark); };
+        vp.addEventListener('scroll', tick, { passive: true });
+        if (wireRounds._scroll) window.removeEventListener('scroll', wireRounds._scroll);
+        wireRounds._scroll = () => { if (roundsMode === 'list' && document.body.contains(vp)) tick(); };
+        window.addEventListener('scroll', wireRounds._scroll, { passive: true });
+        // Começa na rodada em andamento
+        const cur = secs.find((s) => s.classList.contains('current'));
+        if (cur && roundsMode !== 'list') vp.scrollLeft = cur.offsetLeft - 14;
+        mark();
       }
 
       function renderGeneral(box, t, data) {
@@ -101,7 +187,9 @@
                 <div><h3>${BX.esc(p.user.name)}</h3><small>@${BX.esc(p.user.slug)}${p.dropped ? ' • DROP' : ''}</small></div>
               </a>`).join('') || '<div class="empty-state">Ninguém inscrito ainda.</div>'}
           </div>
+          ${renderRounds(t, data)}
           ${standings}`;
+        wireRounds(box);
       }
 
       function renderMatch(box, t, myData) {
@@ -240,12 +328,15 @@
       }
 
       await load();
-      // Atualiza sozinho a cada 20s durante o torneio (tela de partida/gestão)
+      // Atualiza sozinho a cada 20s enquanto o torneio roda (uma chamada; só redesenha se algo mudou)
       pollTimer = setInterval(async () => {
         if (document.hidden) return;
         const data = await BX.api(`/api/tournaments/${encodeURIComponent(slug)}`).catch(() => null);
-        if (data?.tournament.status === 'RUNNING') load();
+        if (!data) return;
+        if (data.tournament.status === 'RUNNING' || data.tournament.status !== last?.data?.tournament?.status) load(data);
       }, 20_000);
+      window.addEventListener('pagehide', () => clearInterval(pollTimer));
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
     })();
   </script>
 </body>

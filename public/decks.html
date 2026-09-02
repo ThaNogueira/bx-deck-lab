@@ -2,8 +2,14 @@
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="referrer" content="no-referrer" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;0,700;0,800;1,700&family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;0,700;0,800;1,700&family=Inter:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'">
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;0,700;0,800;1,700&family=Inter:wght@400;500;600;700&display=swap"></noscript>
+  <meta name="theme-color" content="#090a0f" />
   <title>Decks da comunidade — BX Deck Lab</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
@@ -23,7 +29,7 @@
     </div>
     <div class="page-toolbar">
       <input id="q" placeholder="Buscar deck ou autor…" />
-      <select id="filter">
+      <select id="filter" aria-label="Ordenar decks">
         <option value="">Mais recentes</option>
         <option value="featured">Em destaque</option>
       </select>
@@ -47,7 +53,7 @@
           ? decks.map((d) => `
             <a class="list-card" href="/deck/${d.slug}">
               <div style="display:flex;justify-content:space-between;gap:8px">
-                <h3>${BX.esc(d.title)}</h3>
+                <h2>${BX.esc(d.title)}</h2>
                 ${d.featured ? '<span class="badge owned">★ destaque</span>' : ''}
               </div>
               ${BX.deckPreview(d.beys, { u: 50 })}

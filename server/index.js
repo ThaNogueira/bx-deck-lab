@@ -1,5 +1,6 @@
 import path from 'node:path';
 import express from 'express';
+import compression from 'compression';
 import { prisma } from './db.js';
 import { sessionMiddleware, isStaff } from './auth.js';
 import { logError } from './audit.js';
@@ -17,6 +18,7 @@ import marketRoutes from './routes/market.js';
 import adminRoutes from './routes/admin.js';
 
 const app = express();
+app.use(compression({ threshold: 1024 })); // gzip/brotli de HTML/CSS/JS/JSON (o Caddy também comprime; aqui cobre dev e acesso direto)
 app.disable('x-powered-by');
 app.set('trust proxy', true); // atrás do Caddy
 

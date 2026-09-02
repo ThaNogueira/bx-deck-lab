@@ -123,7 +123,7 @@
         title="${esc(p.display)} — ${esc(detalhe || 'presente no meta')}">
       <span class="mfloat">
         <span class="morb">
-          ${p.img ? `<img loading="lazy" src="${esc(p.img)}" alt="${esc(p.display)}">` : `<b>${esc((p.abbrev || p.display.slice(0, 2)).toUpperCase())}</b>`}
+          ${p.img ? `<img loading="lazy" decoding="async" width="120" height="120" src="${esc(p.img)}" alt="${esc(p.display)}">` : `<b>${esc((p.abbrev || p.display.slice(0, 2)).toUpperCase())}</b>`}
           <i class="mscore">${s.score}</i>
           ${i === 0 ? '<i class="mcrown">★</i>' : ''}
         </span>
