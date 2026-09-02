@@ -362,6 +362,97 @@ export async function autoLinkProducts() {
   return { linked };
 }
 
+/**
+ * Funde uma peça duplicada na canônica: move vínculos com produtos, itens
+ * de coleção (somando), referências em decks/combos e favoritos, preserva
+ * os nomes como apelidos e apaga a duplicata. (Mesma regra do merge do admin.)
+ */
+async function mergeParts(fromId, toId) {
+  const [from, to] = await Promise.all([
+    prisma.part.findUnique({ where: { id: fromId } }),
+    prisma.part.findUnique({ where: { id: toId } }),
+  ]);
+  if (!from || !to || from.id === to.id) return false;
+  for (const link of await prisma.productPart.findMany({ where: { partId: from.id } })) {
+    await prisma.productPart.upsert({
+      where: { productId_partId: { productId: link.productId, partId: to.id } },
+      update: {},
+      create: { productId: link.productId, partId: to.id, qty: link.qty },
+    });
+  }
+  for (const item of await prisma.collectionItem.findMany({ where: { partId: from.id } })) {
+    const ex = await prisma.collectionItem.findUnique({ where: { userId_partId: { userId: item.userId, partId: to.id } } });
+    if (ex) await prisma.collectionItem.update({ where: { id: ex.id }, data: { qty: ex.qty + item.qty } });
+    else await prisma.collectionItem.create({ data: { userId: item.userId, partId: to.id, qty: item.qty, forSale: item.forSale, condition: item.condition, priceCents: item.priceCents } });
+  }
+  for (const d of await prisma.communityDeck.findMany({ where: { beysJson: { contains: from.id } } })) {
+    const beys = JSON.parse(d.beysJson).map((bey) => bey.map((id) => (id === from.id ? to.id : id)));
+    await prisma.communityDeck.update({ where: { id: d.id }, data: { beysJson: JSON.stringify(beys) } });
+  }
+  for (const c of await prisma.combo.findMany({ where: { partsJson: { contains: from.id } } })) {
+    const parts = JSON.parse(c.partsJson).map((id) => (id === from.id ? to.id : id));
+    await prisma.combo.update({ where: { id: c.id }, data: { partsJson: JSON.stringify(parts) } });
+  }
+  await prisma.user.updateMany({ where: { favoritePartId: from.id }, data: { favoritePartId: to.id } });
+  let aliases = [];
+  try { aliases = JSON.parse(to.aliasesJson); } catch {}
+  let fromAliases = [];
+  try { fromAliases = JSON.parse(from.aliasesJson); } catch {}
+  const merged = [...new Set([...aliases, from.name, from.displayName, ...fromAliases])]
+    .filter((x) => x && x !== to.name && x !== to.displayName);
+  await prisma.part.update({
+    where: { id: to.id },
+    data: {
+      aliasesJson: JSON.stringify(merged.slice(0, 12)),
+      imageUrl: to.imageUrl || from.imageUrl,
+      statsJson: to.statsJson || from.statsJson,
+      type: to.type || from.type,
+      abbrev: to.abbrev || from.abbrev,
+      weightGrams: to.weightGrams ?? from.weightGrams,
+      bcSlug: to.bcSlug || from.bcSlug,
+    },
+  });
+  await prisma.part.delete({ where: { id: from.id } });
+  return true;
+}
+
+/**
+ * Duplicatas por grafia entre as fontes (ex.: "Disc Ball" × "Disk Ball"):
+ * bits e ratchets que compartilham a mesma sigla/código são a mesma peça.
+ * A que tem bcSlug (BeyCommunity) é a canônica; empate → a mais antiga.
+ */
+export async function dedupeParts() {
+  let merged = 0;
+  // grafias equivalentes entre fontes (a chave de nome ignora estas diferenças)
+  const nameKey = (p) => [p.name, p.displayName].map((n) => normKey(n).replace(/disk/g, 'disc')).find(Boolean) || '';
+  for (const kind of ['BIT', 'RATCHET']) {
+    const parts = await prisma.part.findMany({ where: { kind }, orderBy: { createdAt: 'asc' } });
+    const groups = new Map();
+    const add = (key, p) => { if (!key) return; if (!groups.has(key)) groups.set(key, new Set()); groups.get(key).add(p); };
+    for (const p of parts) {
+      if (p.abbrev) add('A:' + String(p.abbrev).toUpperCase().trim(), p);
+      add('N:' + nameKey(p), p);
+    }
+    for (const [key, set] of groups) groups.set(key, [...set]);
+    for (const group of groups.values()) {
+      if (group.length < 2) continue;
+      const canon = group.find((p) => p.bcSlug && p.abbrev) || group.find((p) => p.bcSlug) || group.find((p) => p.abbrev) || group[0];
+      for (const dup of group) {
+        if (dup.id === canon.id) continue;
+        // RIB e bit comum podem dividir sigla legitimamente — só funde o mesmo subtipo
+        if ((dup.subKind || null) !== (canon.subKind || null)) continue;
+        if (!(await prisma.part.findUnique({ where: { id: dup.id } }))) continue; // já fundida por outro grupo
+        if (!(await prisma.part.findUnique({ where: { id: canon.id } }))) continue;
+        if (await mergeParts(dup.id, canon.id)) merged++;
+      }
+    }
+  }
+  if (merged) {
+    await prisma.syncLog.create({ data: { source: 'dedupe de peças (mesma sigla)', ok: true, message: `${merged} duplicata(s) fundida(s)` } });
+  }
+  return { merged };
+}
+
 /** Sincronização completa: BeyCommunity (banco inteiro) + enriquecimento. */
 export async function syncAll(actor = null) {
   // 1) BeyCommunity: produtos com código + peças com stats/peso/variantes e
@@ -378,7 +469,9 @@ export async function syncAll(actor = null) {
   const parts = await syncParts();
   // 3) Vínculo heurístico para produtos que ainda ficaram órfãos
   const links = await autoLinkProducts();
+  const dedupe = await dedupeParts();
   return {
+    dedupe,
     products: bc.products,
     parts: {
       created: bc.parts.created + parts.created,
