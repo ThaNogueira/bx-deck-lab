@@ -1722,10 +1722,8 @@
     el.innerHTML=`<span><strong>${stockOwned.length}</strong> Beys • <strong>${v.complete}/3</strong> no deck</span>`;
   }
 
-  // ---------- Picker lateral do Deck Builder (quadradinhos com foto) ----------
+  // ---------- Picker de peças (quadradinhos com foto) — builder e coleção ----------
   const PICKER_KINDS=[['','Tudo'],['blade','Blades'],['integrated','Integradas'],['lock','Lock Chips'],['main','Main'],['over','Over'],['assist','Assist'],['ratchet','Ratchets'],['bit','Bits'],['rib','RIB']];
-  let pickerKind='';
-  let pickerOwnedOnly=false;
   let activeSlot=0;
 
   function setActiveSlot(i){
@@ -1754,50 +1752,76 @@
     deck[target]=s; saveState(); renderAll();
   }
 
-  function renderPicker(){
-    const grid=document.getElementById('pickerGrid'); if(!grid)return;
-    const filters=document.getElementById('pickerFilters');
-    if(filters&&!filters.dataset.ready){
-      filters.innerHTML=PICKER_KINDS.map(([k,label])=>`<button class="picker-chip ${k===pickerKind?'active':''}" data-kind="${k}">${label}</button>`).join('')
-        +`<button class="picker-chip owned-toggle ${pickerOwnedOnly?'active':''}" id="pickerOwnedBtn" title="Mostrar só peças que eu tenho">✓ Tenho</button>`;
-      filters.dataset.ready='1';
-      filters.querySelectorAll('[data-kind]').forEach(b=>b.addEventListener('click',()=>{
-        pickerKind=b.dataset.kind;
-        filters.querySelectorAll('[data-kind]').forEach(x=>x.classList.toggle('active',x===b));
-        renderPicker();
-      }));
-      document.getElementById('pickerOwnedBtn').addEventListener('click',e=>{
-        pickerOwnedOnly=!pickerOwnedOnly;
-        e.currentTarget.classList.toggle('active',pickerOwnedOnly);
-        renderPicker();
-      });
+  /**
+   * Fábrica de picker: mesma caixa de quadradinhos (busca + filtro por tipo +
+   * "tenho") em qualquer lugar. cfg = {search, filters, grid, hint, onPick, hintText}.
+   */
+  function makePicker(cfg){
+    const st={kind:'',ownedOnly:false};
+    function render(){
+      const grid=document.getElementById(cfg.grid); if(!grid)return;
+      const filters=document.getElementById(cfg.filters);
+      if(filters&&!filters.dataset.ready){
+        filters.innerHTML=PICKER_KINDS.map(([k,label])=>`<button class="picker-chip ${k===st.kind?'active':''}" data-kind="${k}">${label}</button>`).join('')
+          +`<button class="picker-chip owned-toggle" data-owned="1" title="Mostrar só peças que eu tenho">✓ Tenho</button>`;
+        filters.dataset.ready='1';
+        filters.querySelectorAll('[data-kind]').forEach(b=>b.addEventListener('click',()=>{
+          st.kind=b.dataset.kind;
+          filters.querySelectorAll('[data-kind]').forEach(x=>x.classList.toggle('active',x===b));
+          render();
+        }));
+        filters.querySelector('[data-owned]').addEventListener('click',e=>{
+          st.ownedOnly=!st.ownedOnly; e.currentTarget.classList.toggle('active',st.ownedOnly); render();
+        });
+      }
+      const q=equivalentKey(document.getElementById(cfg.search)?.value||'');
+      let items=Object.values(PARTS).filter(p=>!st.kind||p.kind===st.kind);
+      if(q)items=items.filter(p=>[p.name,p.display,p.abbrev,...(p.aliases||[])].some(x=>x&&equivalentKey(x).includes(q)));
+      if(st.ownedOnly)items=items.filter(p=>(inventory[p.id]||0)>0);
+      items.sort((a,b)=>((inventory[b.id]||0)>0)-((inventory[a.id]||0)>0)||a.display.localeCompare(b.display));
+      const shown=items.slice(0,160);
+      grid.innerHTML=shown.map(p=>{
+        const owned=inventory[p.id]||0;
+        return `<button class="picker-tile ${owned?'owned':''}" data-part="${escapeAttr(p.id)}" title="${escapeAttr(p.display)} — ${KIND_LABEL[p.kind]||p.kind}${owned?` (você tem ×${owned})`:''}">
+          ${partArt(p,'tile')}
+          <span class="picker-tile-name">${escapeHTML(p.display)}</span>
+          ${owned?`<i class="picker-owned">${owned}</i>`:''}
+          ${p.banned?'<i class="picker-banned">!</i>':''}
+        </button>`;
+      }).join('')||'<div class="empty-state">Nenhuma peça com esses filtros.</div>';
+      const hint=document.getElementById(cfg.hint);
+      if(hint)hint.innerHTML=`${items.length} peça(s)${items.length>shown.length?` • mostrando ${shown.length}`:''} — ${cfg.hintText()}`;
+      grid.querySelectorAll('.picker-tile').forEach(b=>b.addEventListener('click',()=>{const p=PARTS[b.dataset.part];if(p)cfg.onPick(p);}));
+      hydrateImages(grid);
     }
-    const q=equivalentKey(document.getElementById('pickerSearch')?.value||'');
-    let items=Object.values(PARTS).filter(p=>!pickerKind||p.kind===pickerKind);
-    if(q)items=items.filter(p=>[p.name,p.display,p.abbrev,...(p.aliases||[])].some(x=>x&&equivalentKey(x).includes(q)));
-    if(pickerOwnedOnly)items=items.filter(p=>(inventory[p.id]||0)>0);
-    items.sort((a,b)=>((inventory[b.id]||0)>0)-((inventory[a.id]||0)>0)||a.display.localeCompare(b.display));
-    const shown=items.slice(0,160);
-    grid.innerHTML=shown.map(p=>{
-      const owned=inventory[p.id]||0;
-      return `<button class="picker-tile ${owned?'owned':''}" data-part="${escapeAttr(p.id)}" title="${escapeAttr(p.display)} — ${KIND_LABEL[p.kind]||p.kind}${owned?` (você tem ×${owned})`:''}">
-        ${partArt(p,'tile')}
-        <span class="picker-tile-name">${escapeHTML(p.display)}</span>
-        ${owned?`<i class="picker-owned">${owned}</i>`:''}
-        ${p.banned?'<i class="picker-banned">!</i>':''}
-      </button>`;
-    }).join('')||'<div class="empty-state">Nenhuma peça com esses filtros.</div>';
-    const hint=document.getElementById('pickerHint');
-    if(hint)hint.innerHTML=`${items.length} peça(s)${items.length>shown.length?` • mostrando ${shown.length}`:''} — clique para colocar no <b>Bey ${activeSlot+1}</b>.`;
-    grid.querySelectorAll('.picker-tile').forEach(b=>b.addEventListener('click',()=>{
-      const p=PARTS[b.dataset.part]; if(!p)return;
-      applyPartToSlot(p,activeSlot);
-      toast(`${p.display} → Bey ${activeSlot+1}${(inventory[p.id]||0)?'':' (fora da sua coleção)'}`);
-    }));
-    hydrateImages(grid);
+    document.getElementById(cfg.search)?.addEventListener('input',render);
+    return render;
   }
 
-  function renderAll(){ renderHeader(); renderBuilder(); renderPicker(); renderCollection(); renderMissing(); renderPopular(); renderWeekly(); renderSession(); renderTournament(); }
+  // Builder: clique coloca no Bey ativo
+  const renderPicker=makePicker({
+    search:'pickerSearch',filters:'pickerFilters',grid:'pickerGrid',hint:'pickerHint',
+    hintText:()=>`clique para colocar no <b>Bey ${activeSlot+1}</b>.`,
+    onPick:(p)=>{applyPartToSlot(p,activeSlot);toast(`${p.display} → Bey ${activeSlot+1}${(inventory[p.id]||0)?'':' (fora da sua coleção)'}`);},
+  });
+
+  // Coleção: clique adiciona +1 cópia
+  const renderColPicker=makePicker({
+    search:'colPickerSearch',filters:'colPickerFilters',grid:'colPickerGrid',hint:'colPickerHint',
+    hintText:()=>'clique para adicionar <b>+1</b> à sua coleção (o botão − no card da peça remove).',
+    onPick:(p)=>{changeManualQty(p.id,1);toast(`+1 ${p.display} na coleção (agora ×${inventory[p.id]||1}).`);},
+  });
+
+  /** Adiciona várias peças de uma vez (ex.: as de um produto) — um só re-render. */
+  function addManualParts(ids){
+    let n=0;
+    for(const id of ids){ if(!PARTS[id])continue; if(!manualParts[id])manualParts[id]={part:PARTS[id],qty:0}; manualParts[id].qty=(manualParts[id].qty||0)+1; n++; }
+    localStorage.setItem('bx_manual_parts_v5',JSON.stringify(manualParts));
+    importInventory(inventoryText,true);
+    return n;
+  }
+
+  function renderAll(){ renderHeader(); renderBuilder(); renderPicker(); renderColPicker(); renderCollection(); renderMissing(); renderPopular(); renderWeekly(); renderSession(); renderTournament(); }
 
   function escapeHTML(s){return String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
   function escapeAttr(s){return escapeHTML(s).replace(/`/g,'&#96;');}
@@ -1835,11 +1859,10 @@
     toast(builderShowAll?'Modo catálogo: monte com qualquer peça, mesmo sem possuir.':'Modo coleção: só peças que você tem.');
   });
   syncBuilderModeBtn();
-  document.getElementById('pickerSearch')?.addEventListener('input',renderPicker);
   setActiveSlot(0);
 
   document.getElementById('importBtn').addEventListener('click',()=>smartImportInventory(document.getElementById('inventoryText').value));
-  document.getElementById('manualAddBtn').addEventListener('click',addManualPart);
+  document.getElementById('manualAddBtn')?.addEventListener('click',addManualPart);
   document.getElementById('syncCatalogBtn')?.addEventListener('click',()=>syncLiveCatalog({quiet:false,force:true}));
   document.getElementById('catalogSearchBtn')?.addEventListener('click',searchCatalog);
   document.getElementById('catalogSearchInput')?.addEventListener('keydown',e=>{if(e.key==='Enter')searchCatalog();});
@@ -1908,6 +1931,23 @@
       }
       if(added||enriched){saveLiveCatalog();renderAll();}
       return {added,enriched};
+    },
+    /** Adiciona à coleção as peças de um produto vindas do servidor. Devolve os nomes adicionados. */
+    addProductParts: (serverParts) => {
+      const KIND_MAP={BLADE:'blade',LOCK_CHIP:'lock',OVER_BLADE:'over',MAIN_BLADE:'main',ASSIST_BLADE:'assist',RATCHET:'ratchet',BIT:'bit'};
+      const ids=[];
+      for(const sp of serverParts||[]){
+        let kind=KIND_MAP[sp.kind]||'blade';
+        if(sp.subKind==='INTEGRATED')kind='integrated';
+        if(sp.subKind==='RIB')kind='rib';
+        const display=sp.displayName||sp.display||sp.name; if(!display)continue;
+        const keys=[display,sp.name,...(sp.aliases||[])].filter(Boolean).map(equivalentKey);
+        let p=Object.values(PARTS).find(x=>x.kind===kind&&[x.name,x.display,x.abbrev,...(x.aliases||[])].some(y=>y&&keys.includes(equivalentKey(y))));
+        if(!p){reg(P(kind,sp.name||display,{display,aliases:sp.aliases||[],abbrev:sp.abbrev||'',type:sp.type||'',image:sp.imageUrl||sp.img||'',basicLock:kind==='lock',source:'catálogo do site'}));p=findEquivalent(kind,display);}
+        if(p)ids.push(p.id);
+      }
+      const n=addManualParts(ids);
+      return {added:n,names:ids.map(id=>PARTS[id]?.display).filter(Boolean)};
     },
     // Deck atual como listas de peças (para publicar na comunidade)
     getDeck: () => deck.map(slot => ({ complete: isComplete(slot), name: slotName(slot), parts: slotParts(slot).map(id => PARTS[id]).filter(Boolean) })),

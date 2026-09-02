@@ -194,30 +194,25 @@
           <div class="import-note" id="importNote"></div>
         </div>
 
-        <div class="panel-card manual-card">
-          <div class="section-title-row">
-            <div>
-              <p class="eyebrow">PEÇA AVULSA</p>
-              <h2>Adicionar pelo catálogo</h2>
+        <div class="panel-card manual-card picker col-picker">
+          <div class="picker-head">
+            <div><p class="eyebrow">ADICIONAR</p><h2>Peças e produtos</h2></div>
+            <div class="pill-toggle" id="colTabs">
+              <button data-tab="parts" class="active">Peças</button>
+              <button data-tab="products">Produtos</button>
             </div>
           </div>
-          <div class="manual-form">
-            <select id="manualKind" aria-label="Tipo da peça">
-              <option value="blade">Lâmina</option>
-              <option value="ratchet">Catraca</option>
-              <option value="bit">Ponta</option>
-              <option value="lock">Lock Chip (CX)</option>
-              <option value="main">Main Blade (CX)</option>
-              <option value="assist">Assist Blade (CX)</option>
-              <option value="over">Over Blade (CX Expand)</option>
-              <option value="integrated">Lâmina com catraca integrada</option>
-              <option value="rib">Ratchet-Integrated Bit (ex.: Turbo)</option>
-            </select>
-            <input id="manualName" placeholder="Nome / abreviação" />
-            <input id="manualQty" type="number" min="1" max="99" value="1" aria-label="Quantidade" />
-            <button class="btn secondary" id="manualAddBtn">Adicionar</button>
+          <div id="colTabParts">
+            <input id="colPickerSearch" placeholder="Buscar peça…" />
+            <div class="picker-filters" id="colPickerFilters"></div>
+            <div class="picker-grid" id="colPickerGrid"></div>
+            <p class="picker-hint" id="colPickerHint"></p>
           </div>
-          <p class="form-help">Este campo usa o mesmo catálogo online da busca abaixo. Ele não cria nomes arbitrários: a peça precisa existir no catálogo e será registrada como <strong>“Adicionada à parte”</strong> na origem da coleção.</p>
+          <div id="colTabProducts" hidden>
+            <input id="colProductSearch" placeholder="Buscar produto pelo nome ou código (ex.: Wizard Rod, BX-35)…" />
+            <div id="colProductResults" class="col-products"><div class="empty-state">Digite o nome do produto que você comprou — ao escolher, todas as peças dele entram na coleção de uma vez.</div></div>
+            <div id="colProductAdded"></div>
+          </div>
         </div>
       </div>
 

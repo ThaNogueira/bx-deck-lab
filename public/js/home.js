@@ -379,6 +379,52 @@
     document.addEventListener('bx-deck-saved', renderMyDecksPanel);
   }
 
+  // ------------------- Coleção: aba "Produtos" (adiciona as peças do produto) ----
+  (() => {
+    const tabs = document.getElementById('colTabs');
+    if (!tabs) return;
+    tabs.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => {
+      tabs.querySelectorAll('[data-tab]').forEach((x) => x.classList.toggle('active', x === b));
+      document.getElementById('colTabParts').hidden = b.dataset.tab !== 'parts';
+      document.getElementById('colTabProducts').hidden = b.dataset.tab !== 'products';
+    }));
+
+    const input = document.getElementById('colProductSearch');
+    const results = document.getElementById('colProductResults');
+    const added = document.getElementById('colProductAdded');
+    let timer;
+    input.addEventListener('input', () => {
+      clearTimeout(timer);
+      const q = input.value.trim();
+      if (q.length < 2) { results.innerHTML = '<div class="empty-state">Digite ao menos 2 letras.</div>'; return; }
+      timer = setTimeout(async () => {
+        try {
+          const { products } = await BX.api(`/api/products?query=${encodeURIComponent(q)}`);
+          results.innerHTML = products.length
+            ? products.slice(0, 24).map((p) => `
+              <button class="col-product" data-slug="${esc(p.slug)}" title="Adicionar as peças de ${esc(p.name)}">
+                <span class="product-mini-photo">${p.imageUrl ? `<img loading="lazy" src="${esc(p.imageUrl)}" alt="">` : `<b>${esc((p.code || p.name.slice(0, 2)).toUpperCase())}</b>`}</span>
+                <span class="col-product-text"><b>${esc(p.name)}</b><small>${p.code ? esc(p.code) + ' • ' : ''}${p.brand === 'HASBRO' ? 'Hasbro' : 'Takara Tomy'}${p.category ? ' • ' + p.category.toLowerCase().replace('_', ' ') : ''}</small></span>
+                <span class="col-product-add">＋</span>
+              </button>`).join('')
+            : '<div class="empty-state">Nenhum produto com esse nome.</div>';
+          results.querySelectorAll('.col-product').forEach((b) => b.addEventListener('click', async () => {
+            b.disabled = true;
+            try {
+              const { product, partsByKind } = await BX.api(`/api/products/${b.dataset.slug}`);
+              const parts = partsByKind.flatMap((g) => g.parts);
+              if (!parts.length) { BX.toast('Esse produto ainda não tem as peças mapeadas no catálogo.'); return; }
+              const r = window.BXApp.addProductParts(parts);
+              BX.toast(`${product.name}: ${r.added} peça(s) adicionada(s) à coleção.`);
+              added.innerHTML = `<div class="col-added"><b>✓ ${esc(product.name)}</b><span>${parts.map((p) => BX.partTag({ ...p, display: p.displayName, img: p.imageUrl }, { size: 22 })).join('')}</span></div>` + added.innerHTML;
+            } catch (e) { BX.toast(e.message); }
+            finally { b.disabled = false; }
+          }));
+        } catch (e) { results.innerHTML = `<div class="empty-state">${esc(e.message)}</div>`; }
+      }, 300);
+    });
+  })();
+
   // --------------------------------------------- Coleção -> perfil (item 9)
   document.getElementById('sendCollectionBtn')?.addEventListener('click', async () => {
     const me = await BX.me().catch(() => null);
