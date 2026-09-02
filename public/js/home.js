@@ -95,41 +95,65 @@
     return [...byPart.values()].filter((r) => r.score > 0);
   }
 
+  // Um bloco por categoria; dentro dele as peças flutuam, as mais
+  // relevantes maiores, com o nome boiando junto.
+  const META_BLOCKS = [
+    { key: 'BLADE', title: 'Blades', hint: 'a lâmina define o estilo do Bey', kinds: ['BLADE'] },
+    { key: 'RATCHET', title: 'Ratchets', hint: 'altura e pontas de contato', kinds: ['RATCHET'] },
+    { key: 'BIT', title: 'Bits', hint: 'como o Bey se move no estádio', kinds: ['BIT'] },
+    { key: 'CX', title: 'Peças CX', hint: 'Main, Assist, Over e Lock Chips', kinds: ['MAIN_BLADE', 'ASSIST_BLADE', 'OVER_BLADE', 'LOCK_CHIP'] },
+  ];
+
+  function beyBubble(s, i, min, max) {
+    const p = s.part;
+    const t = max === min ? 1 : (s.score - min) / (max - min);
+    const size = Math.round(56 + Math.pow(t, 0.62) * 96); // 56px … 152px
+    const dur = (5.2 + ((i * 37) % 26) / 10).toFixed(1); // 5.2s … 7.7s
+    const delay = ((i * 53) % 30) / 10;                  // 0s … 2.9s
+    const drift = (i % 2 ? 1 : -1) * (5 + (i % 4));      // leve deriva lateral
+    const diff = s.recent - s.old;
+    const trend = diff > 0 ? 'up' : diff < 0 ? 'down' : 'flat';
+    const detalhe = [
+      s.weekly ? `índice BBX Weekly ${s.weekly}` : '',
+      s.count ? `${s.count} aparições em decks de torneio` : '',
+    ].filter(Boolean).join(' • ');
+    return `<a class="mbey${i === 0 ? ' top' : ''} trend-${trend}" href="/peca/${esc(p.slug)}"
+        style="--s:${size}px;--dur:${dur}s;--delay:${delay}s;--dx:${drift}px;--d:${i * 55}ms"
+        title="${esc(p.display)} — ${esc(detalhe || 'presente no meta')}">
+      <span class="mfloat">
+        <span class="morb">
+          ${p.img ? `<img loading="lazy" src="${esc(p.img)}" alt="${esc(p.display)}">` : `<b>${esc((p.abbrev || p.display.slice(0, 2)).toUpperCase())}</b>`}
+          <i class="mscore">${s.score}</i>
+          ${i === 0 ? '<i class="mcrown">★</i>' : ''}
+        </span>
+        <span class="mname">${esc(p.display)}</span>
+      </span>
+    </a>`;
+  }
+
   function renderMetaCloud() {
     const el = document.getElementById('metaCloud');
     if (!el) return false;
-    let stats = metaPresence();
+    const stats = metaPresence();
     if (!stats.length) return false;
-    if (cloudFilter !== 'all') stats = stats.filter((s) => s.part.kind === cloudFilter);
-    if (!stats.length) { el.innerHTML = '<div class="empty-state">Sem dados desta categoria ainda.</div>'; return true; }
 
-    stats.sort((a, b) => b.score - a.score);
-    const top = stats.slice(0, 30);
-    const max = top[0].score;
-    const min = top[top.length - 1].score;
-    const scale = (n) => {
-      const t = max === min ? 1 : (n - min) / (max - min);
-      return Math.round(62 + Math.pow(t, 0.6) * 118); // 62px … 180px
-    };
+    const blocks = META_BLOCKS
+      .filter((b) => cloudFilter === 'all' || cloudFilter === b.key)
+      .map((b) => {
+        const items = stats.filter((s) => b.kinds.includes(s.part.kind)).sort((x, y) => y.score - x.score).slice(0, 12);
+        if (!items.length) return '';
+        const max = items[0].score;
+        const min = items[items.length - 1].score;
+        return `<section class="mblock">
+          <header class="mblock-head">
+            <div><h3>${b.title}</h3><small>${b.hint}</small></div>
+            <span class="mblock-count">${items.length}</span>
+          </header>
+          <div class="mblock-field">${items.map((s, i) => beyBubble(s, i, min, max)).join('')}</div>
+        </section>`;
+      }).join('');
 
-    el.innerHTML = top.map((s, i) => {
-      const p = s.part;
-      const diff = s.recent - s.old;
-      const trend = diff > 0 ? 'up' : diff < 0 ? 'down' : 'flat';
-      const detalhe = [
-        s.weekly ? `índice BBX Weekly ${s.weekly}` : '',
-        s.count ? `${s.count} aparições em decks de torneio` : '',
-      ].filter(Boolean).join(' • ');
-      return `<a class="cloud-bey trend-${trend}" href="/peca/${esc(p.slug)}"
-          style="--s:${scale(s.score)}px;--d:${i * 40}ms"
-          title="${esc(p.display)} — ${esc(detalhe || 'presente no meta')}">
-        <span class="cloud-orb">
-          ${p.img ? `<img loading="lazy" src="${esc(p.img)}" alt="${esc(p.display)}">` : `<b>${esc((p.abbrev || p.display.slice(0, 2)).toUpperCase())}</b>`}
-          <i class="cloud-count">${s.score}</i>
-        </span>
-        <span class="cloud-name">${esc(p.display)}</span>
-      </a>`;
-    }).join('');
+    el.innerHTML = blocks || '<div class="empty-state">Sem dados desta categoria ainda.</div>';
     return true;
   }
 
