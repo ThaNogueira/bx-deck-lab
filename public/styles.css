@@ -1292,3 +1292,12 @@ a.bm-part:hover{border-color:var(--cyan);z-index:9}
 .pcol-item.exact{border-color:var(--green);box-shadow:inset 0 0 0 1px rgba(84,230,156,.35)}
 .pcol-item.exact .pcol-check{background:var(--green);color:#06140c}
 @media(max-width:520px){.pcol-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* ===== v22: decks físicos no builder ===== */
+.physical-panel{margin-top:14px}
+.saved-deck.physical{grid-template-columns:minmax(0,1fr) auto;align-items:center}
+.saved-deck.physical h3{margin-bottom:4px}
+.saved-deck-actions.col{flex-direction:column;gap:6px;align-items:stretch}
+.saved-deck-actions.col .btn{padding:7px 10px;font-size:11px;white-space:nowrap}
+.physical-preview.small{justify-content:flex-start;margin:4px 0 6px}
+.physical-preview.small .deck-mini{width:auto;max-width:100%}

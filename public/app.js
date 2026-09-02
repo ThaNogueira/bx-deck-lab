@@ -1912,7 +1912,34 @@
     return n;
   }
 
-  function renderAll(){ renderHeader(); renderBuilder(); renderPicker(); renderColPicker(); renderCollection(); renderMissing(); renderPopular(); renderWeekly(); renderSession(); renderTournament(); }
+  /** Bloco "Decks físicos" do builder: lista os decks reservados na sessão física, com importar e publicar. */
+  function renderPhysicalPanel(){
+    const el=document.getElementById('physicalDecksPanel'); if(!el)return;
+    if(!sessionDecks.length){el.innerHTML='<div class="empty-state">Nenhum deck físico reservado. Monte um na <a href="/#session" style="color:var(--cyan)">Sessão física</a> e ele aparece aqui pra importar ou publicar.</div>';return;}
+    const canPreview=window.BX?.deckPreview&&window.BX.partTag?._idx;
+    el.innerHTML=sessionDecks.map((d,i)=>`<div class="saved-deck physical">
+      <div class="saved-deck-main">
+        <h3>${escapeHTML(d.name||`Deck físico ${i+1}`)}</h3>
+        ${canPreview?`<div class="physical-preview small">${window.BX.deckPreview(deckBeyNames(d.deck),{u:34})}</div>`:''}
+        <p>${(d.deck||[]).map(slotName).map(escapeHTML).join(' • ')}</p>
+      </div>
+      <div class="saved-deck-actions col">
+        <button class="btn secondary" data-phys-import="${i}" title="Carregar este deck no builder">↺ Importar</button>
+        <button class="btn primary" data-phys-publish="${i}" title="Carregar e salvar na sua conta">💾 Publicar</button>
+      </div>
+    </div>`).join('');
+    el.querySelectorAll('[data-phys-import]').forEach(b=>b.addEventListener('click',()=>{loadPhysicalDeck(+b.dataset.physImport);toast('Deck físico carregado no builder.');}));
+    el.querySelectorAll('[data-phys-publish]').forEach(b=>b.addEventListener('click',()=>{loadPhysicalDeck(+b.dataset.physPublish);setTimeout(()=>document.getElementById('publishDeckBtn')?.click(),60);}));
+  }
+  /** Copia um deck físico (sessão) para o builder principal. */
+  function loadPhysicalDeck(i){
+    const d=sessionDecks[i]; if(!d)return;
+    deck=clone(d.deck); while(deck.length<3)deck.push(emptySlot()); deck=deck.slice(0,3);
+    const nameEl=document.getElementById('deckName'); if(nameEl){nameEl.value=d.name||`Deck físico ${i+1}`; localStorage.setItem('bx_deck_name',nameEl.value);}
+    saveState(); renderAll(); activateView('builder');
+    document.getElementById('deckGrid')?.scrollIntoView({behavior:'smooth',block:'start'});
+  }
+  function renderAll(){ renderHeader(); renderBuilder(); renderPicker(); renderColPicker(); renderCollection(); renderMissing(); renderPopular(); renderWeekly(); renderSession(); renderTournament(); renderPhysicalPanel(); }
 
   function escapeHTML(s){return String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
   function escapeAttr(s){return escapeHTML(s).replace(/`/g,'&#96;');}
@@ -1995,6 +2022,7 @@
     getWeekly: () => BBX_WEEKLY,
     getInventory: () => ({ ...inventory }),
     /** Coleção pronta pra enviar: {localId, qty} sem contar a peça-pai duas vezes (só o "sem cor" dela). */
+    loadPhysicalDeck,
     getCollectionItems: () => Object.entries(inventory).map(([id,qty])=>{const p=PARTS[id];if(!p)return null;if(p.parentId)return {id,qty};const kidsQty=childrenOf(p).reduce((n,k)=>n+(inventory[k.id]||0),0);const generic=qty-kidsQty;return generic>0?{id,qty:generic}:null;}).filter(Boolean),
     getPart: (id) => PARTS[id],
     listParts: () => Object.values(PARTS),
