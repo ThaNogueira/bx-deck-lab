@@ -384,6 +384,36 @@
     return r === '__default' ? parentId : r;
   }
 
+  const KIND_SORT = ['BLADE', 'LOCK_CHIP', 'OVER_BLADE', 'MAIN_BLADE', 'ASSIST_BLADE', 'RATCHET', 'BIT'];
+
+  /**
+   * Progresso de coleção: peças-pai diferentes que a pessoa tem sobre o catálogo
+   * (recolors contam para a peça-pai). items = [{partId, qty}] do servidor.
+   */
+  function collectionProgress(items, idx) {
+    const catalog = idx.list.filter((p) => !p.parentId);
+    const owned = new Set();
+    for (const i of items || []) {
+      const p = idx.byId.get(i.partId);
+      if (p && (i.qty ?? 1) > 0) owned.add(p.parentId || p.id);
+    }
+    const distinct = catalog.filter((p) => owned.has(p.id)).length;
+    const pct = catalog.length ? Math.round((distinct / catalog.length) * 100) : 0;
+    const byKind = KIND_SORT.map((k) => {
+      const all = catalog.filter((p) => p.kind === k);
+      return { kind: k, label: KIND_PT[k], total: all.length, owned: all.filter((p) => owned.has(p.id)).length };
+    }).filter((k) => k.total);
+    return { distinct, total: catalog.length, pct, byKind, ownedParents: owned };
+  }
+
+  /** Barrinha discreta de porcentagem da coleção. */
+  function progressBarHtml(prog, { label = 'do Beyblade X', compact = false } = {}) {
+    return `<div class="colbar ${compact ? 'compact' : ''}" title="${prog.distinct} de ${prog.total} peças diferentes">
+      <div class="colbar-track"><i style="width:${prog.pct}%"></i></div>
+      <small><b>${prog.pct}%</b> ${esc(label)} <span>• ${prog.distinct}/${prog.total} peças</span></small>
+    </div>`;
+  }
+
   const money = (cents) => cents == null ? '' : (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   const dateFmt = (d, opts) => new Date(d).toLocaleString('pt-BR', opts ?? { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 
@@ -599,7 +629,7 @@
 
   window.BX = {
     api, me, site, esc, norm, toast, money, dateFmt, icon,
-    partsIndex, partTagReady, partTag, comboTags, partThumb, KIND_PT, radar, beyVisual, beyMini, deckPreview, colorDialog, itemDialog, pickColor,
+    partsIndex, partTagReady, partTag, comboTags, partThumb, KIND_PT, radar, beyVisual, beyMini, deckPreview, colorDialog, itemDialog, pickColor, collectionProgress, progressBarHtml, KIND_SORT,
     avatarHtml, renderTopbar, renderShell, mountUserWidget, userChipHtml, setActiveNav,
     report, requireLogin, qs, pathPart, ytEmbed,
   };

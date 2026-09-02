@@ -28,6 +28,16 @@
       const { user, favoritePart, collection, combos, decks } = data;
       document.title = `${user.name} — BX Deck Lab`;
       const me = await BX.me().catch(() => null);
+      const idx = await BX.partTagReady();
+      const isMe = me && me.id === user.id;
+      // Coleção do visitante (pra destacar o que vocês dois têm) — só se estiver logado e não for o próprio perfil
+      let mine = null;
+      if (me && !isMe) {
+        try { mine = (await BX.api('/api/me/collection')).items || []; } catch { mine = null; }
+      }
+      const mineExact = new Set((mine || []).filter((i) => i.qty > 0).map((i) => i.partId));
+      const mineParents = new Set((mine || []).filter((i) => i.qty > 0).map((i) => idx.byId.get(i.partId)?.parentId || i.partId));
+      const prog = BX.collectionProgress(collection, idx);
 
       const bannerInner = user.bannerUrl
         ? (/\.(mp4|webm)$/i.test(user.bannerUrl)
@@ -37,6 +47,31 @@
       const stickers = (user.cosmetics?.stickers || []);
       const forSale = collection.filter((i) => i.forSale);
       const shelf = collection.filter((i) => !i.forSale);
+
+      /** Grade compacta da coleção, agrupada por categoria, com destaque do que o visitante também tem. */
+      function pcolGrid(items) {
+        const kindOf = (i) => i.part?.kind || 'BIT';
+        const groups = BX.KIND_SORT.map((k) => ({ k, label: BX.KIND_PT[k], list: items.filter((i) => kindOf(i) === k) })).filter((g) => g.list.length);
+        return groups.map((g) => `
+          <div class="pcol-group">
+            <div class="pcol-group-head"><span>${BX.esc(g.label)}</span><small>${g.list.length}</small></div>
+            <div class="pcol-grid">${g.list
+              .sort((a, b) => (a.part?.displayName || '').localeCompare(b.part?.displayName || '') || (a.part?.variantOrder || 0) - (b.part?.variantOrder || 0))
+              .map((i) => {
+                const p = i.part || {};
+                const parentId = p.parentId || i.partId;
+                const exact = mineExact.has(i.partId);
+                const both = exact || mineParents.has(parentId);
+                const color = p.variantLabel ? `<em class="pcol-color">${BX.esc(p.variantLabel)}</em>` : '';
+                return `<a class="pcol-item ${both ? 'both' : ''} ${exact ? 'exact' : ''}" href="/peca/${BX.esc(p.slug || '')}" title="${BX.esc(p.displayName || '')}${p.variantLabel ? ' · ' + BX.esc(p.variantLabel) : ''}${both ? (exact ? ' — você tem a mesma cor' : ' — você também tem') : ''}">
+                  ${BX.partThumb({ ...p, display: p.displayName, img: p.imageUrl }, 38)}
+                  <span class="pcol-name"><b>${BX.esc(p.displayName || '?')}</b>${color}</span>
+                  ${i.qty > 1 ? `<span class="pcol-qty">×${i.qty}</span>` : ''}
+                  ${both ? `<span class="pcol-check" title="${exact ? 'Mesma cor' : 'Você também tem'}">✓</span>` : ''}
+                </a>`;
+              }).join('')}</div>
+          </div>`).join('');
+      }
 
       const saleCard = (i) => `
         <div class="list-card">
@@ -86,13 +121,14 @@
                   </div>`).join('')}</div>
               </div>` : ''}
             <div class="panel-card">
-              <div class="section-title-row" style="margin-bottom:12px">
+              <div class="section-title-row" style="margin-bottom:8px">
                 <div><p class="eyebrow">COLEÇÃO</p><h2>Peças da coleção</h2></div>
-                <small>${collection.length} peça(s) catalogada(s)</small>
+                <small>${shelf.reduce((n, i) => n + i.qty, 0)} unidade(s) • ${collection.length} item(ns)</small>
               </div>
-              ${shelf.length
-                ? `<div class="combo-tags">${shelf.map((i) => BX.partTag({ ...i.part, display: i.part?.displayName, img: i.part?.imageUrl }, { size: 24, label: `${i.part?.displayName}${i.qty > 1 ? ` ×${i.qty}` : ''}` })).join('')}</div>`
-                : '<div class="empty-state">Coleção não publicada.</div>'}
+              ${collection.length ? BX.progressBarHtml(prog, { label: isMe ? 'do Beyblade X na sua coleção' : 'do Beyblade X' }) : ''}
+              ${mine && shelf.length ? `<p class="pcol-legend"><i class="pcol-dot both"></i> vocês dois têm ${shelf.filter((i) => mineParents.has(i.part?.parentId || i.partId)).length} destas peças <i class="pcol-dot exact" style="margin-left:10px"></i> mesma cor</p>` : ''}
+              ${me && !isMe && mine && !mine.length ? '<p class="pcol-legend muted">Envie sua coleção para o seu perfil (aba Minha coleção → "Enviar para meu perfil") para ver o que vocês dois têm.</p>' : ''}
+              ${shelf.length ? pcolGrid(shelf) : '<div class="empty-state">Coleção não publicada.</div>'}
             </div>
           </div>
           <div style="display:flex;flex-direction:column;gap:16px">

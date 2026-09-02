@@ -109,6 +109,7 @@
                   <div><p class="eyebrow">ITEM 9</p><h2>Minha coleção & vendas</h2></div>
                   <small>Importe pelo montador (aba Minha coleção → “Enviar para meu perfil”).</small>
                 </div>
+                <div id="collectionProgress" style="margin-bottom:10px"></div>
                 <div id="collectionList"></div>
               </div>
 
@@ -167,6 +168,8 @@
 
       function renderCollection() {
         const el = document.getElementById('collectionList');
+        const progEl = document.getElementById('collectionProgress');
+        if (progEl) progEl.innerHTML = collection.items.length ? BX.progressBarHtml(BX.collectionProgress(collection.items, idx), { label: 'do Beyblade X na sua coleção' }) : '';
         if (!collection.items.length) {
           el.innerHTML = '<div class="empty-state">Coleção vazia por aqui. Abra o <a href="/" style="color:var(--cyan)">montador</a>, aba “Minha coleção”, e clique em “Enviar coleção para meu perfil”.</div>';
           return;
