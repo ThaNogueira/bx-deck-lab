@@ -2235,11 +2235,14 @@
     document.getElementById('sheetEyebrow').textContent=`BEY ${bey+1} · ${(MODE_LABEL[deck[bey].mode]||'').toUpperCase()}`;
     document.getElementById('sheetTitle').textContent=`Escolher ${SLOT_LABEL[kind]||kind}`;
     const s=document.getElementById('sheetSearch'); s.value=''; s.placeholder=`Buscar ${KIND_LABEL[kind]?.toLowerCase()||'peça'}…`;
-    sh.hidden=false; document.body.classList.add('sheet-open');
+    // trava a rolagem da página atrás (iOS ignora overflow:hidden no body; usar position:fixed + restaurar scrollY)
+    sheetScrollY=window.scrollY||0; document.body.style.top=`-${sheetScrollY}px`; document.body.classList.add('sheet-open');
+    sh.hidden=false;
     renderSheet();
     if(!isMobileBuilder())setTimeout(()=>s.focus(),50);
   }
-  function closeSheet(){ const sh=document.getElementById('slotSheet'); if(sh&&!sh.hidden){sh.hidden=true;} document.body.classList.remove('sheet-open'); sheetTarget=null; hidePreview(); }
+  let sheetScrollY=0;
+  function closeSheet(){ const sh=document.getElementById('slotSheet'); if(sh&&!sh.hidden){sh.hidden=true;} if(document.body.classList.contains('sheet-open')){ document.body.classList.remove('sheet-open'); document.body.style.top=''; window.scrollTo(0,sheetScrollY); } sheetTarget=null; hidePreview(); }
   async function pickFromSheet(id){
     const p=PARTS[id]; if(!p||!sheetTarget)return;
     const {bey}=sheetTarget;
@@ -2256,6 +2259,9 @@
       pickFromSheet(it.dataset.part);
     });
     document.getElementById('sheetClose')?.addEventListener('click',closeSheet);
+    // só a lista e as linhas de favoritas/recentes rolam; qualquer outro toque com arrasto não pode vazar para a página
+    sh.addEventListener('touchmove',e=>{ if(!e.target.closest('.sheet-list, .sh-row > div'))e.preventDefault(); },{passive:false});
+    sh.querySelector('.sheet-list')?.addEventListener('touchmove',e=>{ const l=e.currentTarget; if(l.scrollHeight<=l.clientHeight)e.preventDefault(); },{passive:false});
     document.getElementById('sheetSearch')?.addEventListener('input',renderSheet);
     // arrastar o "grip" para baixo fecha
     let y0=null; const grip=sh.querySelector('.sheet-head');
