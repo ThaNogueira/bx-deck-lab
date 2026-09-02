@@ -27,6 +27,30 @@
       let filter = '';   // '' | 'public' | 'private'
       let sort = 'created';
       let query = '';
+      let tab = localStorage.getItem('bx_archive_tab') || 'online';   // 'online' | 'fisicos'
+
+      function physicalDecks() {
+        try { return JSON.parse(localStorage.getItem('bx_session_decks') || '[]'); } catch { return []; }
+      }
+      function physicalCard(d, i) {
+        const names = d.names || [];
+        return `<article class="archive-card physical" data-pid="${esc(String(d.id))}">
+          <div class="archive-top">
+            <h3>${esc(d.name || `Deck físico ${i + 1}`)}</h3>
+            <span class="vis-toggle off" title="Salvo neste navegador (Sessão física)">🧰 Físico</span>
+          </div>
+          ${d.beys ? BX.deckPreview(d.beys, { u: 46 }) : '<div class="empty-state" style="padding:10px">Abra a Sessão física uma vez para gerar o preview.</div>'}
+          <ol class="physical-names">${names.map((n) => `<li>${esc(n)}</li>`).join('')}</ol>
+          <div class="archive-meta">
+            <span class="folder-chip">🧰 sessão física</span>
+            <small>${d.id ? BX.dateFmt(d.id, { day: '2-digit', month: 'short', year: '2-digit' }) : ''}</small>
+          </div>
+          <div class="archive-actions">
+            <a class="btn secondary" href="/#session">Abrir sessão</a>
+            <button class="btn danger-outline" data-release="${esc(String(d.id))}">Liberar peças</button>
+          </div>
+        </article>`;
+      }
 
       async function load() {
         decks = (await BX.api(`/api/decks?mine=1&sort=${sort}`)).decks;
@@ -83,6 +107,19 @@
             </div>
           </div>
 
+          <div class="pill-toggle archive-tabs">
+            <button data-tab="online" class="${tab === 'online' ? 'active' : ''}">💾 Meus decks <i>${decks.length}</i></button>
+            <button data-tab="fisicos" class="${tab === 'fisicos' ? 'active' : ''}">🧰 Decks físicos <i>${physicalDecks().length}</i></button>
+          </div>
+
+          ${tab === 'fisicos' ? `
+          <div class="panel-card" style="margin-bottom:14px;display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
+            <p class="muted" style="margin:0">Decks montados com peças reais na <b>Sessão física</b>. Ficam salvos só neste navegador, e as peças reservadas não são oferecidas em outros decks da sessão.</p>
+            <a class="btn primary" href="/#session" style="text-decoration:none">+ Reservar deck físico</a>
+          </div>
+          <div class="archive-grid">
+            ${physicalDecks().map(physicalCard).join('') || '<div class="empty-state">Nenhum deck físico reservado. <a href="/#session" style="color:var(--cyan)">Abrir a Sessão física</a></div>'}
+          </div>` : `
           <div class="archive-layout">
             <aside class="panel-card archive-side">
               <div class="section-title-row" style="margin-bottom:10px">
@@ -118,11 +155,22 @@
                 ${list.map(deckCard).join('') || `<div class="empty-state">${decks.length ? 'Nenhum deck com esses filtros.' : 'Você ainda não montou nenhum deck. <a href="/#builder" style="color:var(--cyan)">Abrir o Deck Builder</a>'}</div>`}
               </div>
             </div>
-          </div>`;
+          </div>`}`;
         bind();
       }
 
       function bind() {
+        document.querySelectorAll('.archive-tabs [data-tab]').forEach((b) => b.addEventListener('click', () => {
+          tab = b.dataset.tab; localStorage.setItem('bx_archive_tab', tab); render();
+        }));
+        document.querySelectorAll('[data-release]').forEach((b) => b.addEventListener('click', () => {
+          const list = physicalDecks();
+          const d = list.find((x) => String(x.id) === b.dataset.release);
+          if (!d || !confirm(`Liberar as peças de "${d.name || 'este deck'}"? Ele sai da sessão física.`)) return;
+          localStorage.setItem('bx_session_decks', JSON.stringify(list.filter((x) => String(x.id) !== b.dataset.release)));
+          render();
+        }));
+        if (tab === 'fisicos') return;
         document.querySelectorAll('[data-folder]').forEach((b) => b.addEventListener('click', (e) => {
           if (e.target.dataset.rename) return;
           folder = b.dataset.folder;

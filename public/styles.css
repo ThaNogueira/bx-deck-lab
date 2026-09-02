@@ -1115,3 +1115,35 @@ a.bm-part:hover{border-color:var(--cyan);z-index:9}
 .col-added{margin-top:10px;border:1px solid rgba(84,230,156,.35);background:rgba(84,230,156,.06);border-radius:11px;padding:9px 11px;display:flex;flex-direction:column;gap:7px}
 .col-added b{color:#74eeb0;font:800 12px var(--display);text-transform:uppercase}
 .col-added span{display:flex;flex-wrap:wrap;gap:4px}
+
+/* ===== v17: checklist de peças, decks físicos com preview, aba do arquivo ===== */
+.missing-search-row.two{grid-template-columns:minmax(220px,1fr) minmax(200px,.4fr)}
+.chk-section{margin-bottom:18px}
+.chk-head{display:flex;justify-content:space-between;align-items:flex-end;gap:14px;margin:0 0 10px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+.chk-head h2{margin:0;font:800 20px var(--display);text-transform:uppercase}
+.chk-head small{color:var(--muted);font:800 10px var(--display);letter-spacing:.04em}
+.chk-bar{flex:0 0 180px;height:6px;border-radius:999px;background:#1a1f27;overflow:hidden}
+.chk-bar i{display:block;height:100%;background:linear-gradient(90deg,var(--green),#9df5c3);border-radius:999px;transition:width .4s}
+.chk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px}
+.chk-item{display:flex;align-items:center;gap:10px;padding:7px 9px;border-radius:12px;border:1px solid #2a303a;background:#11151b;min-width:0;transition:transform .15s,border-color .15s,background .15s}
+.chk-item .part-art{width:40px;height:40px;flex:0 0 40px}
+.chk-item .part-art .fallback{font-size:10px}
+.chk-meta{min-width:0;flex:1}
+.chk-meta strong{display:block;font:800 13px/1.15 var(--display);text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chk-meta strong a{color:inherit;text-decoration:none}
+.chk-meta strong a:hover{color:var(--cyan)}
+.chk-meta small{display:block;color:#7c8694;font-size:10px;margin-top:2px}
+.chk-mark{flex:0 0 22px;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font:800 13px var(--display);border:1px solid #39414d;color:#5c6672}
+.chk-item.owned{border-color:rgba(84,230,156,.5);background:linear-gradient(145deg,rgba(84,230,156,.14),rgba(84,230,156,.05))}
+.chk-item.owned .chk-mark{background:var(--green);border-color:var(--green);color:#06140c}
+.chk-item.missing{opacity:.55;filter:grayscale(.7);cursor:pointer}
+.chk-item.missing:hover{opacity:.9;filter:grayscale(.2);transform:translateY(-1px);border-color:#4a5462}
+.chk-item.missing:hover .chk-mark{border-color:var(--cyan);color:var(--cyan)}
+.physical-preview{display:flex;justify-content:center;margin:2px 0 8px}
+.physical-preview .deck-mini{width:100%}
+.archive-tabs{margin:0 0 14px;width:max-content}
+.archive-tabs button i{font-style:normal;margin-left:6px;padding:1px 7px;border-radius:999px;background:rgba(255,255,255,.08);font-size:10px}
+.archive-card.physical .vis-toggle{cursor:default}
+.physical-names{margin:6px 0 0;padding-left:18px;color:#aeb8c6;font-size:11px;line-height:1.5}
+@media(max-width:900px){.missing-search-row.two{grid-template-columns:1fr}.chk-bar{flex-basis:110px}}
+#missingGrid.missing-grid{display:block}

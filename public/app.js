@@ -472,32 +472,29 @@
     for(const p of productCatalog){const k=productGroupKey(p,selectLeadIds);if(!groups.has(k))groups.set(k,{key:k,tt:[],hasbro:[]});groups.get(k)[p.brand==='Hasbro'?'hasbro':'tt'].push(p);}
     return [...groups.values()];
   }
+  const CHECK_ORDER=['blade','integrated','lock','over','main','assist','ratchet','bit','rib'];
   function renderMissing(){
     const root=document.getElementById('missingGrid');if(!root)return;
-    const q=equivalentKey(document.getElementById('missingSearchInput')?.value||''),brand=document.getElementById('missingBrandFilter')?.value||'all',cat=document.getElementById('missingCategoryFilter')?.value||'all';
-    let groups=productGroups().filter(g=>{
-      const all=[...g.tt,...g.hasbro];if(!all.length||!all.some(p=>p.isBeyProduct))return false;
-      if(brand==='tt'&&!g.tt.length)return false;if(brand==='hasbro'&&!g.hasbro.length)return false;
-      if(q&&!all.some(p=>[p.name,p.code,p.type,p.series].some(v=>fuzzyCatalogMatch(v,document.getElementById('missingSearchInput')?.value||''))))return false;
-      const eligible=all.filter(p=>(brand==='tt'?p.brand==='Takara Tomy':brand==='hasbro'?p.brand==='Hasbro':true)&&p.isBeyProduct);
-      if(eligible.length && eligible.every(isProductOwned))return false;
-      if(cat==='main'&&!eligible.some(p=>p.mainline))return false;if(cat==='collector'&&!eligible.some(p=>p.collector))return false;if(cat==='collab'&&!eligible.some(p=>p.collab))return false;if(cat==='nonmain'&&!eligible.some(p=>p.nonMain))return false;
-      return true;
-    }).sort((a,b)=>{const aa=(a.tt[0]||a.hasbro[0])?.code||'',bb=(b.tt[0]||b.hasbro[0])?.code||'';return bb.localeCompare(aa,undefined,{numeric:true});});
-    const count=document.getElementById('missingCount');if(count)count.textContent=`${groups.length} card${groups.length===1?'':'s'} faltando`;
-    const st=document.getElementById('missingCatalogStatus');if(st)st.textContent=productCatalog.length?`${productCatalog.length} produtos sincronizados`:'Sincronizando…';
-    if(!productCatalog.length){root.innerHTML='<div class="empty-state">Sincronizando catálogos de Takara Tomy e Hasbro…</div>';return;}
-    if(!groups.length){root.innerHTML='<div class="empty-state">Nenhum lançamento faltando com estes filtros.</div>';return;}
-    root.innerHTML=groups.map(g=>{
-      const ttMissing=g.tt.some(x=>x.isBeyProduct&&!isProductOwned(x)),hbMissing=g.hasbro.some(x=>x.isBeyProduct&&!isProductOwned(x));
-      const defaultBrand=missingBrandChoice[g.key]||(brand==='hasbro'?'hasbro':brand==='tt'?'tt':ttMissing?'tt':hbMissing?'hasbro':g.tt.length?'tt':'hasbro');const arr=(defaultBrand==='hasbro'?g.hasbro:g.tt).filter(x=>x.isBeyProduct);const p=arr.find(x=>!isProductOwned(x))||arr[0]||[...g.tt,...g.hasbro].find(x=>x.isBeyProduct);const lead=productLeadPart(p);
-      const tags=[p.series,p.type,p.collab?'Collab':'',p.collector?'Colecionador/limitada':''].filter(Boolean);
-      const ttState=g.tt.some(x=>x.isBeyProduct)&&g.tt.filter(x=>x.isBeyProduct).every(isProductOwned)?' ✓':'';const hbState=g.hasbro.some(x=>x.isBeyProduct)&&g.hasbro.filter(x=>x.isBeyProduct).every(isProductOwned)?' ✓':'';
-      const tabs=(g.tt.some(x=>x.isBeyProduct)&&g.hasbro.some(x=>x.isBeyProduct))?`<div class="product-brand-tabs"><button class="brand-tab ${defaultBrand==='tt'?'active':''}" data-group="${escapeAttr(g.key)}" data-brand="tt">Takara Tomy${ttState}</button><button class="brand-tab ${defaultBrand==='hasbro'?'active':''}" data-group="${escapeAttr(g.key)}" data-brand="hasbro">Hasbro${hbState}</button></div>`:`<span class="single-brand">${p.brand}${isProductOwned(p)?' ✓':''}</span>`;
-      const searchName=p.name;const stores=`<div class="buy-links"><a href="${shoppingUrl('ml',searchName,p.brand)}" target="_blank" rel="noopener">Mercado Livre ↗</a><a href="${shoppingUrl('shopee',searchName,p.brand)}" target="_blank" rel="noopener">Shopee ↗</a><a href="${shoppingUrl(p.brand==='Takara Tomy'?'amazonjp':'amazon',searchName,p.brand)}" target="_blank" rel="noopener">${p.brand==='Takara Tomy'?'Amazon JP':'Amazon BR'} ↗</a></div>`;
-      return `<article class="missing-card" data-group="${escapeAttr(g.key)}"><div class="missing-art">${lead?partArt(lead,'big'):'<div class="product-orb">BX</div>'}</div><div class="missing-card-body"><div class="missing-card-top">${tabs}<span class="product-code">${escapeHTML(p.code)}</span></div><h3>${escapeHTML(p.name)}</h3><div class="product-tags">${tags.map(x=>`<span>${escapeHTML(x)}</span>`).join('')}</div>${arr.length>1?`<small>${arr.length} variantes ${escapeHTML(p.brand)} relacionadas neste card.</small>`:''}<div class="buy-caption">Onde procurar</div>${stores}<a class="source-small" href="${escapeAttr(p.sourceUrl)}" target="_blank" rel="noopener">Ver catálogo da marca ↗</a></div></article>`;
+    const norm=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
+    const q=norm(document.getElementById('missingSearchInput')?.value||'');
+    const show=document.getElementById('missingShowFilter')?.value||'all';
+    const all=Object.values(PARTS).filter(p=>CHECK_ORDER.includes(p.kind)&&!p.hidden);
+    const ownedTotal=all.filter(p=>(inventory[p.id]||0)>0).length;
+    const count=document.getElementById('missingCount');if(count)count.textContent=`${ownedTotal}/${all.length} peças na coleção • faltam ${all.length-ownedTotal}`;
+    const st=document.getElementById('missingCatalogStatus');if(st)st.textContent=`${all.length} peças no catálogo`;
+    const sections=CHECK_ORDER.map(kind=>{
+      const items=all.filter(p=>p.kind===kind).sort((x,y)=>{const ox=(inventory[x.id]||0)>0,oy=(inventory[y.id]||0)>0;if(ox!==oy)return ox?-1:1;return x.display.localeCompare(y.display);});
+      if(!items.length)return'';
+      const owned=items.filter(p=>(inventory[p.id]||0)>0).length;
+      const shown=items.filter(p=>{const has=(inventory[p.id]||0)>0;if(show==='missing'&&has)return false;if(show==='owned'&&!has)return false;if(q&&!norm(`${p.display} ${p.name||''} ${p.abbrev||''} ${(p.aliases||[]).join(' ')}`).includes(q))return false;return true;});
+      if(!shown.length)return'';
+      const pct=Math.round(owned/items.length*100);
+      return `<section class="chk-section"><div class="chk-head"><div><h2>${KIND_LABEL[kind]||kind}</h2><small>${owned} de ${items.length} • ${pct}%</small></div><div class="chk-bar"><i style="width:${pct}%"></i></div></div><div class="chk-grid">${shown.map(p=>{const qty=inventory[p.id]||0,has=qty>0;
+        return `<div class="chk-item ${has?'owned':'missing'}" data-id="${escapeAttr(p.id)}" title="${escapeAttr(has?`Você tem ${qty}`:'Clique para marcar como tenho (adiciona à coleção)')}">${partArt(p)}<div class="chk-meta"><strong><a class="plink" href="/peca/${slug(p.display||p.name)}">${escapeHTML(p.display)}</a></strong><small>${p.abbrev?escapeHTML(p.abbrev):''}${has&&qty>1?` ×${qty}`:''}${p.banned?' • banida':''}</small></div><span class="chk-mark">${has?'✓':'+'}</span></div>`;}).join('')}</div></section>`;
     }).join('');
-    root.querySelectorAll('.brand-tab').forEach(b=>b.addEventListener('click',()=>{missingBrandChoice[b.dataset.group]=b.dataset.brand;renderMissing();}));hydrateImages(root);
+    root.innerHTML=sections||'<div class="empty-state">Nenhuma peça com esses filtros.</div>';
+    root.querySelectorAll('.chk-item.missing').forEach(el=>el.addEventListener('click',e=>{if(e.target.closest('a'))return;const p=PARTS[el.dataset.id];if(!p)return;changeManualQty(p.id,1);toast(`${p.display} marcada como "tenho".`);}));
+    hydrateImages(root);
   }
   function normalizedAliases(part){return [part.name,part.display,part.abbrev,...(part.aliases||[])].filter(Boolean).map(equivalentKey);}
   function parseByyParts(text){
@@ -719,7 +716,11 @@
   function loadJSON(key, fallback) { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } }
   function saveState() { localStorage.setItem('bx_current_deck', JSON.stringify(deck)); }
   function clone(x){ return JSON.parse(JSON.stringify(x)); }
-  function saveSession(){ localStorage.setItem('bx_session_draft', JSON.stringify(sessionDraft)); localStorage.setItem('bx_session_decks', JSON.stringify(sessionDecks)); }
+  function deckBeyNames(dk){ return (dk||[]).map(slot=>slotParts(slot).map(id=>PARTS[id]?.display||id)); }
+  function saveSession(){
+    sessionDecks.forEach(d=>{ d.beys=deckBeyNames(d.deck); d.names=(d.deck||[]).map(slotName); });
+    localStorage.setItem('bx_session_draft', JSON.stringify(sessionDraft)); localStorage.setItem('bx_session_decks', JSON.stringify(sessionDecks));
+  }
   function saveTournament(){ localStorage.setItem('bx_tournament', JSON.stringify(tournament)); }
 
   function normalizeLine(line) {
@@ -1614,7 +1615,8 @@
     const order=['blade','integrated','lock','over','main','assist','ratchet','bit','rib'];
     stock.innerHTML=order.map(kind=>{const items=Object.values(PARTS).filter(p=>p.kind===kind&&(inventory[p.id]||0)>0).map(p=>[p,Math.max(0,(inventory[p.id]||0)-(reserved[p.id]||0))]).filter(([,q])=>q>0);if(!items.length)return'';return `<div class="session-stock-group"><b>${KIND_LABEL[kind]||kind}</b>${items.map(([p,q])=>`<span>${escapeHTML(p.display)} <em>×${q}</em></span>`).join('')}</div>`;}).join('')||'<p class="empty-state">Todas as peças estão reservadas.</p>';
     const decksRoot=document.getElementById('sessionDecks');
-    decksRoot.innerHTML=sessionDecks.length?sessionDecks.map((d,i)=>`<article class="physical-deck"><div class="physical-deck-head"><div><small>DECK ${i+1}</small><h3>${escapeHTML(d.name||`Deck físico ${i+1}`)}</h3></div><button class="icon-btn release-session-deck" data-i="${i}" title="Desmontar / liberar peças">×</button></div>${d.deck.map((slot,j)=>`<div class="physical-bey"><b>${j+1}</b><span>${escapeHTML(slotName(slot))}</span></div>`).join('')}<small>${d.deck.flatMap(slotParts).length} componentes reservados</small></article>`).join(''):'<div class="empty-state">Nenhum deck físico reservado ainda.</div>';
+    if(sessionDecks.some(d=>!d.beys))saveSession();
+    decksRoot.innerHTML=sessionDecks.length?sessionDecks.map((d,i)=>`<article class="physical-deck"><div class="physical-deck-head"><div><small>DECK ${i+1}</small><h3>${escapeHTML(d.name||`Deck físico ${i+1}`)}</h3></div><button class="icon-btn release-session-deck" data-i="${i}" title="Desmontar / liberar peças">×</button></div>${window.BX?.deckPreview&&window.BX.partTag?._idx?`<div class="physical-preview">${window.BX.deckPreview(deckBeyNames(d.deck),{u:44})}</div>`:''}${d.deck.map((slot,j)=>`<div class="physical-bey"><b>${j+1}</b><span>${escapeHTML(slotName(slot))}</span></div>`).join('')}<small>${d.deck.flatMap(slotParts).length} componentes reservados</small></article>`).join(''):'<div class="empty-state">Nenhum deck físico reservado ainda.</div>';
     decksRoot.querySelectorAll('.release-session-deck').forEach(b=>b.addEventListener('click',()=>{sessionDecks.splice(+b.dataset.i,1);saveSession();renderSession();toast('Peças liberadas para a sessão.');}));
   }
   function lockSessionDeck(){
@@ -1866,7 +1868,7 @@
   document.getElementById('syncCatalogBtn')?.addEventListener('click',()=>syncLiveCatalog({quiet:false,force:true}));
   document.getElementById('catalogSearchBtn')?.addEventListener('click',searchCatalog);
   document.getElementById('catalogSearchInput')?.addEventListener('keydown',e=>{if(e.key==='Enter')searchCatalog();});
-  ['missingSearchInput','missingBrandFilter','missingCategoryFilter'].forEach(id=>document.getElementById(id)?.addEventListener(id==='missingSearchInput'?'input':'change',renderMissing));
+  ['missingSearchInput','missingShowFilter'].forEach(id=>document.getElementById(id)?.addEventListener(id==='missingSearchInput'?'input':'change',renderMissing));
   document.getElementById('loadMoreMetaBtn')?.addEventListener('click',loadMoreMetaDecks);
 
   document.getElementById('randomDeckBtn').addEventListener('click',()=>generateRandomDeck(false));

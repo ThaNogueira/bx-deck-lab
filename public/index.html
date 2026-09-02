@@ -232,32 +232,25 @@
     <section class="view" id="view-missing">
       <div class="hero compact">
         <div>
-          <p class="eyebrow">CHECKLIST DE COLEÇÃO</p>
-          <h1>Beyblades e lançamentos que ainda faltam</h1>
-          <p>Compara os Beys importados na sua coleção com catálogos online de Takara Tomy e Hasbro. Versões equivalentes ficam no mesmo card sempre que o site consegue relacioná-las.</p>
+          <p class="eyebrow">CHECKLIST DE PEÇAS</p>
+          <h1>O que ainda falta na sua <em>coleção</em></h1>
+          <p>Todas as peças do catálogo, por categoria. Verde é o que você já tem; acinzentado é o que falta. Clique numa peça que falta para marcar como "tenho".</p>
         </div>
-        <div class="freshness"><span></span><span id="missingCatalogStatus">Catálogo online</span></div>
+        <div class="freshness"><span></span><span id="missingCatalogStatus">Catálogo</span></div>
       </div>
 
       <section class="panel-card missing-toolbar">
-        <div class="missing-search-row">
-          <input id="missingSearchInput" placeholder="Buscar Bey, código, linha ou collab…" />
-          <select id="missingBrandFilter" aria-label="Marca">
-            <option value="all">Takara Tomy + Hasbro</option>
-            <option value="tt">Somente Takara Tomy</option>
-            <option value="hasbro">Somente Hasbro</option>
-          </select>
-          <select id="missingCategoryFilter" aria-label="Categoria">
-            <option value="all">Todos os lançamentos</option>
-            <option value="main">Somente mainline</option>
-            <option value="collector">Colecionador / limitada</option>
-            <option value="collab">Somente collabs</option>
-            <option value="nonmain">Somente não-main</option>
+        <div class="missing-search-row two">
+          <input id="missingSearchInput" placeholder="Buscar peça ou sigla…" />
+          <select id="missingShowFilter" aria-label="Mostrar">
+            <option value="all">Tudo (tenho + falta)</option>
+            <option value="missing">Só o que falta</option>
+            <option value="owned">Só o que eu tenho</option>
           </select>
         </div>
         <div class="missing-toolbar-foot">
-          <span id="missingCount">0 faltando</span>
-          <small>“Onde comprar” abre pesquisas; estoque e preço variam por loja/região.</small>
+          <span id="missingCount">0/0</span>
+          <small>Ordem: Blades, Integradas, Lock Chip, Over, Main, Assist, Ratchets, Bits, RIB.</small>
         </div>
       </section>
 
