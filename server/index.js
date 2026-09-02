@@ -85,14 +85,20 @@ app.use(adminRoutes);
 
 // Uploads e estáticos
 app.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '30d', immutable: true }));
-app.use(express.static('public', { extensions: ['html'] }));
+// Estáticos do site: sempre revalidam (ETag) — evita o usuário precisar de Ctrl+Shift+R
+// depois de um deploy. O conteúdo só volta pela rede quando muda de verdade (304 caso contrário).
+app.use(express.static('public', {
+  extensions: ['html'],
+  etag: true,
+  lastModified: true,
+  setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache'),
+}));
 
 // URLs limpas -> páginas
 const PAGES = {
   '/entrar': 'entrar.html',
   '/perfil': 'perfil.html',
   '/decks': 'decks.html',
-  '/deck-novo': 'deck-editor.html',
   '/pecas': 'pecas.html',
   '/produtos': 'produtos.html',
   '/torneios': 'torneios.html',
@@ -100,13 +106,16 @@ const PAGES = {
   '/admin': 'admin.html',
   '/manutencao': 'manutencao.html',
 };
+// O montador principal e o unico deck builder do site (o editor antigo saiu)
+app.get('/deck-novo', (_req, res) => res.redirect('/#builder'));
+app.get('/deck/:slug/editar', (req, res) => res.redirect('/?editar=' + encodeURIComponent(req.params.slug) + '#builder'));
+
 for (const [route, file] of Object.entries(PAGES)) {
   app.get(route, (_req, res) => res.sendFile(path.resolve('public', file)));
 }
 const DYNAMIC = [
   ['/u/:slug', 'u.html'],
   ['/deck/:slug', 'deck.html'],
-  ['/deck/:slug/editar', 'deck-editor.html'],
   ['/peca/:slug', 'peca.html'],
   ['/produto/:slug', 'produto.html'],
   ['/torneio/:slug', 'torneio.html'],

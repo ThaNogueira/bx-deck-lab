@@ -7,8 +7,15 @@
   // Shell de navegação (sidebar + topbar + menu do avatar)
   BX.renderShell().then(() => window.BXApp?.rerenderHeader?.());
 
-  // Quando o índice de peças chega, os nomes do meta viram PartTags clicáveis
-  BX.partTagReady().then(() => window.BXApp?.rerenderMeta?.()).catch(() => {});
+  // Quando o índice de peças chega: PartTags no meta + catálogo completo no builder
+  BX.partTagReady().then((idx) => {
+    const apply = () => {
+      window.BXApp?.rerenderMeta?.();
+      const r = window.BXApp?.importCatalog?.(idx.list);
+      if (r?.added) console.info(`[builder] +${r.added} peças do catálogo do site`);
+    };
+    if (window.BXApp) apply(); else document.addEventListener('bxapp-ready', apply, { once: true });
+  }).catch(() => {});
 
   // ------------------------------------------------------------- Home / meta
   function usageStats(metaDecks) {
@@ -45,10 +52,103 @@
     return `<span class="trend-flat">— estável</span>`;
   }
 
+  // ------------------------------------------------- Nuvem de peças do meta
+  // Quanto mais a peça aparece nos decks de torneio, maior a foto dela.
+  let cloudFilter = 'all';
+
+  /**
+   * Presença no meta = índice do BBX Weekly (snapshot embutido, sempre
+   * disponível) combinado com as aparições nos decks de torneio que o
+   * montador baixa. Assim a nuvem já nasce cheia e fica mais precisa
+   * conforme o usuário carrega mais decks na aba Decks populares.
+   */
+  function metaPresence() {
+    const idx = BX.partTag._idx;
+    if (!idx) return [];
+    const byPart = new Map(); // id -> {part, score, count, recent, old, weekly}
+
+    const weekly = window.BXApp?.getWeekly?.();
+    for (const g of weekly?.groups || []) {
+      for (const [name, val] of g.items) {
+        const p = idx.byName.get(BX.norm(name));
+        if (!p) continue;
+        const rec = byPart.get(p.id) || { part: p, score: 0, count: 0, recent: 0, old: 0, weekly: 0 };
+        rec.weekly = Math.max(rec.weekly, val);
+        byPart.set(p.id, rec);
+      }
+    }
+
+    const decks = window.BXApp?.getMetaDecks?.() || [];
+    for (const s of usageStats(decks)) {
+      const rec = byPart.get(s.part.id) || { part: s.part, score: 0, count: 0, recent: 0, old: 0, weekly: 0 };
+      rec.count += s.count;
+      rec.recent += s.recent;
+      rec.old += s.old;
+      byPart.set(s.part.id, rec);
+    }
+
+    const maxCount = Math.max(1, ...[...byPart.values()].map((r) => r.count));
+    for (const rec of byPart.values()) {
+      // índice semanal (0-100) vs. participação relativa nos decks baixados
+      rec.score = Math.max(rec.weekly, Math.round((rec.count / maxCount) * 100));
+    }
+    return [...byPart.values()].filter((r) => r.score > 0);
+  }
+
+  function renderMetaCloud() {
+    const el = document.getElementById('metaCloud');
+    if (!el) return false;
+    let stats = metaPresence();
+    if (!stats.length) return false;
+    if (cloudFilter !== 'all') stats = stats.filter((s) => s.part.kind === cloudFilter);
+    if (!stats.length) { el.innerHTML = '<div class="empty-state">Sem dados desta categoria ainda.</div>'; return true; }
+
+    stats.sort((a, b) => b.score - a.score);
+    const top = stats.slice(0, 30);
+    const max = top[0].score;
+    const min = top[top.length - 1].score;
+    const scale = (n) => {
+      const t = max === min ? 1 : (n - min) / (max - min);
+      return Math.round(62 + Math.pow(t, 0.6) * 118); // 62px … 180px
+    };
+
+    el.innerHTML = top.map((s, i) => {
+      const p = s.part;
+      const diff = s.recent - s.old;
+      const trend = diff > 0 ? 'up' : diff < 0 ? 'down' : 'flat';
+      const detalhe = [
+        s.weekly ? `índice BBX Weekly ${s.weekly}` : '',
+        s.count ? `${s.count} aparições em decks de torneio` : '',
+      ].filter(Boolean).join(' • ');
+      return `<a class="cloud-bey trend-${trend}" href="/peca/${esc(p.slug)}"
+          style="--s:${scale(s.score)}px;--d:${i * 40}ms"
+          title="${esc(p.display)} — ${esc(detalhe || 'presente no meta')}">
+        <span class="cloud-orb">
+          ${p.img ? `<img loading="lazy" src="${esc(p.img)}" alt="${esc(p.display)}">` : `<b>${esc((p.abbrev || p.display.slice(0, 2)).toUpperCase())}</b>`}
+          <i class="cloud-count">${s.score}</i>
+        </span>
+        <span class="cloud-name">${esc(p.display)}</span>
+      </a>`;
+    }).join('');
+    return true;
+  }
+
+  function bindCloudSwitch() {
+    const sw = document.getElementById('cloudSwitch');
+    if (!sw || sw.dataset.ready) return;
+    sw.dataset.ready = '1';
+    sw.querySelectorAll('[data-cloud]').forEach((b) => b.addEventListener('click', () => {
+      cloudFilter = b.dataset.cloud;
+      sw.querySelectorAll('[data-cloud]').forEach((x) => x.classList.toggle('active', x === b));
+      renderMetaCloud();
+    }));
+  }
+
   async function renderHome() {
     const chartsEl = document.getElementById('homeCharts');
     const featEl = document.getElementById('homeFeatured');
     if (!chartsEl) return;
+    bindCloudSwitch();
 
     // Decks em destaque do site (comunidade)
     try {
@@ -63,7 +163,7 @@
             <div style="display:flex;justify-content:space-between;gap:8px"><h3>${esc(d.title)}</h3>${d.featured ? '<span class="badge owned">★</span>' : ''}</div>
             <div class="combo-tags">${d.beys.flat().slice(0, 6).map((id) => {
               const p = d.parts?.[id];
-              return p ? BX.partTag({ ...p, display: p.displayName, img: p.imageUrl }, { size: 20 }) : '';
+              return p ? BX.partTag({ ...p, display: p.displayName, img: p.imageUrl }, { size: 34 }) : '';
             }).join('')}${d.beys.flat().length > 6 ? `<span class="ptag plain">+${d.beys.flat().length - 6}</span>` : ''}</div>
             <div class="list-card-foot">
               <span class="author-line">${BX.avatarHtml(d.author, { size: 22 })}<span style="color:#c4cad3">${esc(d.author?.name || '?')}</span></span>
@@ -71,7 +171,7 @@
           </a>`).join('')}</div>` : `
         <div class="source-banner" style="margin-bottom:22px">
           <strong>Decks da comunidade:</strong>
-          <span>ninguém publicou ainda — <a href="/deck-novo" style="color:var(--cyan)">seja a primeira pessoa</a>! Decks publicados aparecem aqui na home.</span>
+          <span>ninguém publicou ainda — <a href="/#builder" style="color:var(--cyan)">seja a primeira pessoa</a>! Decks publicados aparecem aqui na home.</span>
         </div>`;
     } catch { featEl.innerHTML = ''; }
 
@@ -112,6 +212,11 @@
       return true;
     };
 
+    // A nuvem e os gráficos dependem do meta que o montador carrega em background
+    if (!renderMetaCloud()) {
+      let t1 = 0;
+      const ct = setInterval(() => { if (renderMetaCloud() || ++t1 > 25) clearInterval(ct); }, 700);
+    }
     if (!renderCharts()) {
       chartsEl.innerHTML = '<div class="empty-state" style="grid-column:1/-1">Carregando dados do meta…</div>';
       let tries = 0;
@@ -123,6 +228,92 @@
 
   if (window.BXApp) renderHome();
   else document.addEventListener('bxapp-ready', renderHome, { once: true });
+
+  // ------------------- Publicar o deck do builder na comunidade (item 4) ----
+  // O builder é o único montador do site: /#builder redireciona para cá.
+
+  function mapLocalPart(idx, appPart) {
+    return idx.byName.get(BX.norm(appPart.display || appPart.name))
+      || idx.byName.get(BX.norm(appPart.name))
+      || (appPart.aliases || []).map((a) => idx.byName.get(BX.norm(a))).find(Boolean)
+      || null;
+  }
+
+  async function openPublish() {
+    const me = await BX.requireLogin('/#builder');
+    if (!me) return;
+    const idx = await BX.partTagReady();
+    const slots = window.BXApp?.getDeck?.() || [];
+    const filled = slots.filter((s) => s.parts.length);
+    if (!filled.length) { BX.toast('Monte pelo menos um Bey antes de publicar.'); return; }
+
+    const beys = [];
+    const missing = [];
+    for (const slot of filled) {
+      const ids = [];
+      for (const appPart of slot.parts) {
+        const p = mapLocalPart(idx, appPart);
+        if (p) ids.push(p.id);
+        else missing.push(appPart.display || appPart.name);
+      }
+      if (ids.length) beys.push(ids);
+    }
+    if (!beys.length) { BX.toast('Não consegui casar as peças com o catálogo do site.'); return; }
+
+    const modal = document.getElementById('publishModal');
+    const editSlug = new URLSearchParams(location.search).get('editar');
+    document.getElementById('publishTitle').textContent = editSlug ? 'Atualizar deck publicado' : 'Publicar na comunidade';
+    document.getElementById('pubSubmit').textContent = editSlug ? 'Salvar alterações' : 'Publicar deck';
+    if (!document.getElementById('pubTitle').value) {
+      document.getElementById('pubTitle').value = window.BXApp?.getDeckName?.() || '';
+    }
+    document.getElementById('pubPreview').innerHTML = `
+      <div class="pub-beys">${filled.map((s, i) => `
+        <div class="pub-bey"><b>Bey ${i + 1}</b><span>${esc(s.name === 'Bey incompleto' ? s.parts.map((p) => p.display).join(' ') : s.name)}</span></div>`).join('')}</div>
+      ${missing.length ? `<p class="pub-warn">⚠ Fora do catálogo do site e não serão publicadas: ${missing.map(esc).join(', ')}</p>` : ''}`;
+    modal.hidden = false;
+
+    document.getElementById('publishClose').onclick = () => { modal.hidden = true; };
+    document.getElementById('pubSubmit').onclick = async () => {
+      const body = {
+        title: document.getElementById('pubTitle').value,
+        description: document.getElementById('pubDesc').value,
+        launchGuide: document.getElementById('pubGuide').value,
+        youtubeUrl: document.getElementById('pubVideo').value,
+        beys,
+      };
+      try {
+        const saved = editSlug
+          ? await BX.api(`/api/decks/${encodeURIComponent(document.getElementById('pubSubmit').dataset.deckId)}`, { method: 'PATCH', body })
+          : await BX.api('/api/decks', { method: 'POST', body });
+        modal.hidden = true;
+        location.href = `/deck/${saved.deck.slug}`;
+      } catch (e) { BX.toast(e.message); }
+    };
+  }
+
+  document.getElementById('publishDeckBtn')?.addEventListener('click', openPublish);
+
+  // Editar um deck publicado: /#builder?editar=slug carrega as peças no builder
+  (async () => {
+    const editSlug = new URLSearchParams(location.search).get('editar');
+    if (!editSlug) return;
+    try {
+      const { deck } = await BX.api(`/api/decks/${encodeURIComponent(editSlug)}`);
+      const beysNames = deck.beys.map((bey) => bey.map((id) => deck.parts?.[id]?.displayName || id));
+      const apply = () => {
+        window.BXApp.loadDeck(beysNames);
+        window.BXApp.setDeckName(deck.title);
+        document.getElementById('pubTitle').value = deck.title;
+        document.getElementById('pubDesc').value = deck.description || '';
+        document.getElementById('pubGuide').value = deck.launchGuide || '';
+        document.getElementById('pubVideo').value = deck.youtubeUrl || '';
+        document.getElementById('pubSubmit').dataset.deckId = deck.id;
+        BX.toast(`Editando "${deck.title}" — altere e clique em Publicar para salvar.`);
+      };
+      if (window.BXApp) apply(); else document.addEventListener('bxapp-ready', apply, { once: true });
+    } catch (e) { BX.toast(e.message); }
+  })();
 
   // --------------------------------------------- Coleção -> perfil (item 9)
   document.getElementById('sendCollectionBtn')?.addEventListener('click', async () => {

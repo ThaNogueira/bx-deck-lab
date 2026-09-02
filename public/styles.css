@@ -825,3 +825,93 @@ button.user-chip{cursor:pointer}
 .product-hero-photo{padding:11px}
 .product-mini-photo{padding:5px}
 .part-main-img img,.pcatalog-img img,.product-photo img,.product-hero-photo img,.product-mini-photo img,.variant-thumb img{width:auto;height:auto;max-width:100%;max-height:100%;object-fit:contain;padding:0}
+
+/* ===========================================================================
+   v12 â€” builder com picker lateral, deck viewer e nuvem do meta na home
+   =========================================================================== */
+
+/* --- Builder: coluna lateral mais larga + slot ativo --- */
+.builder-layout{grid-template-columns:minmax(0,1fr) 356px}
+.side-panel{display:flex;flex-direction:column;gap:14px}
+.bey-card{transition:border-color .15s ease,box-shadow .15s ease}
+.bey-card.active-slot{border-color:var(--cyan);box-shadow:0 0 0 1px rgba(80,231,255,.25),0 12px 34px rgba(80,231,255,.09)}
+.bey-card.active-slot .slot-number b{background:var(--cyan);color:#06222a}
+
+/* --- Picker de peÃ§as (quadradinhos com foto) --- */
+.panel-card.picker{padding:14px;display:flex;flex-direction:column;gap:10px;max-height:calc(100vh - 120px)}
+.picker-head{display:flex;align-items:flex-end;justify-content:space-between;gap:10px}
+.picker-head h2{margin:0;font:800 24px var(--display);text-transform:uppercase}
+.picker-target{border:1px solid #343b47;border-radius:999px;padding:5px 10px;color:var(--muted);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
+.picker-target b{color:var(--cyan);font-size:12px;margin-left:3px}
+.picker-filters{display:flex;flex-wrap:wrap;gap:5px}
+.picker-chip{border:1px solid #2d333e;background:#12151d;color:#8f97a5;border-radius:999px;padding:5px 9px;font:800 9px var(--display);text-transform:uppercase;letter-spacing:.05em}
+.picker-chip:hover{color:white;border-color:#4a5160}
+.picker-chip.active{background:#1e2029;color:white;border-color:var(--cyan)}
+.picker-chip.owned-toggle.active{border-color:var(--green);color:#74eeb0;background:rgba(84,230,156,.08)}
+.picker-grid{flex:1;min-height:220px;overflow-y:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(86px,1fr));gap:7px;padding-right:3px}
+.picker-tile{position:relative;display:flex;flex-direction:column;align-items:center;gap:5px;padding:8px 5px 6px;border:1px solid #2a3039;border-radius:12px;background:#10141b;color:#c4cad3;transition:transform .13s ease,border-color .13s ease,background .13s ease}
+.picker-tile:hover{transform:translateY(-2px);border-color:var(--cyan);background:rgba(80,231,255,.05)}
+.picker-tile.owned{border-color:rgba(84,230,156,.4);background:linear-gradient(160deg,rgba(84,230,156,.07),#10141b)}
+.picker-tile .part-art.tile{width:58px;height:58px;background:radial-gradient(circle,#2a3040,#151922 66%,#0d0f15 67%)}
+.picker-tile .part-art.tile .fallback{font-size:13px}
+.picker-tile-name{font:800 9px/1.15 var(--display);text-transform:uppercase;text-align:center;max-width:100%;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.picker-owned{position:absolute;top:5px;right:5px;min-width:16px;height:16px;display:grid;place-items:center;border-radius:999px;background:var(--green);color:#062313;font:800 9px var(--display);font-style:normal;padding:0 3px}
+.picker-banned{position:absolute;top:5px;left:5px;width:16px;height:16px;display:grid;place-items:center;border-radius:999px;background:var(--red);color:white;font:800 10px var(--display);font-style:normal}
+.picker-hint{margin:0;color:var(--muted);font-size:10px;line-height:1.45}
+.picker-hint b{color:var(--cyan)}
+
+/* --- Modal de publicaÃ§Ã£o --- */
+.pub-preview{border:1px solid #2a3039;border-radius:11px;background:#10141b;padding:11px}
+.pub-beys{display:flex;flex-direction:column;gap:6px}
+.pub-bey{display:flex;gap:9px;align-items:baseline;font-size:11px;color:#c4cad3}
+.pub-bey b{color:var(--cyan);font:800 10px var(--display);flex:0 0 42px}
+.pub-warn{margin:9px 0 0;color:#ffc891;font-size:10px;line-height:1.45}
+
+/* --- Deck viewer (pÃ¡ginas de deck) --- */
+.bey-visual.standalone.lg{height:330px}
+.bey-visual.lg .part-art.big{width:168px;height:168px}
+.bey-visual.lg .part-art.mini{width:72px;height:72px}
+.bey-visual.lg .rings{inset:44px 40px 62px}
+.bey-visual.lg .visual-piece>span,.bey-visual.lg .main-piece>span{font-size:9px}
+.deck-viewer{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+.deck-viewer .list-card{gap:6px}
+.deck-viewer h3{color:var(--cyan)}
+
+/* --- Nuvem do meta (home) --- */
+.meta-cloud-card{border:1px solid var(--line);border-radius:var(--radius);background:radial-gradient(circle at 20% -10%,rgba(255,53,93,.09),transparent 45%),radial-gradient(circle at 85% 0%,rgba(80,231,255,.08),transparent 42%),linear-gradient(160deg,#141821,#0d1015);padding:20px;margin-bottom:22px;overflow:hidden}
+.cloud-hint{margin:8px 0 0;color:var(--muted);font-size:11px;line-height:1.5}
+.meta-cloud{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:center;gap:6px 4px;padding:18px 0 4px;min-height:210px}
+.cloud-bey{width:var(--s);display:flex;flex-direction:column;align-items:center;gap:5px;text-decoration:none;color:inherit;opacity:0;transform:scale(.55) translateY(14px);animation:cloudPop .6s cubic-bezier(.2,1.4,.4,1) forwards;animation-delay:var(--d)}
+@keyframes cloudPop{to{opacity:1;transform:scale(1) translateY(0)}}
+.cloud-orb{position:relative;width:var(--s);height:var(--s);border-radius:50%;display:grid;place-items:center;background:radial-gradient(circle at 50% 38%,#2b3242,#141821 72%);border:1px solid #333a48;overflow:hidden;transition:transform .22s cubic-bezier(.2,1.3,.4,1),border-color .22s ease,box-shadow .22s ease}
+.cloud-orb img{width:84%;height:84%;object-fit:contain;filter:drop-shadow(0 8px 14px rgba(0,0,0,.45))}
+.cloud-orb b{font:800 calc(var(--s)*.3) var(--display);color:#7f8795}
+.cloud-bey:hover .cloud-orb{transform:scale(1.09) rotate(-4deg);border-color:var(--cyan);box-shadow:0 0 0 2px rgba(80,231,255,.2),0 16px 38px rgba(0,0,0,.45)}
+.cloud-count{position:absolute;right:6%;bottom:6%;min-width:20px;height:20px;padding:0 5px;display:grid;place-items:center;border-radius:999px;background:rgba(9,10,15,.86);border:1px solid #3a414d;color:#dfe4ea;font:800 10px var(--display);font-style:normal;opacity:0;transition:opacity .18s ease}
+.cloud-bey:hover .cloud-count{opacity:1}
+.cloud-name{font:800 10px/1.1 var(--display);text-transform:uppercase;text-align:center;color:#98a1af;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;transition:color .15s ease}
+.cloud-bey:hover .cloud-name{color:white}
+.cloud-bey.trend-up .cloud-orb{border-color:rgba(84,230,156,.45)}
+.cloud-bey.trend-down .cloud-orb{border-color:rgba(255,53,93,.35)}
+@media (prefers-reduced-motion:reduce){.cloud-bey{animation-duration:.01ms;opacity:1;transform:none}}
+
+/* --- Ranking do meta com imagens maiores --- */
+.rank-row.big{grid-template-columns:34px minmax(150px,1.2fr) minmax(70px,1fr) 34px 30px;gap:10px;padding:9px 0}
+.rank-row.big .ptag{border:0;background:transparent;padding:0;gap:9px;font-size:12px}
+.rank-row.big .ptag-thumb{border-width:2px}
+.rank-row.big .ptag:hover{background:transparent;color:var(--cyan)}
+.rank-row.big>span em{font-size:9px}
+.weekly-card .rank-list{padding:9px 14px 14px}
+
+@media(max-width:1180px){
+  .builder-layout{grid-template-columns:1fr}
+  .panel-card.picker{max-height:none}
+  .picker-grid{max-height:400px}
+  .bey-visual.standalone.lg{height:290px}
+}
+@media(max-width:820px){
+  .meta-cloud{min-height:0}
+  .cloud-bey{--s:min(var(--s),110px)}
+  .rank-row.big{grid-template-columns:26px minmax(110px,1fr) 60px 28px 28px;gap:7px}
+}
+

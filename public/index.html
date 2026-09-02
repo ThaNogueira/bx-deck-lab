@@ -32,7 +32,36 @@
           <a class="btn secondary" href="/vendas" style="text-decoration:none">Vendas</a>
         </div>
       </div>
+      <section class="meta-cloud-card" id="metaCloudCard">
+        <div class="section-title-row">
+          <div><p class="eyebrow">PRESENÇA NO META</p><h2>As peças que mais aparecem</h2></div>
+          <div class="cloud-switch pill-toggle" id="cloudSwitch">
+            <button data-cloud="all" class="active">Tudo</button>
+            <button data-cloud="BLADE">Blades</button>
+            <button data-cloud="RATCHET">Ratchets</button>
+            <button data-cloud="BIT">Bits</button>
+          </div>
+        </div>
+        <p class="cloud-hint">Quanto maior a peça, mais ela aparece nos decks de torneio. Passe o mouse para ver os números — clique para abrir a página da peça.</p>
+        <div class="meta-cloud" id="metaCloud"></div>
+      </section>
+
       <div id="homeFeatured"></div>
+
+      <section id="metaSection">
+        <div class="section-title-row" style="margin:26px 0 6px">
+          <div><p class="eyebrow">BBX WEEKLY • 4 SEMANAS</p><h2>Ranking de peças do meta</h2></div>
+          <div class="freshness"><span></span>Snapshot: 2026-W18 • 10 abr–7 mai 2026</div>
+        </div>
+        <div class="weekly-summary" id="weeklySummary"></div>
+        <div class="weekly-grid" id="weeklyGrid"></div>
+        <div class="source-banner">
+          <strong>Fonte:</strong>
+          <span>BBX Weekly — ranking de 4 semanas, 183 eventos e 5.248 peças analisadas no snapshot mostrado. O valor é um índice relativo do próprio site, não uma porcentagem de win rate.</span>
+          <a class="meta-link" href="https://www.bbxweekly.com/4weeks" target="_blank" rel="noopener">Abrir BBX Weekly ↗</a>
+        </div>
+      </section>
+
       <div class="home-grid" id="homeCharts"></div>
     </section>
 
@@ -48,7 +77,8 @@
           <button class="btn secondary" id="randomDeckBtn">🎲 Deck aleatório</button>
           <button class="btn secondary viable" id="viableDeckBtn">✦ Aleatório viável</button>
           <button class="btn secondary" id="clearDeckBtn">Limpar deck</button>
-          <button class="btn primary" id="saveDeckBtn">Salvar deck</button>
+          <button class="btn secondary" id="saveDeckBtn">Salvar local</button>
+          <button class="btn primary" id="publishDeckBtn">↗ Publicar na comunidade</button>
         </div>
       </div>
 
@@ -76,7 +106,21 @@
         </div>
 
         <aside class="side-panel">
-          <div class="panel-card sticky">
+          <div class="panel-card picker sticky">
+            <div class="picker-head">
+              <div>
+                <p class="eyebrow">CATÁLOGO</p>
+                <h2>Peças</h2>
+              </div>
+              <span class="picker-target">Bey <b id="activeSlotLabel">1</b></span>
+            </div>
+            <input id="pickerSearch" placeholder="Buscar peça…" />
+            <div class="picker-filters" id="pickerFilters"></div>
+            <div class="picker-grid" id="pickerGrid"></div>
+            <p class="picker-hint" id="pickerHint"></p>
+          </div>
+
+          <div class="panel-card">
             <div class="panel-title">
               <span class="status-dot"></span>
               <strong>Validação em tempo real</strong>
@@ -99,33 +143,21 @@
         </aside>
       </div>
 
-      <section class="panel-card partsbox">
-        <div class="section-title-row">
-          <div><p class="eyebrow">CATÁLOGO COMPLETO</p><h2>Todas as peças</h2></div>
-          <small id="partsBoxCount"></small>
+      <div class="modal-backdrop" id="publishModal" hidden>
+        <div class="modal">
+          <button class="modal-close" id="publishClose">×</button>
+          <h2 id="publishTitle">Publicar na comunidade</h2>
+          <p style="color:var(--muted);font-size:11px;margin:0 0 14px">Seu deck aparece em <b>Decks da comunidade</b> com as peças, o guia de lançamento e o vídeo.</p>
+          <div class="form-grid">
+            <div><label>Título do deck</label><input id="pubTitle" maxlength="80" placeholder="Ex.: Trio anti-meta da loja X" /></div>
+            <div><label>Descrição</label><textarea id="pubDesc" maxlength="2000" placeholder="Por que essas peças? Contra o que o deck joga bem?"></textarea></div>
+            <div><label>Guia de lançamento</label><textarea id="pubGuide" maxlength="2000" placeholder="Como lançar cada Bey: força, ângulo, quando usar cada um…"></textarea></div>
+            <div><label>Vídeo do YouTube (opcional)</label><input id="pubVideo" placeholder="https://youtube.com/watch?v=…" /></div>
+            <div id="pubPreview" class="pub-preview"></div>
+            <div class="inline-actions"><button class="btn primary" id="pubSubmit">Publicar deck</button></div>
+          </div>
         </div>
-        <div class="page-toolbar" style="margin-top:12px">
-          <input id="partsBoxSearch" placeholder="Buscar peça por nome, apelido ou sigla…" />
-          <select id="partsBoxKind" aria-label="Filtrar por tipo">
-            <option value="">Todos os tipos</option>
-            <option value="blade">Blades</option>
-            <option value="integrated">Blades integradas</option>
-            <option value="lock">Lock Chips</option>
-            <option value="over">Over Blades</option>
-            <option value="main">Main Blades</option>
-            <option value="assist">Assist Blades</option>
-            <option value="ratchet">Ratchets</option>
-            <option value="bit">Bits</option>
-            <option value="rib">Ratchet-Integrated Bits</option>
-          </select>
-          <select id="partsBoxOwned" aria-label="Filtrar por posse">
-            <option value="">Todas as peças</option>
-            <option value="owned">✓ Só o que eu tenho</option>
-            <option value="missing">Só o que me falta</option>
-          </select>
-        </div>
-        <div id="partsBoxGrid" class="partsbox-grid"></div>
-      </section>
+      </div>
     </section>
 
     <section class="view" id="view-collection">
@@ -246,24 +278,6 @@
       <div class="source-banner">
         <strong>Como esta aba é tratada:</strong>
         <span>cards “Pódio” representam decks reportados; cards “Agregado” são sínteses de builds populares e são marcados como tal. Formato, estádio, região e regras opcionais podem mudar o meta.</span>
-      </div>
-    </section>
-
-    <section class="view" id="view-weekly">
-      <div class="hero compact">
-        <div>
-          <p class="eyebrow">BBX WEEKLY • 4 SEMANAS</p>
-          <h1>Quais peças estão aparecendo no meta?</h1>
-          <p>Ranking de uso relativo publicado pelo BBX Weekly a partir de eventos WBO. Use esta aba para enxergar tendências de peças; ela complementa a aba de decks completos.</p>
-        </div>
-        <div class="freshness"><span></span>Snapshot: 2026-W18 • 10 abr–7 mai 2026</div>
-      </div>
-      <div class="weekly-summary" id="weeklySummary"></div>
-      <div class="weekly-grid" id="weeklyGrid"></div>
-      <div class="source-banner">
-        <strong>Fonte:</strong>
-        <span>BBX Weekly — ranking de 4 semanas, 183 eventos e 5.248 peças analisadas no snapshot mostrado. O valor é um índice relativo do próprio site, não uma porcentagem de win rate.</span>
-        <a class="meta-link" href="https://www.bbxweekly.com/4weeks" target="_blank" rel="noopener">Abrir BBX Weekly ↗</a>
       </div>
     </section>
 

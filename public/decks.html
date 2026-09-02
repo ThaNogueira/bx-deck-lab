@@ -36,7 +36,7 @@
       BX.renderTopbar('/decks');
       await BX.partTagReady();
       document.getElementById('newDeck').addEventListener('click', async () => {
-        if (await BX.requireLogin('/deck-novo')) location.href = '/deck-novo';
+        if (await BX.requireLogin('/#builder')) location.href = '/#builder';
       });
       let timer;
       async function load() {

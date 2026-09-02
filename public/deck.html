@@ -33,7 +33,7 @@
       const beysHtml = deck.beys.map((bey, i) => `
         <div class="list-card">
           <h3>Bey ${i + 1}</h3>
-          ${BX.beyVisual(bey.map((id) => deck.parts?.[id] || id))}
+          ${BX.beyVisual(bey.map((id) => deck.parts?.[id] || id), { size: 'lg' })}
         </div>`).join('');
 
       app.innerHTML = `
@@ -54,7 +54,7 @@
             ${mine ? `<button class="btn danger-outline" id="delBtn">Excluir</button>` : `<button class="btn ghost" id="reportBtn">⚑ Denunciar</button>`}
           </div>
         </div>
-        <div class="deck-grid" style="margin-bottom:20px">${beysHtml}</div>
+        <div class="deck-viewer" style="margin-bottom:20px">${beysHtml}</div>
         <div class="profile-grid">
           <div style="display:flex;flex-direction:column;gap:16px">
             ${deck.description ? `<div class="panel-card"><p class="eyebrow">SOBRE O DECK</p><p class="prose">${BX.esc(deck.description)}</p></div>` : ''}

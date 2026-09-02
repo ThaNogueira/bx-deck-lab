@@ -171,7 +171,7 @@
       ? `<div class="visual-piece ${pos}">${art(p, 'mini')}<span>${esc(label)}</span></div>`
       : '';
 
-    return `<div class="bey-visual standalone ${size === 'sm' ? 'compact' : ''}">
+    return `<div class="bey-visual standalone ${size === 'sm' ? 'compact' : size === 'lg' ? 'lg' : ''}">
         <div class="rings"></div>
         ${center ? `<div class="main-piece">${art(center, 'big')}<span>${esc(center.name)} • ${centerLabel}</span></div>` : ''}
         ${center === blade && main ? piece(main, 'chip-pos', 'Main') : piece(lock, 'chip-pos', 'Lock Chip')}
@@ -269,7 +269,7 @@
   const NAV_MAIN = [
     ['home', '/#home', 'Início'],
     ['builder', '/#builder', 'Deck Builder'],
-    ['weekly', '/#weekly', 'Meta check'],
+    ['meta', '/#meta', 'Meta check'],
     ['community', '/decks', 'Decks da comunidade'],
     ['popular', '/#popular', 'Decks populares'],
     ['tournaments', '/torneios', 'Torneios'],

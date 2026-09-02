@@ -1066,7 +1066,12 @@
       card.addEventListener('dragleave',()=>card.classList.remove('drag-over'));
       card.addEventListener('drop',e=>{e.preventDefault();card.classList.remove('drag-over');const to=+card.dataset.deckSlot;const from=dragSourceSlot??+e.dataTransfer.getData('text/plain');if(Number.isInteger(from)&&from!==to){const moved=deck.splice(from,1)[0];deck.splice(to,0,moved);saveState();renderAll();toast('Ordem dos Beys alterada.');}dragSourceSlot=null;});
     });
+    grid.querySelectorAll('.bey-card').forEach(card=>card.addEventListener('mousedown',e=>{
+      if(e.target.closest('button,select,a'))return;
+      setActiveSlot(+card.dataset.deckSlot);
+    }));
     hydrateImages(grid);
+    setActiveSlot(activeSlot);
 
     const v=validateDeck();
     const legalEl=document.getElementById('deckLegality');
@@ -1405,7 +1410,7 @@
   function renderWeekly() {
     const summary=document.getElementById('weeklySummary'); const root=document.getElementById('weeklyGrid'); if(!root)return;
     summary.innerHTML=`<div><b>${BBX_WEEKLY.events}</b><span>eventos WBO</span></div><div><b>${BBX_WEEKLY.parts.toLocaleString('pt-BR')}</b><span>peças analisadas</span></div><div><b>${BBX_WEEKLY.week}</b><span>janela do snapshot</span></div>`;
-    root.innerHTML=BBX_WEEKLY.groups.map(g=>`<section class="weekly-card"><div class="weekly-head"><h2>${escapeHTML(g.title)}</h2><small>índice BBX Weekly</small></div><div class="rank-list">${g.items.map(([name,val],i)=>{const own=hasEquivalent(name);const copyable=!!weeklyPartKind(g.key,name);return `<div class="rank-row ${own?'owned':''}"><b>#${i+1}</b><span>${window.BX?.partTag?._idx?window.BX.partTag(name,{size:18}):escapeHTML(name)}${own?' <em>na sua coleção</em>':''}</span><div><i style="width:${Math.min(100,val)}%"></i></div><strong>${val}</strong>${copyable?`<button class="rank-copy" data-group="${g.key}" data-name="${escapeAttr(name)}" title="Usar esta peça no deck">＋</button>`:''}</div>`}).join('')}</div></section>`).join('');
+    root.innerHTML=BBX_WEEKLY.groups.map(g=>`<section class="weekly-card"><div class="weekly-head"><h2>${escapeHTML(g.title)}</h2><small>índice BBX Weekly</small></div><div class="rank-list">${g.items.map(([name,val],i)=>{const own=hasEquivalent(name);const copyable=!!weeklyPartKind(g.key,name);return `<div class="rank-row big ${own?'owned':''}"><b>#${i+1}</b><span>${window.BX?.partTag?._idx?window.BX.partTag(name,{size:44}):escapeHTML(name)}${own?' <em>na sua coleção</em>':''}</span><div><i style="width:${Math.min(100,val)}%"></i></div><strong>${val}</strong>${copyable?`<button class="rank-copy" data-group="${g.key}" data-name="${escapeAttr(name)}" title="Usar esta peça no deck">＋</button>`:''}</div>`}).join('')}</div></section>`).join('');
     root.querySelectorAll('.rank-copy').forEach(b=>b.addEventListener('click',()=>copyWeeklyPart(b.dataset.group,b.dataset.name)));
   }
 
@@ -1533,6 +1538,8 @@
 
   async function resolveImage(key) {
     const p=PARTS[key]||null;
+    // Foto oficial vinda do catálogo do site (BeyCommunity/BeybladeHub) tem prioridade
+    if(p?.image) return p.image;
     const title=p?.wiki||key;
     if(!title)return '';
 
@@ -1734,29 +1741,82 @@
     el.innerHTML=`<span><strong>${stockOwned.length}</strong> Beys • <strong>${v.complete}/3</strong> no deck</span>`;
   }
 
-  // Caixa "Todas as peças" do Deck Builder: catálogo inteiro com filtros,
-  // destaque verde para o que você possui e botão ＋ para usar no deck.
-  function renderPartsBox() {
-    const root=document.getElementById('partsBoxGrid'); if(!root)return;
-    const q=equivalentKey(document.getElementById('partsBoxSearch')?.value||'');
-    const kind=document.getElementById('partsBoxKind')?.value||'';
-    const ownedFilter=document.getElementById('partsBoxOwned')?.value||'';
-    let items=Object.values(PARTS).filter(p=>!kind||p.kind===kind);
-    if(q)items=items.filter(p=>[p.name,p.display,p.abbrev,...(p.aliases||[])].some(x=>x&&equivalentKey(x).includes(q)));
-    if(ownedFilter==='owned')items=items.filter(p=>(inventory[p.id]||0)>0);
-    if(ownedFilter==='missing')items=items.filter(p=>!(inventory[p.id]||0));
-    items.sort((a,b)=>((inventory[b.id]||0)>0)-((inventory[a.id]||0)>0)||a.display.localeCompare(b.display));
-    const count=document.getElementById('partsBoxCount'); if(count)count.textContent=`${items.length} peça(s) no catálogo`;
-    const shown=items.slice(0,140);
-    root.innerHTML=(shown.map(p=>{
-      const owned=inventory[p.id]||0;
-      return `<div class="partsbox-card ${owned?'owned':''}">${partArt(p)}<div class="partsbox-meta"><a href="/peca/${slug(p.display||p.name)}" title="Ver página da peça">${escapeHTML(p.display)}</a><small>${KIND_LABEL[p.kind]||p.kind}${p.abbrev&&p.abbrev!==p.display?` • ${escapeHTML(p.abbrev)}`:''}</small>${owned?`<span class="owned-chip">✓ você tem ×${owned}</span>`:''}${p.banned?'<span class="badge banned">banida</span>':''}</div><button class="partsbox-add" data-kind="${p.kind}" data-name="${escapeAttr(p.display)}" title="Usar esta peça no deck">＋</button></div>`;
-    }).join(''))+(items.length>shown.length?`<div class="empty-state">Mostrando ${shown.length} de ${items.length} — use a busca ou os filtros para achar o resto.</div>`:'')||'<div class="empty-state">Nenhuma peça com esses filtros.</div>';
-    root.querySelectorAll('.partsbox-add').forEach(b=>b.addEventListener('click',()=>openSlotPicker(`Usar ${b.dataset.name}`,'A peça será aplicada ao slot escolhido.',t=>applyPopularPartToSlot(b.dataset.kind,b.dataset.name,t))));
-    hydrateImages(root);
+  // ---------- Picker lateral do Deck Builder (quadradinhos com foto) ----------
+  const PICKER_KINDS=[['','Tudo'],['blade','Blades'],['integrated','Integradas'],['lock','Lock Chips'],['main','Main'],['over','Over'],['assist','Assist'],['ratchet','Ratchets'],['bit','Bits'],['rib','RIB']];
+  let pickerKind='';
+  let pickerOwnedOnly=false;
+  let activeSlot=0;
+
+  function setActiveSlot(i){
+    activeSlot=Math.max(0,Math.min(2,i));
+    document.querySelectorAll('#deckGrid .bey-card').forEach(c=>c.classList.toggle('active-slot',+c.dataset.deckSlot===activeSlot));
+    const label=document.getElementById('activeSlotLabel'); if(label)label.textContent=activeSlot+1;
   }
 
-  function renderAll(){ renderHeader(); renderBuilder(); renderPartsBox(); renderCollection(); renderMissing(); renderPopular(); renderWeekly(); renderSession(); renderTournament(); }
+  /** Aplica uma peça (objeto do catálogo local) no slot, ajustando a estrutura. */
+  function applyPartToSlot(p,target){
+    const old=clone(deck[target]); let s=clone(old);
+    const kind=p.kind;
+    if(kind==='blade'){const keepR=old.ratchet||'',keepB=old.bit||'';s=emptySlot();s.mode='standard';s.blade=p.id;s.ratchet=keepR;s.bit=keepB;}
+    else if(kind==='integrated'){const keepB=old.bit||'';s=emptySlot();s.mode='integrated';s.blade=p.id;s.bit=keepB;}
+    else if(['lock','main','assist','over'].includes(kind)){
+      if(!['cx','cxrib'].includes(s.mode)){const keepR=old.ratchet||'',keepB=old.bit||'';s=emptySlot();s.mode='cx';s.ratchet=keepR;s.bit=keepB;}
+      s[kind]=p.id; if(kind==='main'&&!p.requiresOver)s.over='';
+    }
+    else if(kind==='ratchet'){
+      if(s.mode==='cxrib'){s.mode='cx';s.rib='';s.bit='';}
+      if(s.mode==='integrated'){const keepB=s.bit;s=emptySlot();s.mode='standard';s.bit=keepB;}
+      s.ratchet=p.id;
+    }
+    else if(kind==='bit'){ if(s.mode==='cxrib'){s.mode='cx';s.rib='';} s.bit=p.id; }
+    else if(kind==='rib'){ if(!['cx','cxrib'].includes(s.mode))s=emptySlot(); s.mode='cxrib';s.rib=p.id;s.ratchet='';s.bit=''; }
+    deck[target]=s; saveState(); renderAll();
+  }
+
+  function renderPicker(){
+    const grid=document.getElementById('pickerGrid'); if(!grid)return;
+    const filters=document.getElementById('pickerFilters');
+    if(filters&&!filters.dataset.ready){
+      filters.innerHTML=PICKER_KINDS.map(([k,label])=>`<button class="picker-chip ${k===pickerKind?'active':''}" data-kind="${k}">${label}</button>`).join('')
+        +`<button class="picker-chip owned-toggle ${pickerOwnedOnly?'active':''}" id="pickerOwnedBtn" title="Mostrar só peças que eu tenho">✓ Tenho</button>`;
+      filters.dataset.ready='1';
+      filters.querySelectorAll('[data-kind]').forEach(b=>b.addEventListener('click',()=>{
+        pickerKind=b.dataset.kind;
+        filters.querySelectorAll('[data-kind]').forEach(x=>x.classList.toggle('active',x===b));
+        renderPicker();
+      }));
+      document.getElementById('pickerOwnedBtn').addEventListener('click',e=>{
+        pickerOwnedOnly=!pickerOwnedOnly;
+        e.currentTarget.classList.toggle('active',pickerOwnedOnly);
+        renderPicker();
+      });
+    }
+    const q=equivalentKey(document.getElementById('pickerSearch')?.value||'');
+    let items=Object.values(PARTS).filter(p=>!pickerKind||p.kind===pickerKind);
+    if(q)items=items.filter(p=>[p.name,p.display,p.abbrev,...(p.aliases||[])].some(x=>x&&equivalentKey(x).includes(q)));
+    if(pickerOwnedOnly)items=items.filter(p=>(inventory[p.id]||0)>0);
+    items.sort((a,b)=>((inventory[b.id]||0)>0)-((inventory[a.id]||0)>0)||a.display.localeCompare(b.display));
+    const shown=items.slice(0,160);
+    grid.innerHTML=shown.map(p=>{
+      const owned=inventory[p.id]||0;
+      return `<button class="picker-tile ${owned?'owned':''}" data-part="${escapeAttr(p.id)}" title="${escapeAttr(p.display)} — ${KIND_LABEL[p.kind]||p.kind}${owned?` (você tem ×${owned})`:''}">
+        ${partArt(p,'tile')}
+        <span class="picker-tile-name">${escapeHTML(p.display)}</span>
+        ${owned?`<i class="picker-owned">${owned}</i>`:''}
+        ${p.banned?'<i class="picker-banned">!</i>':''}
+      </button>`;
+    }).join('')||'<div class="empty-state">Nenhuma peça com esses filtros.</div>';
+    const hint=document.getElementById('pickerHint');
+    if(hint)hint.innerHTML=`${items.length} peça(s)${items.length>shown.length?` • mostrando ${shown.length}`:''} — clique para colocar no <b>Bey ${activeSlot+1}</b>.`;
+    grid.querySelectorAll('.picker-tile').forEach(b=>b.addEventListener('click',()=>{
+      const p=PARTS[b.dataset.part]; if(!p)return;
+      applyPartToSlot(p,activeSlot);
+      toast(`${p.display} → Bey ${activeSlot+1}${(inventory[p.id]||0)?'':' (fora da sua coleção)'}`);
+    }));
+    hydrateImages(grid);
+  }
+
+  function renderAll(){ renderHeader(); renderBuilder(); renderPicker(); renderCollection(); renderMissing(); renderPopular(); renderWeekly(); renderSession(); renderTournament(); }
 
   function escapeHTML(s){return String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
   function escapeAttr(s){return escapeHTML(s).replace(/`/g,'&#96;');}
@@ -1764,11 +1824,17 @@
 
   // Views por hash (#builder, #collection, …) — a sidebar do shell navega por aqui
   function activateView(name){
-    const target=document.getElementById(`view-${name}`)?name:'home';
+    // A antiga aba de meta virou uma seção da home
+    const metaJump=(name==='meta'||name==='weekly');
+    const target=metaJump?'home':(document.getElementById(`view-${name}`)?name:'home');
     document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.id===`view-${target}`));
     if(target==='collection') hydrateImages(document.getElementById('view-collection'));
     if(target==='builder') hydrateImages(document.getElementById('view-builder'));
     if(target==='missing') renderMissing();
+    if(metaJump){
+      const sec=document.getElementById('metaSection');
+      if(sec){ requestAnimationFrame(()=>sec.scrollIntoView({behavior:'smooth',block:'start'})); return; }
+    }
     window.scrollTo({top:0});
   }
   window.addEventListener('hashchange',()=>activateView(location.hash.slice(1)||'home'));
@@ -1788,7 +1854,8 @@
     toast(builderShowAll?'Modo catálogo: monte com qualquer peça, mesmo sem possuir.':'Modo coleção: só peças que você tem.');
   });
   syncBuilderModeBtn();
-  ['partsBoxSearch','partsBoxKind','partsBoxOwned'].forEach(id=>document.getElementById(id)?.addEventListener(id==='partsBoxSearch'?'input':'change',renderPartsBox));
+  document.getElementById('pickerSearch')?.addEventListener('input',renderPicker);
+  setActiveSlot(0);
 
   document.getElementById('importBtn').addEventListener('click',()=>smartImportInventory(document.getElementById('inventoryText').value));
   document.getElementById('manualAddBtn').addEventListener('click',addManualPart);
@@ -1839,6 +1906,45 @@
     rerenderMeta: () => { renderPopular(); renderWeekly(); renderCollection(); },
     rerenderHeader: renderHeader,
     activateView,
+    /** Traz o catálogo do servidor (todas as peças + fotos oficiais) para o montador. */
+    importCatalog: (serverParts) => {
+      const KIND_MAP={BLADE:'blade',LOCK_CHIP:'lock',OVER_BLADE:'over',MAIN_BLADE:'main',ASSIST_BLADE:'assist',RATCHET:'ratchet',BIT:'bit'};
+      let added=0,enriched=0;
+      for(const sp of serverParts||[]){
+        let kind=KIND_MAP[sp.kind]||'blade';
+        if(sp.subKind==='INTEGRATED')kind='integrated';
+        if(sp.subKind==='RIB')kind='rib';
+        const display=sp.display||sp.name;
+        if(!display)continue;
+        const keys=[display,sp.name,...(sp.aliases||[])].filter(Boolean).map(equivalentKey);
+        const exists=Object.values(PARTS).find(p=>p.kind===kind&&[p.name,p.display,p.abbrev,...(p.aliases||[])].some(x=>x&&keys.includes(equivalentKey(x))));
+        if(exists){
+          if(!exists.image&&sp.img){exists.image=sp.img;enriched++;}
+          if(!exists.type&&sp.type)exists.type=sp.type;
+          continue;
+        }
+        reg(P(kind,sp.name||display,{display,aliases:sp.aliases||[],abbrev:sp.abbrev||'',type:sp.type||'',image:sp.img||'',basicLock:kind==='lock',source:'catálogo do site'}));
+        added++;
+      }
+      if(added||enriched){saveLiveCatalog();renderAll();}
+      return {added,enriched};
+    },
+    // Deck atual como listas de peças (para publicar na comunidade)
+    getDeck: () => deck.map(slot => ({ complete: isComplete(slot), name: slotName(slot), parts: slotParts(slot).map(id => PARTS[id]).filter(Boolean) })),
+    getDeckName: () => document.getElementById('deckName')?.value || '',
+    setDeckName: (v) => { const el=document.getElementById('deckName'); if(el){el.value=v; localStorage.setItem('bx_deck_name',v);} },
+    /** Carrega um deck (arrays de nomes de peça) no builder — usado ao editar. */
+    loadDeck: (beys) => {
+      deck = emptyDeck();
+      beys.slice(0,3).forEach((bey,i)=>{
+        (bey||[]).forEach(name=>{
+          const key=equivalentKey(name);
+          const p=Object.values(PARTS).find(x=>[x.name,x.display,x.abbrev,...(x.aliases||[])].some(a=>a&&equivalentKey(a)===key));
+          if(p)applyPartToSlot(p,i);
+        });
+      });
+      saveState(); renderAll(); location.hash='builder';
+    },
   };
   document.dispatchEvent(new CustomEvent('bxapp-ready'));
   updateCatalogStatus('Conectando ao catálogo online…','live',true);
