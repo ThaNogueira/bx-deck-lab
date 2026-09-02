@@ -29,21 +29,23 @@
       let query = '';
       let tab = localStorage.getItem('bx_archive_tab') || 'online';   // 'online' | 'fisicos'
 
-      function physicalDecks() {
-        try { return JSON.parse(localStorage.getItem('bx_session_decks') || '[]'); } catch { return []; }
+      let physicalList = [];
+      async function loadPhysical() {
+        try { physicalList = (await BX.api('/api/me/physical-decks')).decks || []; } catch { physicalList = []; }
       }
+      function physicalDecks() { return physicalList; }
       function physicalCard(d, i) {
         const names = d.names || [];
         return `<article class="archive-card physical" data-pid="${esc(String(d.id))}">
           <div class="archive-top">
             <h3>${esc(d.name || `Deck físico ${i + 1}`)}</h3>
-            <span class="vis-toggle off" title="Salvo neste navegador (Sessão física)">🧰 Físico</span>
+            <span class="vis-toggle off" title="Deck físico salvo na sua conta (Sessão física)">🧰 Físico</span>
           </div>
-          ${d.beys ? BX.deckPreview(d.beys, { u: 46 }) : '<div class="empty-state" style="padding:10px">Abra a Sessão física uma vez para gerar o preview.</div>'}
+          ${(d.beys || []).length ? BX.deckPreview(d.beys, { u: 46 }) : ''}
           <ol class="physical-names">${names.map((n) => `<li>${esc(n)}</li>`).join('')}</ol>
           <div class="archive-meta">
             <span class="folder-chip">🧰 sessão física</span>
-            <small>${d.id ? BX.dateFmt(d.id, { day: '2-digit', month: 'short', year: '2-digit' }) : ''}</small>
+            <small>${d.createdAt ? BX.dateFmt(d.createdAt, { day: '2-digit', month: 'short', year: '2-digit' }) : ''}</small>
           </div>
           <div class="archive-actions">
             <a class="btn secondary" href="/#session">Abrir sessão</a>
@@ -114,7 +116,7 @@
 
           ${tab === 'fisicos' ? `
           <div class="panel-card" style="margin-bottom:14px;display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">
-            <p class="muted" style="margin:0">Decks montados com peças reais na <b>Sessão física</b>. Ficam salvos só neste navegador, e as peças reservadas não são oferecidas em outros decks da sessão.</p>
+            <p class="muted" style="margin:0">Decks montados com peças reais na <b>Sessão física</b>. Ficam salvos na sua conta, e as peças reservadas não são oferecidas em outros decks da sessão.</p>
             <a class="btn primary" href="/#session" style="text-decoration:none">+ Reservar deck físico</a>
           </div>
           <div class="archive-grid">
@@ -163,12 +165,11 @@
         document.querySelectorAll('.archive-tabs [data-tab]').forEach((b) => b.addEventListener('click', () => {
           tab = b.dataset.tab; localStorage.setItem('bx_archive_tab', tab); render();
         }));
-        document.querySelectorAll('[data-release]').forEach((b) => b.addEventListener('click', () => {
-          const list = physicalDecks();
-          const d = list.find((x) => String(x.id) === b.dataset.release);
+        document.querySelectorAll('[data-release]').forEach((b) => b.addEventListener('click', async () => {
+          const d = physicalDecks().find((x) => String(x.id) === b.dataset.release);
           if (!d || !confirm(`Liberar as peças de "${d.name || 'este deck'}"? Ele sai da sessão física.`)) return;
-          localStorage.setItem('bx_session_decks', JSON.stringify(list.filter((x) => String(x.id) !== b.dataset.release)));
-          render();
+          try { await BX.api(`/api/me/physical-decks/${encodeURIComponent(d.id)}`, { method: 'DELETE' }); await loadPhysical(); render(); }
+          catch (e) { BX.toast(e.message); }
         }));
         if (tab === 'fisicos') return;
         document.querySelectorAll('[data-folder]').forEach((b) => b.addEventListener('click', (e) => {
@@ -236,7 +237,7 @@
         }));
       }
 
-      await load();
+      await Promise.all([load(), loadPhysical()]);
       render();
     })();
   </script>

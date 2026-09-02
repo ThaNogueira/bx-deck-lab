@@ -102,6 +102,11 @@ router.put('/api/me/collection', requireUser, ah(async (req, res) => {
   });
   const validIds = new Set(valid.map((v) => v.id));
   let count = 0;
+  // replace=true: a lista enviada É a coleção (o que não vier é removido) — modo do app, que salva na nuvem
+  if (req.body?.replace) {
+    const keep = entries.map((e) => String(e.partId)).filter((id) => validIds.has(id));
+    await prisma.collectionItem.deleteMany({ where: { userId: req.user.id, partId: { notIn: keep } } });
+  }
   for (const e of entries) {
     const partId = String(e.partId);
     const qty = Math.max(0, Math.min(99, parseInt(e.qty, 10) || 0));
@@ -118,6 +123,42 @@ router.put('/api/me/collection', requireUser, ah(async (req, res) => {
     count++;
   }
   res.json({ ok: true, count });
+}));
+
+/** Decks físicos (Sessão física) — vivem na conta, não no navegador. */
+const physicalDto = (d) => ({ id: d.id, name: d.name, position: d.position, createdAt: d.createdAt, ...json(d.deckJson, {}) });
+router.get('/api/me/physical-decks', requireUser, ah(async (req, res) => {
+  const decks = await prisma.physicalDeck.findMany({ where: { userId: req.user.id }, orderBy: [{ position: 'asc' }, { createdAt: 'asc' }] });
+  res.json({ decks: decks.map(physicalDto) });
+}));
+router.put('/api/me/physical-decks', requireUser, ah(async (req, res) => {
+  const list = Array.isArray(req.body?.decks) ? req.body.decks.slice(0, 60) : [];
+  const ids = [...new Set(list.flatMap((d) => (d.beys || []).flat()).map(String))];
+  const valid = new Set((await prisma.part.findMany({ where: { id: { in: ids } }, select: { id: true } })).map((p) => p.id));
+  const clean = (v) => (typeof v === 'string' && valid.has(v) ? v : '');
+  const rows = list.map((d, i) => ({
+    name: String(d.name || `Deck físico ${i + 1}`).slice(0, 60),
+    position: i,
+    deckJson: JSON.stringify({
+      slots: (Array.isArray(d.slots) ? d.slots : []).slice(0, 3).map((s) => ({
+        mode: ['standard', 'integrated', 'cx', 'cxrib'].includes(s?.mode) ? s.mode : 'standard',
+        blade: clean(s?.blade), lock: clean(s?.lock), main: clean(s?.main), assist: clean(s?.assist), over: clean(s?.over),
+        ratchet: clean(s?.ratchet), bit: clean(s?.bit), rib: clean(s?.rib),
+      })),
+      beys: (Array.isArray(d.beys) ? d.beys : []).slice(0, 3).map((b) => (Array.isArray(b) ? b.map(String).filter((id) => valid.has(id)) : [])),
+      names: (Array.isArray(d.names) ? d.names : []).slice(0, 3).map((n) => String(n || '').slice(0, 80)),
+    }),
+  }));
+  await prisma.$transaction([
+    prisma.physicalDeck.deleteMany({ where: { userId: req.user.id } }),
+    ...rows.map((r) => prisma.physicalDeck.create({ data: { userId: req.user.id, ...r } })),
+  ]);
+  const decks = await prisma.physicalDeck.findMany({ where: { userId: req.user.id }, orderBy: [{ position: 'asc' }] });
+  res.json({ decks: decks.map(physicalDto) });
+}));
+router.delete('/api/me/physical-decks/:id', requireUser, ah(async (req, res) => {
+  await prisma.physicalDeck.deleteMany({ where: { userId: req.user.id, id: req.params.id } });
+  res.json({ ok: true });
 }));
 
 router.patch('/api/me/collection/:partId', requireUser, ah(async (req, res) => {

@@ -184,13 +184,13 @@
         <div>
           <p class="eyebrow">SEU ESTOQUE</p>
           <h1>Minha <em>coleção</em></h1>
-          <p>Tudo que você tem, por categoria. Adicione peças pelo catálogo, pelo produto que comprou ou colando uma lista de Beys.</p>
+          <p>Tudo que você tem, por categoria, salvo na sua conta e visível no seu perfil. Adicione peças pelo catálogo, pelo produto que comprou ou colando uma lista de Beys.</p>
         </div>
         <div class="collection-hero-side">
           <div class="collection-count" id="collectionCount"></div>
           <div class="collection-hero-actions">
             <button class="btn primary" id="addBeysBtn">＋ Adicionar Beys</button>
-            <button class="btn secondary" id="sendCollectionBtn">☁ Enviar para meu perfil</button>
+            <a class="btn secondary" href="/perfil" style="text-decoration:none">Ver no meu perfil →</a>
           </div>
         </div>
       </div>
@@ -226,14 +226,11 @@
               <div class="section-title-row">
                 <div><p class="eyebrow">POR LISTA</p><h3>Colar Beys</h3></div>
               </div>
-              <p class="form-help">Um Bey por linha, ex.: <b>Wizard Rod 5-70DB</b>. O tipo entre parênteses é opcional.</p>
+              <p class="form-help">Um Bey por linha, ex.: <b>Wizard Rod 5-70DB</b>. Cada linha vira peças adicionadas à coleção.</p>
               <textarea id="inventoryText" spellcheck="false" aria-label="Lista de Beyblades" placeholder="Dran Sword 3-60F&#10;Wizard Rod 5-70DB&#10;Shark Scale 4-60P"></textarea>
               <button class="btn primary" id="importBtn" style="width:100%">Importar lista</button>
               <div class="import-note" id="importNote"></div>
-              <details class="backups">
-                <summary>Backups automáticos da coleção</summary>
-                <div id="colBackups"></div>
-              </details>
+
             </aside>
           </div>
         </div>

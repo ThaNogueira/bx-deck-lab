@@ -15,6 +15,7 @@ datasource db {
 // ---------------------------------------------------------------------------
 
 model User {
+  physicalDecks PhysicalDeck[]
   id             String    @id @default(cuid())
   email          String    @unique
   name           String
@@ -335,4 +336,17 @@ model SyncLog {
   ok        Boolean
   message   String?
   createdAt DateTime @default(now())
+}
+
+/// Deck físico (Sessão física): peças reais reservadas pelo usuário. Vive na conta.
+model PhysicalDeck {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  deckJson  String // {slots:[{mode,blade,lock,main,assist,over,ratchet,bit,rib}] com ids de Part, beys:[[partId]], names:[]}
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }

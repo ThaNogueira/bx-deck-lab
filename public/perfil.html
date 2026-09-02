@@ -107,7 +107,7 @@
               <div class="panel-card">
                 <div class="section-title-row" style="margin-bottom:12px">
                   <div><p class="eyebrow">ITEM 9</p><h2>Minha coleção & vendas</h2></div>
-                  <small>Importe pelo montador (aba Minha coleção → “Enviar para meu perfil”).</small>
+                  <small>Gerencie as peças na aba <a href="/#collection" style="color:var(--cyan)">Minha coleção</a> — tudo é salvo na sua conta automaticamente. Aqui você marca o que está à venda.</small>
                 </div>
                 <div id="collectionProgress" style="margin-bottom:10px"></div>
                 <div id="collectionList"></div>
@@ -171,7 +171,7 @@
         const progEl = document.getElementById('collectionProgress');
         if (progEl) progEl.innerHTML = collection.items.length ? BX.progressBarHtml(BX.collectionProgress(collection.items, idx), { label: 'do Beyblade X na sua coleção' }) : '';
         if (!collection.items.length) {
-          el.innerHTML = '<div class="empty-state">Coleção vazia por aqui. Abra o <a href="/" style="color:var(--cyan)">montador</a>, aba “Minha coleção”, e clique em “Enviar coleção para meu perfil”.</div>';
+          el.innerHTML = '<div class="empty-state">Coleção vazia por aqui. Abra <a href="/#collection" style="color:var(--cyan)">Minha coleção</a> e adicione suas peças — elas aparecem aqui na hora.</div>';
           return;
         }
         el.innerHTML = `<div class="table-wrap" style="max-height:420px"><table class="data-table"><thead>

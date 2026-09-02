@@ -138,30 +138,10 @@
     return part.id;
   }
 
-  /** Backups automáticos da coleção local (peças manuais + lista colada). Guarda os 6 últimos, só quando muda. */
-  const BACKUP_KEY='bx_collection_backups_v1';
-  function collectionBackups(){ return loadJSON(BACKUP_KEY,[]); }
-  function backupCollection(reason){
-    try{
-      const manual=localStorage.getItem('bx_manual_parts_v5')||'{}', text=localStorage.getItem('bx_v5_inventory_text')||'';
-      if(manual==='{}'&&!text.trim())return;
-      const list=collectionBackups(); const last=list[0];
-      if(last&&last.manual===manual&&last.text===text)return;
-      list.unshift({at:Date.now(),reason,manual,text,count:Object.values(JSON.parse(manual)).reduce((n,r)=>n+Math.max(0,r.qty||0),0)+text.split(/\r?\n/).filter(Boolean).length});
-      localStorage.setItem(BACKUP_KEY,JSON.stringify(list.slice(0,6)));
-    }catch{}
-  }
-  function restoreCollectionBackup(i){
-    const b=collectionBackups()[i]; if(!b)return false;
-    backupCollection('antes de restaurar');
-    localStorage.setItem('bx_manual_parts_v5',b.manual); manualParts=loadJSON('bx_manual_parts_v5',{});
-    localStorage.setItem('bx_v5_inventory_text',b.text); inventoryText=b.text;
-    importInventory(b.text,true); toast('Coleção restaurada do backup.'); return true;
-  }
   /** Funde uma peça local duplicada na canônica: move quantidades manuais, filhas e referências de deck/sessão. */
   function mergeLocalPart(dup, canon){
     if(!dup||!canon||dup.id===canon.id)return;
-    if(manualParts[dup.id]){ if(!manualParts[canon.id])manualParts[canon.id]={part:canon,qty:0}; manualParts[canon.id].qty=(manualParts[canon.id].qty||0)+(manualParts[dup.id].qty||0); delete manualParts[dup.id]; localStorage.setItem('bx_manual_parts_v5',JSON.stringify(manualParts)); }
+    if(manualParts[dup.id]){ if(!manualParts[canon.id])manualParts[canon.id]={part:canon,qty:0}; manualParts[canon.id].qty=(manualParts[canon.id].qty||0)+(manualParts[dup.id].qty||0); delete manualParts[dup.id]; persistCollection(); }
     for(const c of Object.values(PARTS))if(c.parentId===dup.id)c.parentId=canon.id;
     const remap=(slot)=>{ for(const k of ['blade','lock','main','assist','over','ratchet','bit','rib'])if(slot?.[k]===dup.id)slot[k]=canon.id; };
     try{ (deck||[]).forEach(remap); (sessionDraft||[]).forEach(remap); (sessionDecks||[]).forEach(d=>(d.deck||[]).forEach(remap)); }catch{}
@@ -695,7 +675,7 @@
     }catch{}
     renderCatalogMixed(items,products);
   }
-  function addCatalogPartToCollection(id){const p=PARTS[id];if(!p)return;if(!manualParts[id])manualParts[id]={part:p,qty:0};manualParts[id].part=p;manualParts[id].qty++;localStorage.setItem('bx_manual_parts_v5',JSON.stringify(manualParts));importInventory(inventoryText,true);toast(`${p.display} adicionada à coleção.`);}
+  function addCatalogPartToCollection(id){const p=PARTS[id];if(!p)return;if(!manualParts[id])manualParts[id]={part:p,qty:0};manualParts[id].part=p;manualParts[id].qty++;persistCollection();rebuildInventory();toast(`${p.display} adicionada à coleção.`);}
 
   function phstudySearchUrl(q){return `${REMOTE.phstudy}?search=${encodeURIComponent(q)}`;}
   function extractProductLinks(text){
@@ -737,14 +717,76 @@
     importInventory(text,true);document.getElementById('importNote').textContent=unresolved.length?`Não consegui decompor automaticamente: ${unresolved.join(' • ')}. Você ainda pode adicionar as peças manualmente ou tentar “Atualizar catálogo”.`:'Todas as linhas foram reconhecidas. Peças online foram cacheadas neste navegador.';updateCatalogStatus(catalogLastSync?'Catálogo online/cache atualizado':'Catálogo local','live');toast(unresolved.length?`Coleção importada; ${unresolved.length} linha(s) precisam de revisão.`:'Coleção importada e validada.');
   }
 
-  let inventoryText = localStorage.getItem('bx_v5_inventory_text') || DEFAULT_TEXT;
+  let inventoryText = '';
   let inventory = {};
   let inventoryOrigins = {};
   let stockOwned = [];
   let deck = loadJSON('bx_current_deck', emptyDeck());
-  let manualParts = loadJSON('bx_manual_parts_v5', {});
+  // Coleção e decks físicos vivem na CONTA (nuvem). Aqui só o espelho em memória.
+  let manualParts = {};
   let sessionDraft = loadJSON('bx_session_draft', emptyDeck());
-  let sessionDecks = loadJSON('bx_session_decks', []);
+  let sessionDecks = [];
+  let cloudUser = null, cloudReady = false;
+  const SID_INDEX = () => { const m = new Map(); for (const p of Object.values(PARTS)) if (p.serverId) m.set(p.serverId, p); return m; };
+  /** Itens da coleção no formato do servidor: só peças com id no catálogo do site. */
+  function collectionServerItems(){
+    const out=[]; for(const [id,rec] of Object.entries(manualParts)){ const p=PARTS[id]; const q=rec.qty||0; if(!p||!p.serverId||q<=0)continue; out.push({partId:p.serverId,qty:q}); }
+    return out;
+  }
+  let persistTimer=null;
+  function persistCollection(){
+    if(!cloudReady||!cloudUser)return;
+    clearTimeout(persistTimer);
+    persistTimer=setTimeout(()=>{ window.BXApp?.cloud?.saveCollection?.(collectionServerItems()); },500);
+  }
+  const slotToServer=(slot)=>Object.fromEntries(Object.entries(slot).map(([k,v])=>[k,k==='mode'?v:(v?(PARTS[v]?.serverId||''):'')]));
+  const slotFromServer=(slot,bySid)=>Object.fromEntries(Object.entries(slot).map(([k,v])=>[k,k==='mode'?v:(v?(bySid.get(v)?.id||''):'')]));
+  function physicalServerList(){
+    return sessionDecks.map((d,i)=>({id:d.id,name:d.name||`Deck físico ${i+1}`,slots:(d.deck||[]).map(slotToServer),beys:(d.deck||[]).map(slot=>slotParts(slot).map(id=>PARTS[id]?.serverId).filter(Boolean)),names:(d.deck||[]).map(slotName)}));
+  }
+  let physTimer=null;
+  function persistPhysical(){
+    if(!cloudReady||!cloudUser)return;
+    clearTimeout(physTimer);
+    physTimer=setTimeout(()=>{ window.BXApp?.cloud?.savePhysical?.(physicalServerList()); },400);
+  }
+  /**
+   * Recebe a coleção/decks físicos da conta (chamado pela camada de comunidade depois do catálogo).
+   * Na primeira vez, migra o que ainda existia no navegador (versões antigas) para a conta e apaga o local.
+   */
+  function setCloud(data){
+    cloudUser=data?.user||null;
+    const bySid=SID_INDEX();
+    manualParts={}; sessionDecks=[];
+    if(cloudUser){
+      for(const it of data.items||[]){ const p=bySid.get(it.partId); if(!p||!(it.qty>0))continue; manualParts[p.id]={part:p,qty:(manualParts[p.id]?.qty||0)+it.qty}; }
+      sessionDecks=(data.physical||[]).map(d=>({id:d.id,name:d.name,deck:(d.slots||[]).map(s=>slotFromServer(s,bySid))})).map(d=>{while(d.deck.length<3)d.deck.push(emptySlot());return d;});
+      migrateLegacyLocal(bySid, !(data.items||[]).length, !(data.physical||[]).length);
+    }
+    cloudReady=true;
+    rebuildInventory();
+  }
+  function migrateLegacyLocal(bySid, wantCollection, wantPhysical){
+    let migrated=false;
+    try{
+      if(wantCollection){
+        let manual=loadJSON('bx_manual_parts_v5',{}), text=localStorage.getItem('bx_v5_inventory_text')||'';
+        const count=(m,t)=>Object.values(m).reduce((n,r)=>n+Math.max(0,r.qty||0),0)+t.split(/\r?\n/).filter(Boolean).length;
+        if(!count(manual,text)){ // sem coleção atual no navegador: tenta o maior backup antigo
+          const best=loadJSON('bx_collection_backups_v1',[]).sort((x,y)=>(y.count||0)-(x.count||0))[0];
+          if(best){ try{manual=JSON.parse(best.manual||'{}');}catch{} text=best.text||''; }
+        }
+        for(const [id,rec] of Object.entries(manual)){ if(!(rec?.qty>0))continue; let p=PARTS[id]; if(!p&&rec.part){PARTS[id]=rec.part;p=rec.part;} if(!p)continue; manualParts[id]={part:p,qty:(manualParts[id]?.qty||0)+rec.qty}; migrated=true; }
+        for(const id of linesToPieces(text)){ manualParts[id]={part:PARTS[id],qty:(manualParts[id]?.qty||0)+1}; migrated=true; }
+      }
+      if(wantPhysical){
+        const legacy=loadJSON('bx_session_decks',[]);
+        if(legacy.length){ sessionDecks=legacy.map(d=>({id:null,name:d.name,deck:(d.deck||[]).map(s=>({...emptySlot(),...s}))})); migrated=true; }
+      }
+    }catch{}
+    for(const k of ['bx_manual_parts_v5','bx_v5_inventory_text','bx_collection_backups_v1','bx_session_decks'])localStorage.removeItem(k);
+    if(migrated){ cloudReady=true; persistCollection(); persistPhysical(); toast('Sua coleção antiga (deste navegador) foi salva na sua conta.'); }
+  }
   let tournament = loadJSON('bx_tournament', {maxPlayers:8, players:[], rounds:[], thirdPlaceEnabled:false, thirdPlaceMatch:null});
   tournament.thirdPlaceEnabled=!!tournament.thirdPlaceEnabled;
   if(!('thirdPlaceMatch' in tournament)) tournament.thirdPlaceMatch=null;
@@ -764,7 +806,8 @@
   function deckBeyNames(dk){ return (dk||[]).map(slot=>slotParts(slot).map(id=>PARTS[id]?.display||id)); }
   function saveSession(){
     sessionDecks.forEach(d=>{ d.beys=deckBeyNames(d.deck); d.names=(d.deck||[]).map(slotName); });
-    localStorage.setItem('bx_session_draft', JSON.stringify(sessionDraft)); localStorage.setItem('bx_session_decks', JSON.stringify(sessionDecks));
+    localStorage.setItem('bx_session_draft', JSON.stringify(sessionDraft));
+    persistPhysical();
   }
   function saveTournament(){ localStorage.setItem('bx_tournament', JSON.stringify(tournament)); }
 
@@ -772,60 +815,45 @@
     return line.replace(/\([^)]*\)/g,'').replace(/\s+/g,' ').trim().toLowerCase();
   }
 
-  function importInventory(text, quiet=false) {
-    const inv = {};
-    const origins = {};
-    const ownedStock = [];
-    const unknown = [];
-    const addOrigin=(id,label,qty=1,kind='bey')=>{
-      if(!origins[id])origins[id]={};
-      const key=`${kind}:${label}`;
-      if(!origins[id][key])origins[id][key]={label,kind,qty:0};
-      origins[id][key].qty+=qty;
-    };
-    const add = (id, qty=1, originLabel='', originKind='bey') => { inv[id] = (inv[id] || 0) + qty; if(originLabel)addOrigin(id,originLabel,qty,originKind); };
-
-    text.split(/\r?\n/).map(x=>x.trim()).filter(Boolean).forEach(line => {
-      const n = normalizeLine(line);
-      const found = STOCK.find(s => s.match.includes(n));
-      if (found) {
-        found.pieces.forEach(id=>add(id,1,found.label,'bey'));
-        ownedStock.push(found.label);
-      } else {
-        const guessed = guessStockLine(line);
-        if (guessed) {
-          const label=line.replace(/\([^)]*\)/g,'').trim();
-          guessed.forEach(id=>add(id,1,label,'bey'));
-          ownedStock.push(label);
-        } else unknown.push(line);
-      }
+  /** Decompõe linhas "Blade Ratchet Bit" em ids de peça (STOCK conhecido ou parser genérico). Linhas não reconhecidas em `unknown`. */
+  function linesToPieces(text, unknown=[]){
+    const ids=[];
+    String(text||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean).forEach(line=>{
+      const n=normalizeLine(line);
+      const found=STOCK.find(s=>s.match.includes(n));
+      if(found){found.pieces.forEach(id=>{if(PARTS[id])ids.push(id);});return;}
+      const guessed=guessStockLine(line);
+      if(guessed)guessed.forEach(id=>{if(PARTS[id])ids.push(id);}); else unknown.push(line);
     });
-
+    return ids;
+  }
+  /** Recalcula o inventário a partir do espelho da coleção (recolors somam na peça-pai). */
+  function rebuildInventory(){
+    const inv={}, origins={};
     Object.entries(manualParts).forEach(([id, rec]) => {
-      if (!PARTS[id]) {
-        const stored={...rec.part};
-        if(['blade','integrated'].includes(stored.kind)&&!stored.stats&&!BLADE_PROFILE[stored.id])stored.type='';
-        PARTS[id]=stored;
-      }
-      add(id, rec.qty, rec.qty>0?'Adicionada à parte':'Ajuste manual', 'loose');
+      if(!PARTS[id]&&rec.part){ const stored={...rec.part}; if(['blade','integrated'].includes(stored.kind)&&!stored.stats&&!BLADE_PROFILE[stored.id])stored.type=''; PARTS[id]=stored; }
+      if(!PARTS[id])return;
+      inv[id]=(inv[id]||0)+(rec.qty||0);
+      origins[id]={loose:{label:'Na coleção',kind:'loose',qty:rec.qty||0}};
     });
-    // recolors contam para a peça-pai (o montador/validador pensa em peça, a coleção em cor)
     for (const [id, q] of Object.entries(inv)) { const pid = PARTS[id]?.parentId; if (pid && q > 0) inv[pid] = (inv[pid] || 0) + q; }
     Object.keys(inv).forEach(id => { if (inv[id] <= 0) delete inv[id]; });
-
-    inventory = inv;
-    inventoryOrigins = origins;
-    stockOwned = ownedStock;
-    inventoryText = text;
-    localStorage.setItem('bx_v5_inventory_text', text);
-    if (!quiet) {
-      const msg = unknown.length ? `Coleção importada. ${unknown.length} linha(s) não reconhecida(s).` : 'Coleção importada com sucesso.';
-      toast(msg);
-    }
+    inventory = inv; inventoryOrigins = origins; stockOwned = [];
     renderAll();
-    document.getElementById('importNote').textContent = unknown.length
-      ? `Não consegui decompor automaticamente: ${unknown.join(' • ')}. Você pode adicionar as peças manualmente ao lado.`
-      : 'Todas as linhas foram reconhecidas e decompostas em peças individuais.';
+  }
+  /** Lista colada: cada linha vira peças adicionadas à coleção (na conta). */
+  function importInventory(text, quiet=false) {
+    const unknown=[];
+    const ids=linesToPieces(text, unknown);
+    if(!cloudUser){ toast('Entre na sua conta para salvar a coleção.'); return; }
+    for(const id of ids){ if(!manualParts[id])manualParts[id]={part:PARTS[id],qty:0}; manualParts[id].qty+=1; }
+    if(ids.length)persistCollection();
+    const ta=document.getElementById('inventoryText'); if(ta)ta.value=unknown.join('\n');
+    rebuildInventory();
+    if (!quiet) toast(ids.length?`${ids.length} peça(s) adicionada(s) à coleção.${unknown.length?` ${unknown.length} linha(s) não reconhecida(s).`:''}`:'Nenhuma linha reconhecida.');
+    const note=document.getElementById('importNote'); if(note)note.textContent = unknown.length
+      ? `Não consegui decompor automaticamente: ${unknown.join(' • ')}. Corrija o nome ou adicione as peças pela aba Peças.`
+      : (ids.length?`${ids.length} peça(s) adicionada(s) à sua coleção.`:'');
   }
 
   function guessStockLine(line) {
@@ -1209,7 +1237,12 @@
     return `<div class="cprog ${cls}"><div class="cprog-bar"><i style="width:${pct}%"></i></div><small><b>${owned}</b>/${total} • ${pct}%</small></div>`;
   }
   function renderCollection() {
-    document.getElementById('inventoryText').value=inventoryText;
+    if(cloudReady&&!cloudUser){
+      document.getElementById('collectionCount').innerHTML='<strong>—</strong><small>entre para ver sua coleção</small>';
+      document.getElementById('collectionPieces').innerHTML='<div class="empty-state collection-empty"><p>Sua coleção fica na sua conta.</p><a class="btn primary" href="/entrar?next=%2F%23collection" style="text-decoration:none">Entrar para gerenciar</a><small>Coleção, cores e decks físicos são salvos na nuvem e aparecem no seu perfil automaticamente.</small></div>';
+      return;
+    }
+    if(!cloudReady){ document.getElementById('collectionPieces').innerHTML='<div class="empty-state">Carregando sua coleção…</div>'; return; }
     const items=collectionItems();
     const total=items.reduce((a,i)=>a+i.qty,0);
     const order=['blade','integrated','lock','over','main','assist','ratchet','bit','rib'];
@@ -1242,8 +1275,8 @@
       manualParts[id].qty=(manualParts[id].qty||0)+delta;
       if(manualParts[id].qty===0)delete manualParts[id];
     }
-    localStorage.setItem('bx_manual_parts_v5',JSON.stringify(manualParts));
-    importInventory(inventoryText,true);
+    persistCollection();
+    rebuildInventory();
   }
   /** Popup de edição do item (cor + quantidade + remover). */
   async function editItem(id){
@@ -1298,8 +1331,8 @@
     if (!manualParts[id]) manualParts[id]={part:PARTS[id],qty:0};
     manualParts[id].qty=(manualParts[id].qty||0)+delta;
     if(manualParts[id].qty===0) delete manualParts[id];
-    localStorage.setItem('bx_manual_parts_v5',JSON.stringify(manualParts));
-    importInventory(inventoryText,true);
+    persistCollection();
+    rebuildInventory();
   }
 
 
@@ -1607,8 +1640,8 @@
     }
     if(!manualParts[part.id]) manualParts[part.id]={part,qty:0};
     manualParts[part.id].part=part;manualParts[part.id].qty+=qty;
-    localStorage.setItem('bx_manual_parts_v5',JSON.stringify(manualParts));
-    document.getElementById('manualName').value=''; importInventory(inventoryText,true); toast(`${part.display} adicionada à parte (${qty}×).`);
+    persistCollection();
+    document.getElementById('manualName').value=''; rebuildInventory(); toast(`${part.display} adicionada à parte (${qty}×).`);
   }
 
   function partOriginText(id){
@@ -1861,7 +1894,8 @@
   function renderHeader() {
     const el=document.getElementById('headerStatus'); if(!el)return;
     const v=validateDeck();
-    el.innerHTML=`<span><strong>${stockOwned.length}</strong> Beys • <strong>${v.complete}/3</strong> no deck</span>`;
+    const distinct=Object.keys(inventory).filter(id=>PARTS[id]&&!PARTS[id].parentId).length;
+    el.innerHTML=`<span><strong>${distinct}</strong> peças • <strong>${v.complete}/3</strong> no deck</span>`;
   }
 
   // ---------- Picker de peças (quadradinhos com foto) — builder e coleção ----------
@@ -1969,8 +2003,8 @@
   function addManualParts(ids){
     let n=0;
     for(const id of ids){ if(!PARTS[id])continue; if(!manualParts[id])manualParts[id]={part:PARTS[id],qty:0}; manualParts[id].qty=(manualParts[id].qty||0)+1; n++; }
-    localStorage.setItem('bx_manual_parts_v5',JSON.stringify(manualParts));
-    importInventory(inventoryText,true);
+    persistCollection();
+    rebuildInventory();
     return n;
   }
 
@@ -2073,11 +2107,12 @@
   document.getElementById('resetTournamentBtn').addEventListener('click',()=>{if(confirm('Apagar inscrições, resultados e chave deste torneio?')){tournament={maxPlayers:tournament.maxPlayers||8,players:[],rounds:[],thirdPlaceEnabled:!!tournament.thirdPlaceEnabled,thirdPlaceMatch:null};saveTournament();renderTournament();toast('Torneio resetado.');}});
 
   loadLiveCatalog();
-  backupCollection('sessão');
   loadProductCatalog();
   onlineStockCache=loadJSON(ONLINE_STOCK_KEY,[]);
   onlineStockCache.forEach(rec=>{if(rec?.match&&!STOCK.some(s=>s.match.some(x=>rec.match.includes(x))))STOCK.push(rec);});
-  importInventory(inventoryText,true);
+  rebuildInventory();
+  // sem login/coleção ainda: se a camada de comunidade não chamar setCloud em 6s, mostra o estado "entre"
+  setTimeout(()=>{ if(!cloudReady)setCloud(null); },6000);
 
   // Hooks para a camada de comunidade (home, perfil, PartTag) — js/home.js
   window.BXApp = {
@@ -2086,6 +2121,8 @@
     getInventory: () => ({ ...inventory }),
     /** Coleção pronta pra enviar: {localId, qty} sem contar a peça-pai duas vezes (só o "sem cor" dela). */
     loadPhysicalDeck,
+    setCloud,
+    cloud: null,
     getCollectionItems: () => Object.entries(inventory).map(([id,qty])=>{const p=PARTS[id];if(!p)return null;if(p.parentId)return {id,qty};const kidsQty=childrenOf(p).reduce((n,k)=>n+(inventory[k.id]||0),0);const generic=qty-kidsQty;return generic>0?{id,qty:generic}:null;}).filter(Boolean),
     getPart: (id) => PARTS[id],
     listParts: () => Object.values(PARTS),
@@ -2114,7 +2151,7 @@
           if(!exists.serverId){exists.serverId=sp.id;enriched++;}
           if(sp.display&&exists.display!==sp.display){exists.aliases=[...new Set([...(exists.aliases||[]),exists.display])];exists.display=sp.display;enriched++;}
           // outras locais que também casam com esta peça do servidor são duplicatas → funde
-          for(const dup of PARENTS().filter(p=>p!==exists&&p.kind===kind&&!p.serverId&&(backupCollection('antes de fundir duplicatas'),true)&&([p.name,p.display,p.abbrev,...(p.aliases||[])].some(x=>x&&keys.includes(equivalentKey(x)))||(abbr&&['bit','ratchet','rib'].includes(kind)&&(p.abbrev||'').toUpperCase()===abbr)))){ mergeLocalPart(dup,exists); enriched++; }
+          for(const dup of PARENTS().filter(p=>p!==exists&&p.kind===kind&&!p.serverId&&([p.name,p.display,p.abbrev,...(p.aliases||[])].some(x=>x&&keys.includes(equivalentKey(x)))||(abbr&&['bit','ratchet','rib'].includes(kind)&&(p.abbrev||'').toUpperCase()===abbr)))){ mergeLocalPart(dup,exists); enriched++; }
         } else {
           const id=reg(P(kind,sp.name||display,{display,aliases:sp.aliases||[],abbrev:sp.abbrev||'',type:sp.type||'',image:sp.img||'',basicLock:kind==='lock',source:'catálogo do site',serverId:sp.id}));
           exists=PARTS[id]; added++;
@@ -2132,7 +2169,7 @@
           added++;
         } else { const c=PARTS[id]; if(sp.img)c.image=sp.img; c.colorLabel=sp.variantLabel||c.colorLabel; c.serverId=sp.id; c.colorOrder=order++; c.display=parent.display; c.name=parent.name; c.abbrev=parent.abbrev; c.type=parent.type||c.type; }
       }
-      if(added||enriched){saveLiveCatalog();importInventory(inventoryText,true);}
+      if(added||enriched){saveLiveCatalog();rebuildInventory();}
       return {added,enriched};
     },
     /** Adiciona à coleção as peças de um produto vindas do servidor. Devolve os nomes adicionados. */

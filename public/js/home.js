@@ -9,9 +9,10 @@
 
   // Quando o índice de peças chega: PartTags no meta + catálogo completo no builder
   BX.partTagReady().then((idx) => {
-    const apply = () => {
+    const apply = async () => {
       window.BXApp?.rerenderMeta?.();
       const r = window.BXApp?.importCatalog?.(idx.list);
+      await loadCloudCollection();
       if (r?.added) console.info(`[builder] +${r.added} peças do catálogo do site`);
     };
     if (window.BXApp) apply(); else document.addEventListener('bxapp-ready', apply, { once: true });
@@ -253,6 +254,33 @@
   // ------------------- Publicar o deck do builder na comunidade (item 4) ----
   // O builder é o único montador do site: /#builder redireciona para cá.
 
+  // ------------------- Coleção e decks físicos na conta (nuvem) -------------
+  function installCloudBridge() {
+    if (!window.BXApp || window.BXApp.cloud) return;
+    let saving = 0;
+    window.BXApp.cloud = {
+      async saveCollection(items) {
+        saving++;
+        try { await BX.api('/api/me/collection', { method: 'PUT', body: { items, replace: true } }); document.dispatchEvent(new CustomEvent('bx-collection-saved')); }
+        catch (e) { BX.toast('Não consegui salvar a coleção: ' + e.message); }
+        finally { saving--; }
+      },
+      async savePhysical(decks) {
+        try { await BX.api('/api/me/physical-decks', { method: 'PUT', body: { decks } }); }
+        catch (e) { BX.toast('Não consegui salvar os decks físicos: ' + e.message); }
+      },
+    };
+  }
+  async function loadCloudCollection() {
+    installCloudBridge();
+    const me = await BX.me().catch(() => null);
+    if (!me) { window.BXApp?.setCloud?.(null); return; }
+    try {
+      const [col, phys] = await Promise.all([BX.api('/api/me/collection'), BX.api('/api/me/physical-decks')]);
+      window.BXApp?.setCloud?.({ user: me, items: col.items || [], physical: phys.decks || [] });
+    } catch (e) { BX.toast('Não consegui carregar sua coleção: ' + e.message); window.BXApp?.setCloud?.({ user: me, items: [], physical: [] }); }
+  }
+
   function mapLocalPart(idx, appPart) {
     if (appPart.serverId && idx.byId.get(appPart.serverId)) return idx.byId.get(appPart.serverId);
     return idx.byName.get(BX.norm(appPart.display || appPart.name))
@@ -435,30 +463,4 @@
     });
   })();
 
-  // --------------------------------------------- Coleção -> perfil (item 9)
-  document.getElementById('sendCollectionBtn')?.addEventListener('click', async () => {
-    const me = await BX.me().catch(() => null);
-    if (!me) {
-      BX.toast('Entre na sua conta para enviar a coleção.');
-      setTimeout(() => { location.href = '/entrar'; }, 900);
-      return;
-    }
-    const idx = await BX.partTagReady();
-    const entries = window.BXApp?.getCollectionItems?.() || Object.entries(window.BXApp?.getInventory?.() || {}).map(([id, qty]) => ({ id, qty }));
-    const items = [];
-    let unmatched = 0;
-    for (const { id: appId, qty } of entries) {
-      if (!qty) continue;
-      const appPart = window.BXApp.getPart(appId);
-      if (!appPart) continue;
-      const p = mapLocalPart(idx, appPart);
-      if (p) items.push({ partId: p.id, qty });
-      else unmatched++;
-    }
-    if (!items.length) { BX.toast('Sua coleção local está vazia.'); return; }
-    try {
-      const r = await BX.api('/api/me/collection', { method: 'PUT', body: { items } });
-      BX.toast(`Coleção enviada: ${r.count} peça(s) no seu perfil${unmatched ? ` (${unmatched} sem correspondência no catálogo do site)` : ''}. Gerencie vendas em /perfil.`);
-    } catch (e) { BX.toast(e.message); }
-  });
 })();

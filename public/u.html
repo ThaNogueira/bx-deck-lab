@@ -130,7 +130,7 @@
               </div>
               ${collection.length ? BX.progressBarHtml(prog, { label: isMe ? 'do Beyblade X na sua coleção' : 'do Beyblade X' }) : ''}
               ${mine && shelf.length ? `<p class="pcol-legend"><i class="pcol-dot both"></i> vocês dois têm ${shelf.filter((i) => mineParents.has(i.part?.parentId || i.partId)).length} destas peças <i class="pcol-dot exact" style="margin-left:10px"></i> mesma cor</p>` : ''}
-              ${me && !isMe && mine && !mine.length ? '<p class="pcol-legend muted">Envie sua coleção para o seu perfil (aba Minha coleção → "Enviar para meu perfil") para ver o que vocês dois têm.</p>' : ''}
+              ${me && !isMe && mine && !mine.length ? '<p class="pcol-legend muted">Adicione peças em <a href="/#collection">Minha coleção</a> para ver o que vocês dois têm.</p>' : ''}
               ${shelf.length ? pcolGrid(shelf) : '<div class="empty-state">Coleção não publicada.</div>'}
             </div>
           </div>
