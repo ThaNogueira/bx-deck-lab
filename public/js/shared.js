@@ -242,7 +242,7 @@
   /** Preview de deck: até 3 Beys em miniatura, lado a lado. */
   function deckPreview(beys, { u = 48, parts = null, link = false } = {}) {
     const list = (beys || []).slice(0, 3).map((bey) => (bey || []).map((id) => parts?.[id] || id));
-    return `<div class="deck-mini">${list.map((refs) => beyMini(refs, { u, link })).join('')}</div>`;
+    return `<div class="deck-mini" style="--u:${u}px">${list.map((refs) => beyMini(refs, { u, link })).join('')}</div>`;
   }
 
   /**

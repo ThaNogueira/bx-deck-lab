@@ -1085,3 +1085,15 @@ a.bm-part:hover{border-color:var(--cyan);z-index:9}
 .bey-line.deck-line .deck-mini{gap:5px}
 .meta-combo .bey-mini{flex:0 0 auto;margin-right:2px}
 .meta-combo .combo-text{min-width:0;flex:1}
+
+/* ---- v15.1 — preview sempre em 3 colunas alinhadas; tamanhos em % da caixa ---- */
+.deck-mini{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;align-items:end;width:100%}
+.bey-mini{width:calc(var(--u) * 1.62);height:auto;aspect-ratio:1.62 / 1.5}
+.deck-mini .bey-mini{width:100%}
+.bm-blade{width:61.7%;height:auto;aspect-ratio:1}
+.bm-ratchet,.bm-bit{width:34.5%;height:auto;aspect-ratio:1}
+.bm-rib{width:37%;height:auto;aspect-ratio:1}
+.bm-lock,.bm-assist,.bm-over{width:24.7%;height:auto;aspect-ratio:1}
+/* linhas compactas (perfil) e combos populares: largura fixa, não esticam */
+.deck-line .deck-mini{width:calc(var(--u) * 1.62 * 3 + 16px);gap:8px;flex:0 0 auto}
+.meta-combo .bey-mini{width:calc(var(--u) * 1.62)}
