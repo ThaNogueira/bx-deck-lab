@@ -424,7 +424,9 @@ async function mergeParts(fromId, toId) {
 export async function dedupeParts() {
   let merged = 0;
   // grafias equivalentes entre fontes (a chave de nome ignora estas diferenças)
-  const nameKey = (p) => [p.name, p.displayName].map((n) => normKey(n).replace(/disk/g, 'disc')).find(Boolean) || '';
+  // grafias equivalentes entre fontes: disk/disc, yielding/yield
+  const NAME_ALIASES = { yielding: 'yield' };
+  const nameKey = (p) => [p.name, p.displayName].map((n) => { const k = normKey(n).replace(/disk/g, 'disc'); return NAME_ALIASES[k] || k; }).find(Boolean) || '';
   for (const kind of ['BIT', 'RATCHET']) {
     const parts = await prisma.part.findMany({ where: { kind }, orderBy: { createdAt: 'asc' } });
     const groups = new Map();
