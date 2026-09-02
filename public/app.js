@@ -700,7 +700,6 @@
   let inventoryOrigins = {};
   let stockOwned = [];
   let deck = loadJSON('bx_current_deck', emptyDeck());
-  let savedDecks = loadJSON('bx_saved_decks', []);
   let manualParts = loadJSON('bx_manual_parts_v5', {});
   let sessionDraft = loadJSON('bx_session_draft', emptyDeck());
   let sessionDecks = loadJSON('bx_session_decks', []);
@@ -1083,7 +1082,6 @@
       ...(v.legal?[`<div class="validation-item"><i>✓</i><span>Três Beys completos e sem repetições proibidas.</span></div>`]:[])
     ].join('') || `<div class="validation-item"><i>✓</i><span>Nenhum problema detectado.</span></div>`;
     renderDeckAnalysis();
-    renderSavedDecks();
   }
 
   function renderSlot(slot,i) {
@@ -1461,23 +1459,6 @@
     }
     document.getElementById('deckName').value=viable?'Aleatório viável':'Deck aleatório'; localStorage.setItem('bx_deck_name',document.getElementById('deckName').value);
     saveState(); renderAll(); toast(viable?'Gerei um deck legal buscando diversidade e cobertura pelas heurísticas.':'Gerei um deck 3-on-3 legal com sua coleção.');
-  }
-
-  function renderSavedDecks() {
-    const root=document.getElementById('savedDecks');
-    if(!savedDecks.length){root.innerHTML='<div class="empty-state">Nenhum deck salvo ainda.</div>';return;}
-    root.innerHTML=savedDecks.map((d,i)=>`<div class="saved-deck"><div class="saved-deck-main"><h3>${escapeHTML(d.name||`Deck ${i+1}`)}</h3>${d.deck.map((s,j)=>`<div class="saved-bey-row"><span>${escapeHTML(slotName(s))}</span><button class="mini-copy copy-saved-bey" data-i="${i}" data-bey="${j}">Copiar</button></div>`).join('')}</div><div class="saved-deck-actions"><button class="icon-btn load-saved" data-i="${i}" title="Carregar deck inteiro">↺</button><button class="icon-btn delete-saved" data-i="${i}" title="Excluir">×</button></div></div>`).join('');
-    root.querySelectorAll('.load-saved').forEach(b=>b.addEventListener('click',()=>{deck=clone(savedDecks[+b.dataset.i].deck);document.getElementById('deckName').value=savedDecks[+b.dataset.i].name||'';saveState();renderAll();toast('Deck carregado.');}));
-    root.querySelectorAll('.copy-saved-bey').forEach(b=>b.addEventListener('click',()=>{const d=savedDecks[+b.dataset.i];const j=+b.dataset.bey;copyBeyToBuilder(d.deck[j],slotName(d.deck[j]));}));
-    root.querySelectorAll('.delete-saved').forEach(b=>b.addEventListener('click',()=>{savedDecks.splice(+b.dataset.i,1);localStorage.setItem('bx_saved_decks',JSON.stringify(savedDecks));renderSavedDecks();}));
-  }
-
-  function saveDeck() {
-    const v=validateDeck();
-    if(!v.legal){toast('Complete um deck legal antes de salvar.');return;}
-    const name=document.getElementById('deckName').value.trim() || `Deck ${savedDecks.length+1}`;
-    savedDecks.unshift({name,deck:JSON.parse(JSON.stringify(deck)),savedAt:Date.now()});
-    localStorage.setItem('bx_saved_decks',JSON.stringify(savedDecks)); renderSavedDecks(); toast('Deck salvo neste navegador.');
   }
 
   async function addManualPart() {
@@ -1865,7 +1846,6 @@
   ['missingSearchInput','missingBrandFilter','missingCategoryFilter'].forEach(id=>document.getElementById(id)?.addEventListener(id==='missingSearchInput'?'input':'change',renderMissing));
   document.getElementById('loadMoreMetaBtn')?.addEventListener('click',loadMoreMetaDecks);
 
-  document.getElementById('saveDeckBtn').addEventListener('click',saveDeck);
   document.getElementById('randomDeckBtn').addEventListener('click',()=>generateRandomDeck(false));
   document.getElementById('viableDeckBtn').addEventListener('click',()=>generateRandomDeck(true));
   document.getElementById('clearDeckBtn').addEventListener('click',()=>{deck=emptyDeck();saveState();renderAll();toast('Deck limpo.');});

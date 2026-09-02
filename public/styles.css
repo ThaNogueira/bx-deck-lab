@@ -1010,3 +1010,42 @@ button.user-chip{cursor:pointer}
   .mbey{width:calc(min(var(--s),96px) + 16px)}
   .morb{width:min(var(--s),96px);height:min(var(--s),96px)}
 }
+
+/* ---- v14 — arquivo pessoal de decks + visibilidade ---- */
+.vis-picker{display:flex;width:100%}
+.vis-picker button{flex:1;padding:9px 8px;font-size:10px;text-transform:none;letter-spacing:0}
+.vis-picker button.active{background:#272e39;color:white;box-shadow:inset 0 -2px 0 var(--cyan)}
+
+.archive-layout{display:grid;grid-template-columns:236px minmax(0,1fr);gap:16px;align-items:start}
+.archive-side{position:sticky;top:97px;padding:14px}
+.folder-item{position:relative;display:flex;align-items:center;gap:8px;width:100%;text-align:left;border:0;background:transparent;color:var(--muted);padding:9px 11px;border-radius:9px;font-weight:700;font-size:12px;margin-bottom:2px}
+.folder-item:hover{color:white;background:#171922}
+.folder-item.active{color:white;background:#1e2029;box-shadow:inset 2px 0 0 var(--red)}
+.folder-item i{margin-left:auto;font-style:normal;font-size:10px;color:#6f7784;border:1px solid #2d333e;border-radius:999px;padding:1px 7px}
+.folder-edit{opacity:0;color:#7f8795;font-size:11px;padding:0 2px}
+.folder-item:hover .folder-edit{opacity:1}
+.folder-edit:hover{color:var(--cyan)}
+.archive-stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;text-align:center}
+.archive-stats b{display:block;font:800 22px var(--display)}
+.archive-stats small{color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.08em}
+
+.archive-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:12px}
+.archive-card{border:1px solid var(--line);border-radius:15px;background:linear-gradient(155deg,#151820,#0e1016);padding:14px;display:flex;flex-direction:column;gap:10px}
+.archive-card:hover{border-color:#3d4453}
+.archive-top{display:flex;justify-content:space-between;gap:9px;align-items:flex-start}
+.archive-top h3{margin:0;font:800 19px/1.1 var(--display);text-transform:uppercase}
+.archive-top a{color:inherit;text-decoration:none}
+.archive-top a:hover{color:var(--cyan)}
+.vis-toggle{flex:0 0 auto;border:1px solid #3a414d;border-radius:999px;background:#141820;color:#9aa2b0;padding:5px 9px;font:800 9px var(--display);text-transform:uppercase;letter-spacing:.05em;white-space:nowrap}
+.vis-toggle.on{color:#74eeb0;border-color:rgba(84,230,156,.45);background:rgba(84,230,156,.08)}
+.vis-toggle.off{color:#f4dc58;border-color:rgba(244,220,88,.4);background:rgba(244,220,88,.07)}
+.vis-toggle:hover{filter:brightness(1.25)}
+.archive-beys{display:flex;gap:6px;flex-wrap:wrap}
+.archive-bey{display:inline-flex;align-items:center;gap:5px;border:1px solid #2a3039;border-radius:999px;padding:3px 9px 3px 4px;color:#9aa2b0;font-size:10px}
+.archive-bey b{width:17px;height:17px;display:grid;place-items:center;border-radius:50%;background:#1e2029;color:#7f8795;font:800 9px var(--display)}
+.archive-meta{display:flex;align-items:center;gap:7px;flex-wrap:wrap;color:var(--muted);font-size:10px}
+.folder-chip{border:1px solid #2d333e;border-radius:999px;padding:3px 8px;color:#a9b1bd;font-size:9px;font-weight:700}
+.folder-chip.empty{color:#5f6875;border-style:dashed}
+.archive-actions{margin-top:auto;display:flex;gap:5px;flex-wrap:wrap}
+.archive-actions .btn{padding:6px 9px;font-size:10px;text-decoration:none}
+@media(max-width:900px){.archive-layout{grid-template-columns:1fr}.archive-side{position:static}}

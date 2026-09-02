@@ -78,8 +78,7 @@
           <button class="btn secondary" id="randomDeckBtn">🎲 Deck aleatório</button>
           <button class="btn secondary viable" id="viableDeckBtn">✦ Aleatório viável</button>
           <button class="btn secondary" id="clearDeckBtn">Limpar deck</button>
-          <button class="btn secondary" id="saveDeckBtn">Salvar local</button>
-          <button class="btn primary" id="publishDeckBtn">↗ Publicar na comunidade</button>
+          <button class="btn primary" id="publishDeckBtn">💾 Salvar deck</button>
         </div>
       </div>
 
@@ -97,12 +96,12 @@
           <div class="saved-panel">
             <div class="section-title-row">
               <div>
-                <p class="eyebrow">LOCAL</p>
-                <h2>Decks salvos</h2>
+                <p class="eyebrow">ARQUIVO PESSOAL</p>
+                <h2>Meus decks</h2>
               </div>
-              <small>Ficam armazenados neste navegador.</small>
+              <a href="/meus-decks" style="color:var(--cyan);font-size:11px;text-decoration:none">organizar em pastas →</a>
             </div>
-            <div id="savedDecks" class="saved-decks"></div>
+            <div id="myDecksPanel" class="saved-decks"></div>
           </div>
         </div>
 
@@ -147,15 +146,23 @@
       <div class="modal-backdrop" id="publishModal" hidden>
         <div class="modal">
           <button class="modal-close" id="publishClose">×</button>
-          <h2 id="publishTitle">Publicar na comunidade</h2>
-          <p style="color:var(--muted);font-size:11px;margin:0 0 14px">Seu deck aparece em <b>Decks da comunidade</b> com as peças, o guia de lançamento e o vídeo.</p>
+          <h2 id="publishTitle">Salvar deck</h2>
+          <p style="color:var(--muted);font-size:11px;margin:0 0 14px">Decks ficam guardados na sua conta em <b><a href="/meus-decks" style="color:var(--cyan)">Meus decks</a></b>. Se for público, também aparece em Decks da comunidade.</p>
           <div class="form-grid">
             <div><label>Título do deck</label><input id="pubTitle" maxlength="80" placeholder="Ex.: Trio anti-meta da loja X" /></div>
             <div><label>Descrição</label><textarea id="pubDesc" maxlength="2000" placeholder="Por que essas peças? Contra o que o deck joga bem?"></textarea></div>
             <div><label>Guia de lançamento</label><textarea id="pubGuide" maxlength="2000" placeholder="Como lançar cada Bey: força, ângulo, quando usar cada um…"></textarea></div>
             <div><label>Vídeo do YouTube (opcional)</label><input id="pubVideo" placeholder="https://youtube.com/watch?v=…" /></div>
+            <div>
+              <label>Quem pode ver</label>
+              <div class="pill-toggle vis-picker" id="pubVisibility">
+                <button type="button" data-public="1" class="active">🌐 Público — aparece na comunidade</button>
+                <button type="button" data-public="0">🔒 Privado — só eu vejo</button>
+              </div>
+            </div>
+            <div><label>Pasta (opcional)</label><input id="pubFolder" maxlength="40" placeholder="Ex.: Torneios, Ideias, Meta atual" /></div>
             <div id="pubPreview" class="pub-preview"></div>
-            <div class="inline-actions"><button class="btn primary" id="pubSubmit">Publicar deck</button></div>
+            <div class="inline-actions"><button class="btn primary" id="pubSubmit">Salvar deck</button></div>
           </div>
         </div>
       </div>

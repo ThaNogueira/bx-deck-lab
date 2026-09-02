@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="referrer" content="no-referrer" />
+  <title>Meus decks — BX Deck Lab</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="noise"></div>
+  <header id="topbar"></header>
+  <main id="app"><div class="empty-state">Carregando seus decks…</div></main>
+  <script src="/js/shared.js"></script>
+  <script>
+    (async () => {
+      BX.renderShell('decks');
+      const me = await BX.requireLogin('/meus-decks');
+      if (!me) return;
+      await BX.partTagReady();
+      const app = document.getElementById('app');
+      const esc = BX.esc;
+
+      const NO_FOLDER = '__sem__';
+      let decks = [];
+      let folder = localStorage.getItem('bx_deck_folder') || '';
+      let filter = '';   // '' | 'public' | 'private'
+      let sort = 'created';
+      let query = '';
+
+      async function load() {
+        decks = (await BX.api(`/api/decks?mine=1&sort=${sort}`)).decks;
+      }
+
+      const folders = () => [...new Set(decks.map((d) => d.folder).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+      const inFolder = (d) => folder === '' || (folder === NO_FOLDER ? !d.folder : d.folder === folder);
+
+      function visible() {
+        const q = BX.norm(query);
+        return decks.filter((d) => inFolder(d)
+          && (!filter || (filter === 'public' ? d.isPublic : !d.isPublic))
+          && (!q || BX.norm(`${d.title} ${d.folder || ''}`).includes(q)));
+      }
+
+      function deckCard(d) {
+        const beys = d.beys || [];
+        return `<article class="archive-card" data-id="${d.id}">
+          <div class="archive-top">
+            <h3><a href="/deck/${esc(d.slug)}">${esc(d.title)}</a></h3>
+            <button class="vis-toggle ${d.isPublic ? 'on' : 'off'}" data-vis="${d.id}" title="${d.isPublic ? 'Público — clique para tornar privado' : 'Privado — clique para publicar'}">
+              ${d.isPublic ? '🌐 Público' : '🔒 Privado'}
+            </button>
+          </div>
+          <div class="archive-beys">
+            ${beys.map((bey, i) => `<span class="archive-bey"><b>${i + 1}</b>${bey.length} peça(s)</span>`).join('') || '<span class="muted">sem peças</span>'}
+          </div>
+          <div class="archive-meta">
+            ${d.folder ? `<span class="folder-chip">📁 ${esc(d.folder)}</span>` : '<span class="folder-chip empty">sem pasta</span>'}
+            ${d.featured ? '<span class="badge owned">★ destaque</span>' : ''}
+            <small>${BX.dateFmt(d.createdAt, { day: '2-digit', month: 'short', year: '2-digit' })}</small>
+          </div>
+          <div class="archive-actions">
+            <a class="btn secondary" href="/deck/${esc(d.slug)}">Abrir</a>
+            <a class="btn secondary" href="/?editar=${esc(d.slug)}#builder">Editar</a>
+            <button class="btn secondary" data-move="${d.id}">📁 Pasta</button>
+            <button class="btn secondary" data-dup="${d.id}">Duplicar</button>
+            <button class="btn danger-outline" data-del="${d.id}">Excluir</button>
+          </div>
+        </article>`;
+      }
+
+      function render() {
+        const list = visible();
+        const fs = folders();
+        const count = (f) => decks.filter((d) => f === '' ? true : f === NO_FOLDER ? !d.folder : d.folder === f).length;
+        app.innerHTML = `
+          <div class="hero compact">
+            <div>
+              <p class="eyebrow">ARQUIVO PESSOAL</p>
+              <h1>Meus <em>decks</em></h1>
+              <p>Tudo que você montou, público ou privado, organizado em pastas. Só você vê esta página.</p>
+            </div>
+            <div class="hero-actions">
+              <a class="btn primary" href="/#builder" style="text-decoration:none">+ Montar novo deck</a>
+            </div>
+          </div>
+
+          <div class="archive-layout">
+            <aside class="panel-card archive-side">
+              <div class="section-title-row" style="margin-bottom:10px">
+                <div><p class="eyebrow" style="margin:0">PASTAS</p></div>
+                <button class="btn ghost" id="newFolder" title="Criar pasta">+</button>
+              </div>
+              <button class="folder-item ${folder === '' ? 'active' : ''}" data-folder="">📚 Todos <i>${decks.length}</i></button>
+              <button class="folder-item ${folder === NO_FOLDER ? 'active' : ''}" data-folder="${NO_FOLDER}">🗂 Sem pasta <i>${count(NO_FOLDER)}</i></button>
+              ${fs.map((f) => `<button class="folder-item ${folder === f ? 'active' : ''}" data-folder="${esc(f)}">📁 ${esc(f)} <i>${count(f)}</i>
+                <span class="folder-edit" data-rename="${esc(f)}" title="Renomear pasta">✎</span></button>`).join('')}
+              <hr />
+              <div class="archive-stats">
+                <div><b>${decks.filter((d) => d.isPublic).length}</b><small>públicos</small></div>
+                <div><b>${decks.filter((d) => !d.isPublic).length}</b><small>privados</small></div>
+              </div>
+            </aside>
+
+            <div>
+              <div class="page-toolbar">
+                <input id="q" placeholder="Buscar nos meus decks…" value="${esc(query)}" />
+                <select id="filter">
+                  <option value="">Todos</option>
+                  <option value="public" ${filter === 'public' ? 'selected' : ''}>Só públicos</option>
+                  <option value="private" ${filter === 'private' ? 'selected' : ''}>Só privados</option>
+                </select>
+                <select id="sort">
+                  <option value="created" ${sort === 'created' ? 'selected' : ''}>Mais recentes</option>
+                  <option value="updated" ${sort === 'updated' ? 'selected' : ''}>Editados por último</option>
+                  <option value="title" ${sort === 'title' ? 'selected' : ''}>Título (A-Z)</option>
+                </select>
+              </div>
+              <div class="archive-grid">
+                ${list.map(deckCard).join('') || `<div class="empty-state">${decks.length ? 'Nenhum deck com esses filtros.' : 'Você ainda não montou nenhum deck. <a href="/#builder" style="color:var(--cyan)">Abrir o Deck Builder</a>'}</div>`}
+              </div>
+            </div>
+          </div>`;
+        bind();
+      }
+
+      function bind() {
+        document.querySelectorAll('[data-folder]').forEach((b) => b.addEventListener('click', (e) => {
+          if (e.target.dataset.rename) return;
+          folder = b.dataset.folder;
+          localStorage.setItem('bx_deck_folder', folder);
+          render();
+        }));
+        document.querySelectorAll('[data-rename]').forEach((el) => el.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const from = el.dataset.rename;
+          const to = prompt(`Renomear a pasta "${from}" para: (deixe vazio para tirar os decks da pasta)`, from);
+          if (to === null) return;
+          try {
+            await BX.api('/api/me/deck-folders/rename', { method: 'POST', body: { from, to } });
+            if (folder === from) folder = to || '';
+            await load(); render();
+          } catch (err) { BX.toast(err.message); }
+        }));
+        document.getElementById('newFolder').addEventListener('click', () => {
+          const name = prompt('Nome da nova pasta:');
+          if (!name?.trim()) return;
+          BX.toast(`Pasta "${name.trim()}" criada — use o botão 📁 de um deck para mover.`);
+          folder = name.trim();
+          render();
+        });
+        document.getElementById('q').addEventListener('input', (e) => { query = e.target.value; render(); document.getElementById('q').focus(); });
+        document.getElementById('filter').addEventListener('change', (e) => { filter = e.target.value; render(); });
+        document.getElementById('sort').addEventListener('change', async (e) => { sort = e.target.value; await load(); render(); });
+
+        document.querySelectorAll('[data-vis]').forEach((b) => b.addEventListener('click', async () => {
+          const d = decks.find((x) => x.id === b.dataset.vis);
+          try {
+            await BX.api(`/api/decks/${d.id}`, { method: 'PATCH', body: { isPublic: !d.isPublic } });
+            d.isPublic = !d.isPublic;
+            BX.toast(d.isPublic ? 'Deck publicado na comunidade.' : 'Deck agora é privado — só você vê.');
+            render();
+          } catch (e) { BX.toast(e.message); }
+        }));
+        document.querySelectorAll('[data-move]').forEach((b) => b.addEventListener('click', async () => {
+          const d = decks.find((x) => x.id === b.dataset.move);
+          const nome = prompt('Mover para a pasta: (vazio = sem pasta)', d.folder || folders()[0] || '');
+          if (nome === null) return;
+          try {
+            await BX.api(`/api/decks/${d.id}`, { method: 'PATCH', body: { folder: nome } });
+            d.folder = nome.trim() || null;
+            render();
+          } catch (e) { BX.toast(e.message); }
+        }));
+        document.querySelectorAll('[data-dup]').forEach((b) => b.addEventListener('click', async () => {
+          try {
+            await BX.api(`/api/decks/${b.dataset.dup}/duplicate`, { method: 'POST' });
+            BX.toast('Cópia criada (privada).');
+            await load(); render();
+          } catch (e) { BX.toast(e.message); }
+        }));
+        document.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', async () => {
+          const d = decks.find((x) => x.id === b.dataset.del);
+          if (!confirm(`Excluir "${d.title}"? Essa ação não tem volta.`)) return;
+          try {
+            await BX.api(`/api/decks/${d.id}`, { method: 'DELETE' });
+            decks = decks.filter((x) => x.id !== d.id);
+            render();
+          } catch (e) { BX.toast(e.message); }
+        }));
+      }
+
+      await load();
+      render();
+    })();
+  </script>
+</body>
+</html>

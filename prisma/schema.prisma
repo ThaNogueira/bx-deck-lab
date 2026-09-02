@@ -136,7 +136,9 @@ model CommunityDeck {
   launchGuide   String?
   youtubeUrl    String?
   beysJson      String // [[partId,...] x3]
-  status        String   @default("VISIBLE") // VISIBLE | HIDDEN
+  status        String   @default("VISIBLE") // VISIBLE | HIDDEN (moderação)
+  isPublic      Boolean  @default(true) // false = só o autor vê
+  folder        String? // pasta do arquivo pessoal do autor
   featuredOrder Int? // não-nulo = fixado na home pelo admin
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt

@@ -286,8 +286,15 @@
 
     const modal = document.getElementById('publishModal');
     const editSlug = new URLSearchParams(location.search).get('editar');
-    document.getElementById('publishTitle').textContent = editSlug ? 'Atualizar deck publicado' : 'Publicar na comunidade';
-    document.getElementById('pubSubmit').textContent = editSlug ? 'Salvar alterações' : 'Publicar deck';
+    const visBox = document.getElementById('pubVisibility');
+    if (visBox && !visBox.dataset.ready) {
+      visBox.dataset.ready = '1';
+      visBox.querySelectorAll('[data-public]').forEach((b) => b.addEventListener('click', () => {
+        visBox.querySelectorAll('[data-public]').forEach((x) => x.classList.toggle('active', x === b));
+      }));
+    }
+    document.getElementById('publishTitle').textContent = editSlug ? 'Atualizar deck' : 'Salvar deck';
+    document.getElementById('pubSubmit').textContent = editSlug ? 'Salvar alterações' : 'Salvar deck';
     if (!document.getElementById('pubTitle').value) {
       document.getElementById('pubTitle').value = window.BXApp?.getDeckName?.() || '';
     }
@@ -304,6 +311,8 @@
         description: document.getElementById('pubDesc').value,
         launchGuide: document.getElementById('pubGuide').value,
         youtubeUrl: document.getElementById('pubVideo').value,
+        folder: document.getElementById('pubFolder')?.value || '',
+        isPublic: document.querySelector('#pubVisibility [data-public].active')?.dataset.public === '1',
         beys,
       };
       try {
@@ -333,11 +342,45 @@
         document.getElementById('pubGuide').value = deck.launchGuide || '';
         document.getElementById('pubVideo').value = deck.youtubeUrl || '';
         document.getElementById('pubSubmit').dataset.deckId = deck.id;
+        document.getElementById('pubFolder').value = deck.folder || '';
+        document.querySelectorAll('#pubVisibility [data-public]').forEach((b) => {
+          b.classList.toggle('active', b.dataset.public === (deck.isPublic ? '1' : '0'));
+        });
         BX.toast(`Editando "${deck.title}" — altere e clique em Publicar para salvar.`);
       };
       if (window.BXApp) apply(); else document.addEventListener('bxapp-ready', apply, { once: true });
     } catch (e) { BX.toast(e.message); }
   })();
+
+  // ------------------------- Arquivo pessoal resumido dentro do builder ----
+  async function renderMyDecksPanel() {
+    const el = document.getElementById('myDecksPanel');
+    if (!el) return;
+    const user = await BX.me().catch(() => null);
+    if (!user) {
+      el.innerHTML = '<div class="empty-state">Entre na sua conta para salvar decks — eles ficam guardados no site, públicos ou privados.</div>';
+      return;
+    }
+    try {
+      const { decks } = await BX.api('/api/decks?mine=1&sort=updated');
+      el.innerHTML = decks.length
+        ? decks.slice(0, 6).map((d) => `
+          <div class="saved-deck">
+            <div class="saved-deck-main">
+              <h3><a href="/deck/${esc(d.slug)}" style="color:inherit;text-decoration:none">${esc(d.title)}</a></h3>
+              <p>${d.isPublic ? '🌐 público' : '🔒 privado'}${d.folder ? ` • 📁 ${esc(d.folder)}` : ''} • ${d.beys.length} Bey(s)</p>
+            </div>
+            <div class="saved-deck-actions">
+              <a class="icon-btn" href="/?editar=${esc(d.slug)}#builder" title="Carregar no builder">↺</a>
+            </div>
+          </div>`).join('')
+        : '<div class="empty-state">Nenhum deck ainda — monte um e clique em <b>Salvar deck</b>.</div>';
+    } catch { el.innerHTML = ''; }
+  }
+  if (document.getElementById('myDecksPanel')) {
+    renderMyDecksPanel();
+    document.addEventListener('bx-deck-saved', renderMyDecksPanel);
+  }
 
   // --------------------------------------------- Coleção -> perfil (item 9)
   document.getElementById('sendCollectionBtn')?.addEventListener('click', async () => {

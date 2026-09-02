@@ -290,7 +290,7 @@
         <a href="/perfil">${icon('profile', 16)} Meu perfil</a>
         <a href="/#collection">${icon('collection', 16)} Minha coleção</a>
         <a href="/#missing">${icon('missing', 16)} Faltam na coleção</a>
-        <a href="/decks?author=${esc(user.slug)}">${icon('decks', 16)} Meus decks</a>
+        <a href="/meus-decks">${icon('decks', 16)} Meus decks</a>
         <a href="/#session">${icon('physical', 16)} Decks físicos</a>
         <a href="/#tournament">${icon('organizer', 16)} Organizador local</a>
         ${['MOD', 'ADMIN'].includes(user.role) ? `<a href="/admin">${icon('admin', 16)} Painel de admin</a>` : ''}

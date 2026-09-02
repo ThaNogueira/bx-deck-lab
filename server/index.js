@@ -99,6 +99,7 @@ const PAGES = {
   '/entrar': 'entrar.html',
   '/perfil': 'perfil.html',
   '/decks': 'decks.html',
+  '/meus-decks': 'meus-decks.html',
   '/pecas': 'pecas.html',
   '/produtos': 'produtos.html',
   '/torneios': 'torneios.html',

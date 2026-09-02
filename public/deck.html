@@ -39,7 +39,7 @@
       app.innerHTML = `
         <div class="hero compact">
           <div>
-            <p class="eyebrow">DECK DA COMUNIDADE${deck.featured ? ' • ★ EM DESTAQUE' : ''}</p>
+            <p class="eyebrow">${deck.isPublic === false ? '🔒 DECK PRIVADO • SÓ VOCÊ VÊ' : 'DECK DA COMUNIDADE'}${deck.featured ? ' • ★ EM DESTAQUE' : ''}</p>
             <h1>${BX.esc(deck.title)}</h1>
             <div class="author-line" style="margin-top:10px">
               ${BX.avatarHtml(deck.author, { size: 46 })}
@@ -50,7 +50,7 @@
             </div>
           </div>
           <div class="hero-actions">
-            ${mine ? `<a class="btn secondary" href="/deck/${deck.slug}/editar">Editar</a>` : ''}
+            ${mine ? `<button class="btn secondary" id="visBtn">${deck.isPublic === false ? '🌐 Tornar público' : '🔒 Tornar privado'}</button><a class="btn secondary" href="/deck/${deck.slug}/editar">Editar</a><a class="btn ghost" href="/meus-decks">Meus decks</a>` : ''}
             ${mine ? `<button class="btn danger-outline" id="delBtn">Excluir</button>` : `<button class="btn ghost" id="reportBtn">⚑ Denunciar</button>`}
           </div>
         </div>
@@ -66,6 +66,12 @@
         </div>`;
 
       document.getElementById('reportBtn')?.addEventListener('click', () => BX.report('DECK', deck.id, 'este deck'));
+      document.getElementById('visBtn')?.addEventListener('click', async () => {
+        try {
+          await BX.api(`/api/decks/${deck.id}`, { method: 'PATCH', body: { isPublic: deck.isPublic === false } });
+          location.reload();
+        } catch (e) { BX.toast(e.message); }
+      });
       document.getElementById('delBtn')?.addEventListener('click', async () => {
         if (!confirm('Excluir este deck? Essa ação não tem volta.')) return;
         try { await BX.api(`/api/decks/${deck.id}`, { method: 'DELETE' }); location.href = '/decks'; }

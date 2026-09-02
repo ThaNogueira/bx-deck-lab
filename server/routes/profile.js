@@ -220,7 +220,7 @@ router.get('/api/users/:slug', ah(async (req, res) => {
   const [items, combos, decks, frame] = await Promise.all([
     prisma.collectionItem.findMany({ where: { userId: user.id } }),
     prisma.combo.findMany({ where: { userId: user.id, status: 'VISIBLE' }, orderBy: { createdAt: 'desc' } }),
-    prisma.communityDeck.findMany({ where: { authorId: user.id, status: 'VISIBLE' }, orderBy: { createdAt: 'desc' } }),
+    prisma.communityDeck.findMany({ where: { authorId: user.id, status: 'VISIBLE', isPublic: true }, orderBy: { createdAt: 'desc' } }),
     user.frameId ? prisma.cosmetic.findUnique({ where: { id: user.frameId } }) : null,
   ]);
   const stickerIds = json(user.stickersJson, []);
