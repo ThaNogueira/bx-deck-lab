@@ -148,7 +148,6 @@
           </div>
           <div class="deck-grid" id="deckGrid"></div>
           <div class="pager-dots" id="pagerDots" aria-hidden="true"></div>
-          <div class="deck-bar" id="deckBar" aria-label="Resumo do deck"></div>
           <section class="analysis-card" id="deckAnalysis"></section>
           <div class="saved-panel">
             <div class="section-title-row">
@@ -498,6 +497,8 @@
     </div>
   </div>
 
+  <!-- Builder (celular): barra de resumo fixa no rodapé. Fica fora do .view porque a animação fade (transform) quebra position:fixed -->
+  <div class="deck-bar" id="deckBar" aria-label="Resumo do deck"></div>
   <!-- Builder: seletor de peças por slot (bottom sheet), ações do slot e prévia da peça -->
   <div class="sheet-backdrop" id="slotSheet" hidden>
     <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">

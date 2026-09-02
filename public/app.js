@@ -2580,6 +2580,7 @@
     const target=metaJump?'meta':(document.getElementById(`view-${name}`)?name:'home');
     document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.id===`view-${target}`));
     currentView=target;
+    document.body.classList.toggle('view-builder',target==='builder');
     if(dirtyViews.has(target))renderView(target);
     else if(target==='tournament'){bracketNatural=null;applyBracketLayout();}
     if(metaJump){
