@@ -116,6 +116,7 @@
     SYSTEM: `<span class="pc-kind sys" title="Card gerado automaticamente pelo site">${icon('bolt', 12)}BX Deck Lab</span>`,
     DECK: `<span class="pc-kind deck" title="Deck compartilhado do builder">${icon('decks', 12)}Deck compartilhado</span>`,
   };
+  const PIN_BADGE = `<span class="pc-kind pin" title="Fixado pela moderação">${icon('pin', 12)}Fixado</span>`;
   const ANNOUNCE_BADGE = `<span class="pc-kind announce" title="Anúncio oficial da equipe">${icon('megaphone', 12)}Anúncio</span>`;
 
   /**
@@ -131,16 +132,18 @@
     const sysIcon = sys ? (p.data?.icon || 'bolt') : null;
     const who = sys
       ? `<span class="pc-avatar sys">${icon(sysIcon, 20)}</span><div class="pc-who"><b>BX Deck Lab</b><small>${timeAgo(p.createdAt)} · automático</small></div>`
-      : `${BX.avatarHtml(p.author, { size: 36 })}<div class="pc-who"><a href="/u/${esc(p.author?.slug || '')}">${esc(p.author?.name || '?')}</a><small>${timeAgo(p.createdAt)}${p.author?.verified ? ' · verificado' : ''}</small></div>`;
+      : `${BX.avatarHtml(p.author, { size: 36 })}<div class="pc-who"><a href="/u/${esc(p.author?.slug || '')}">${esc(p.author?.name || '?')}</a><small>${timeAgo(p.createdAt)}${p.editedAt ? ' · editado' : ''}${p.author?.verified ? ' · verificado' : ''}</small></div>`;
     const menu = `<div class="pc-menu-wrap"><button type="button" class="pc-menu-btn" data-menu aria-haspopup="menu" aria-label="Mais opções">${icon('more', 18)}</button>
       <div class="pc-menu" hidden role="menu">
         <button type="button" role="menuitem" data-share="${esc(p.url)}">${icon('link', 14)}Copiar link</button>
         ${p.author ? `<a role="menuitem" href="/u/${esc(p.author.slug)}">${icon('profile', 14)}Ver perfil</a>` : ''}
         ${!sys ? `<button type="button" role="menuitem" data-report="${p.id}">${icon('flag', 14)}Denunciar</button>` : ''}
+        ${!sys && (p.mine || p.canModerate) ? `<a role="menuitem" href="/comunidade/novo?editar=${p.id}">${icon('edit', 14)}Editar post</a>` : ''}
+        ${p.canModerate ? `<button type="button" role="menuitem" data-pin="${p.id}">${icon('pin', 14)}${p.pinnedAt ? 'Desafixar' : 'Fixar no topo'}</button>` : ''}
         ${canDelete ? `<button type="button" role="menuitem" class="danger" data-del="${p.id}">${icon('trash', 14)}${p.mine ? 'Excluir meu post' : 'Excluir (moderação)'}</button>` : ''}
       </div></div>`;
     return `<article class="pc pc-${kind.toLowerCase()} ${p.tag === 'SALE' ? 'pc-sale' : ''} ${p.tag === 'ANNOUNCE' ? 'pc-announce' : ''} ${p.status !== 'VISIBLE' ? 'pc-pending' : ''}" data-post="${p.id}" id="p-${p.id}">
-      <header class="pc-head">${who}${p.tag === 'ANNOUNCE' ? ANNOUNCE_BADGE : KIND_BADGE[kind] || ''}${p.tag === 'ANNOUNCE' ? '' : tagChip(p.tag)}${menu}</header>
+      <header class="pc-head">${who}${p.pinnedAt ? PIN_BADGE : ''}${p.tag === 'ANNOUNCE' ? ANNOUNCE_BADGE : KIND_BADGE[kind] || ''}${p.tag === 'ANNOUNCE' ? '' : tagChip(p.tag)}${menu}</header>
       ${p.status === 'SCANNING' ? `<div class="pc-note">${icon('pending', 14)} Publicando: analisando a mídia enviada. Vídeos passam por aprovação manual.</div>` : ''}
       ${p.status === 'PENDING' ? `<div class="pc-note warn">${icon('warn', 14)} Em revisão pela moderação${p.flag?.reasons?.length ? `: ${esc(p.flag.reasons.join('; '))}` : ''}. Só você vê este post por enquanto.</div>` : ''}
       <h2 class="pc-title">${full ? titleHtml(p.title) : `<a href="/comunidade/p/${p.id}">${titleHtml(p.title)}</a>`}</h2>
@@ -159,6 +162,20 @@
   }
 
   /** Esqueleto de carregamento (evita tela em branco). */
+  /** Faixa compacta de posts fixados (home e comunidade). Pequena de propósito: não é feed. */
+  const pinnedStrip = (posts) => {
+    if (!posts?.length) return '';
+    return `<section class="pin-strip" aria-label="Posts fixados">
+      <header class="pin-head">${icon('pin', 13)}<span>Fixados</span><small>pela equipe</small></header>
+      <div class="pin-row">${posts.map((p) => `<a class="pin-card ${p.tag === 'ANNOUNCE' ? 'announce' : ''}" href="${esc(p.url)}">
+        ${p.thumb ? `<img class="pin-thumb" src="${esc(p.thumb)}" alt="" loading="lazy">` : `<span class="pin-ic">${icon(p.kind === 'SYSTEM' ? 'bolt' : p.kind === 'DECK' ? 'decks' : TAGS[p.tag]?.icon || 'feed', 16)}</span>`}
+        <span class="pin-txt"><b>${BX.emojify ? BX.emojify(p.title) : esc(p.title)}</b><small>${p.kind === 'SYSTEM' ? 'BX Deck Lab' : esc(p.author?.name || '')} · ${esc(p.tagLabel || '')}</small></span>
+      </a>`).join('')}</div>
+    </section>`;
+  };
+  const loadPinned = async (el) => { if (!el) return; try { const j = await BX.api('/api/posts/pinned'); el.innerHTML = pinnedStrip(j.posts); el.hidden = !j.posts.length; } catch { el.hidden = true; } };
+  document.addEventListener('bx:pinned-changed', () => document.querySelectorAll('[data-pinned-strip]').forEach(loadPinned));
+
   const skeleton = (n = 3) => Array.from({ length: n }, () => `<div class="pc pc-skel"><div class="sk sk-avatar"></div><div class="sk sk-line w60"></div><div class="sk sk-line w90"></div><div class="sk sk-box"></div></div>`).join('');
 
   // ---------------- interações (delegação por raiz) ----------------
@@ -197,6 +214,18 @@
       const mb = e.target.closest('[data-menu]'); if (mb) { const m = mb.nextElementSibling; closeMenus(m); m.hidden = !m.hidden; return; }
       const sh = e.target.closest('[data-share]'); if (sh) { closeMenus(); return share(sh.dataset.share); }
       const rp = e.target.closest('[data-report]'); if (rp) { closeMenus(); return BX.report('POST', rp.dataset.report, 'este post'); }
+      const pn = e.target.closest('[data-pin]');
+      if (pn) {
+        closeMenus();
+        try {
+          const j = await BX.api(`/api/posts/${pn.dataset.pin}/pin`, { method: 'POST', body: {} });
+          const p = opts.getPost?.(pn.dataset.pin); if (p) p.pinnedAt = j.pinned ? new Date().toISOString() : null;
+          BX.toast(j.pinned ? 'Post fixado. Ele aparece na faixa "Fixados".' : 'Post desafixado.');
+          const card = pn.closest('.pc'); if (card && p) card.outerHTML = BXPost.card(p, { full: !card.querySelector('.pc-title a') });
+          document.dispatchEvent(new CustomEvent('bx:pinned-changed'));
+        } catch (er) { BX.toast(er.message); }
+        return;
+      }
       const cd = e.target.closest('[data-copy-deck]'); if (cd) return copyDeck(cd);
       const more = e.target.closest('[data-more]'); if (more) { more.previousElementSibling.classList.remove('clamp'); more.remove(); return; }
       const del = e.target.closest('[data-del]');
@@ -231,5 +260,5 @@
     }, true);
   }
 
-  window.BXPost = { ready, card, skeleton, bind, mediaHtml, pollHtml, saleHtml, deckHtml, reactionsHtml, tagChip, timeAgo, linkify, REACT, get TAGS() { return TAGS; }, get me() { return me; } };
+  window.BXPost = { ready, card, skeleton, bind, pinnedStrip, loadPinned, mediaHtml, pollHtml, saleHtml, deckHtml, reactionsHtml, tagChip, timeAgo, linkify, REACT, get TAGS() { return TAGS; }, get me() { return me; } };
 })();

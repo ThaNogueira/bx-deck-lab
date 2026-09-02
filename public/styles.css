@@ -1982,3 +1982,25 @@ body.mesa .noise{display:none}
 .pc-announce{border:1px solid rgba(255,205,60,.55);background:linear-gradient(160deg,#181710,#0f1015);box-shadow:0 0 0 1px rgba(255,205,60,.12),0 8px 30px rgba(255,205,60,.07)}
 .pc-announce::before{content:"";position:absolute;left:0;top:14px;bottom:14px;width:3px;border-radius:0 3px 3px 0;background:linear-gradient(180deg,#ffd44d,rgba(255,205,60,.15))}
 .pc-announce .pc-title,.pc-announce .pc-title a{color:#fff2bf}
+
+/* v31d: fixados + edição */
+.pc-kind.pin{color:#c9d3e2;border-color:#3a4352;background:#171b23}
+.pin-strip{margin:0 0 14px;border:1px solid var(--line);border-radius:14px;background:linear-gradient(160deg,#12151c,#0e1015);padding:10px 12px 12px}
+.pin-head{display:flex;align-items:center;gap:7px;font:800 10.5px var(--display);text-transform:uppercase;letter-spacing:.1em;color:#aab3c1;margin-bottom:8px}
+.pin-head small{color:#5f6979;font:600 10px var(--body,inherit);text-transform:none;letter-spacing:0}
+.pin-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px}
+.pin-card{display:grid;grid-template-columns:36px minmax(0,1fr);gap:9px;align-items:center;border:1px solid #262c37;border-radius:10px;background:#0f1218;padding:8px 10px;text-decoration:none;color:inherit;min-width:0}
+.pin-card:hover{border-color:#3f4a5c;background:#12161e}
+.pin-card.announce{border-color:rgba(255,205,60,.4)}
+.pin-thumb{width:36px;height:36px;border-radius:8px;object-fit:cover;background:#0b0d12}
+.pin-ic{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:8px;background:#141821;color:var(--cyan)}
+.pin-card.announce .pin-ic{color:#ffd44d}
+.pin-txt{display:grid;min-width:0}
+.pin-txt b{font:800 12.5px/1.3 var(--display);color:#e6e9ee;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.pin-txt small{color:#7f889a;font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.pin-txt .emo .vicon{width:13px;height:13px}
+#homePinned{margin:0 0 16px}
+@media (max-width:640px){.pin-row{grid-template-columns:1fr 1fr}.pin-card{grid-template-columns:30px minmax(0,1fr);padding:7px 8px}.pin-thumb,.pin-ic{width:30px;height:30px}}
+.composer-page.editing .composer-types{display:none}
+.composer-page.editing .cf-block[data-only]{display:none}
+#cTagBtn:disabled{opacity:.6;cursor:not-allowed}

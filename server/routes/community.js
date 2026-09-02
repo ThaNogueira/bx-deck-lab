@@ -128,6 +128,8 @@ function postDto(p, { me = null, reactions = [], votes = [], partsMap = null } =
     reactions: reactionsSummary(reactions, p.id, me),
     commentCount: p.commentCount,
     createdAt: p.createdAt,
+    pinnedAt: p.pinnedAt || null,
+    editedAt: p.editedAt || null,
     author: p.author ? publicUser(p.author) : null,
     mine: !!me && !!p.authorId && me.id === p.authorId,
     canModerate: canModerate(me),
@@ -258,6 +260,65 @@ router.get('/api/posts', ah(async (req, res) => {
 
   if (req.query.kind === 'USER') where.kind = 'USER';
   res.json(await listPosts({ where, sort, skip, take, me }));
+}));
+
+const MAX_PINNED = 6;
+/** Posts fixados pela moderação (faixa compacta). Qualquer post visível pode ser fixado. */
+router.get('/api/posts/pinned', ah(async (req, res) => {
+  const rows = await prisma.post.findMany({ where: { status: 'VISIBLE', pinnedAt: { not: null } }, include: POST_INCLUDE, orderBy: { pinnedAt: 'desc' }, take: MAX_PINNED });
+  res.json({
+    posts: rows.map((p) => {
+      const media = json(p.mediaJson, []);
+      const img = media.find((m) => m.type === 'image');
+      return {
+        id: p.id, kind: p.kind || 'USER', tag: p.tag, tagLabel: TAGS[p.tag]?.label || p.tag, title: p.title,
+        author: p.author ? publicUser(p.author) : null, createdAt: p.createdAt, pinnedAt: p.pinnedAt,
+        thumb: img ? img.url : null, deckTitle: p.deck?.title || null, url: `/comunidade/p/${p.id}`,
+      };
+    }),
+    max: MAX_PINNED,
+  });
+}));
+
+/** Fixar/desafixar (MOD/ADMIN). Limite pequeno para a faixa não virar spam. */
+router.post('/api/posts/:id/pin', requireUser, ah(async (req, res) => {
+  if (!canModerate(req.user)) return res.status(403).json({ error: 'Só a moderação pode fixar posts.' });
+  const p = await prisma.post.findUnique({ where: { id: req.params.id } });
+  if (!p) return res.status(404).json({ error: 'Post não encontrado.' });
+  const pinned = req.body?.pinned !== false && !p.pinnedAt;
+  if (pinned) {
+    const n = await prisma.post.count({ where: { pinnedAt: { not: null } } });
+    if (n >= MAX_PINNED) return res.status(409).json({ error: `Já existem ${MAX_PINNED} posts fixados. Desafixe um antes.` });
+  }
+  await prisma.post.update({ where: { id: p.id }, data: { pinnedAt: pinned ? new Date() : null } });
+  await audit(req.user.id, pinned ? 'POST_PIN' : 'POST_UNPIN', 'Post', p.id, { title: p.title });
+  res.json({ ok: true, pinned });
+}));
+
+/** Editar título/texto/tag: autor ou moderação. Mídia, enquete e venda não mudam. */
+router.patch('/api/posts/:id', requireUser, moderateFields('title', 'body'), ah(async (req, res) => {
+  const p = await prisma.post.findUnique({ where: { id: req.params.id } });
+  if (!p) return res.status(404).json({ error: 'Post não encontrado.' });
+  const mine = p.authorId && p.authorId === req.user.id;
+  if (!mine && !canModerate(req.user)) return res.status(403).json({ error: 'Você só pode editar os seus posts.' });
+  if (p.kind === 'SYSTEM') return res.status(422).json({ error: 'Cards automáticos não são editáveis.' });
+  const b = req.body || {};
+  const data = {};
+  if (b.title != null) { const t = String(b.title).trim().slice(0, 140); if (t.length < 3) return res.status(422).json({ error: 'Título muito curto.' }); data.title = t; }
+  if (b.body != null) data.body = String(b.body).trim().slice(0, 5000) || null;
+  if (b.tag != null && b.tag !== p.tag) {
+    if (p.kind !== 'USER') return res.status(422).json({ error: 'A tag deste post não pode ser alterada.' });
+    if (!TAGS[b.tag] || TAGS[b.tag].auto) return res.status(422).json({ error: 'Tag inválida.' });
+    if (TAGS[b.tag].staff && !canModerate(req.user)) return res.status(403).json({ error: 'Só a equipe do site pode usar a tag Anúncio.' });
+    if (p.tag === 'SALE' || b.tag === 'SALE') return res.status(422).json({ error: 'Posts de venda não podem trocar de tag.' });
+    data.tag = b.tag;
+  }
+  if (data.body === null && !json(p.mediaJson, []).length && !p.pollJson) return res.status(422).json({ error: 'O post precisa de texto, mídia ou enquete.' });
+  if (!Object.keys(data).length) return res.json({ ok: true, post: (await hydratePosts([await prisma.post.findUnique({ where: { id: p.id }, include: POST_INCLUDE })], req.user))[0] });
+  data.editedAt = new Date();
+  const up = await prisma.post.update({ where: { id: p.id }, data, include: POST_INCLUDE });
+  if (!mine) await audit(req.user.id, 'POST_EDIT', 'Post', p.id, { fields: Object.keys(data) });
+  res.json({ ok: true, post: (await hydratePosts([up], req.user))[0] });
 }));
 
 router.get('/api/posts/:id', ah(async (req, res) => {

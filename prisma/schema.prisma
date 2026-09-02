@@ -423,6 +423,8 @@ model Post {
   pollJson      String? // {options:[{id,text}], endsAt}
   saleJson      String? // {priceCents, condition, contact}
   status        String    @default("VISIBLE") // VISIBLE | PENDING (triagem automática) | HIDDEN | REMOVED
+  pinnedAt      DateTime? // fixado pela moderação (faixa compacta "Fixados" na home e na comunidade)
+  editedAt      DateTime? // última edição de título/texto/tag pelo autor ou moderação
   flagJson      String? // resultado da triagem automática de imagem
   reactionCount Int       @default(0)
   commentCount  Int       @default(0)

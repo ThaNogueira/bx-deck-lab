@@ -78,6 +78,7 @@
               <div class="com-sort" id="sortBar">${SORTS.map(([k, i, l]) => `<button type="button" data-sort="${k}" class="${sort === k ? 'active' : ''}">${icon(i, 14)}${l}</button>`).join('')}</div>
               <div class="tag-scroll" id="tagBar"><button type="button" class="tag-chip sm ${tag ? '' : 'active'}" data-tag="">${icon('feed', 13)}Tudo</button>${USER_TAGS.concat(['DECK']).map((k) => tagChipBtn(k, tag === k)).join('')}</div>
             </div>
+            <div id="comPinned" data-pinned-strip hidden></div>
             <div class="post-list" id="postList">${BXPost.skeleton(3)}</div>
             <div class="feed-more" id="moreWrap"></div>
             <div id="sentinel" style="height:1px"></div>
@@ -85,6 +86,7 @@
           ${sideHtml()}
         </div>`;
         const list = document.getElementById('postList');
+        BXPost.loadPinned(document.getElementById('comPinned'));
         BXPost.bind(app, { getPost: (id) => feed.find((p) => p.id === id), onDeleted: (id, card) => { feed = feed.filter((p) => p.id !== id); card?.remove(); } });
 
         const moreBtn = () => { document.getElementById('moreWrap').innerHTML = offset != null ? `<button class="btn secondary" id="loadMore">Carregar mais</button>` : (feed.length ? '<small class="muted">Você chegou ao fim.</small>' : ''); };
@@ -113,22 +115,33 @@
       // =====================================================================
       // COMPOSER (tela inteira)
       // =====================================================================
-      function renderComposer() {
+      async function renderComposer() {
         if (!me) { BX.requireLogin('/comunidade/novo'); return; }
         const params = new URLSearchParams(location.search);
+        // Edição: carrega o post e trava o que não pode mudar (mídia, enquete, venda)
+        let editing = null;
+        if (params.get('editar')) {
+          try {
+            const j = await BX.api(`/api/posts/${params.get('editar')}`);
+            editing = j.post;
+            if (!editing.mine && !editing.canModerate) { BX.toast('Você só pode editar os seus posts.'); location.href = editing.url || '/comunidade'; return; }
+          } catch (e) { app.innerHTML = `<div class="empty-state">${esc(e.message)} — <a href="/comunidade" style="color:var(--cyan)">voltar</a></div>`; return; }
+        }
         const TYPES = [['texto', 'edit', 'Texto'], ['midia', 'image', 'Imagens e vídeo'], ['link', 'video', 'Link do YouTube'], ['enquete', 'poll', 'Enquete'], ['venda', 'sale', 'Venda / troca']];
         let type = TYPES.some(([k]) => k === params.get('tipo')) ? params.get('tipo') : 'texto';
         let chosenTag = TAGS[params.get('tag')] && !TAGS[params.get('tag')].auto ? params.get('tag') : (type === 'venda' ? 'SALE' : '');
+        if (editing) { type = 'texto'; chosenTag = editing.tag; }
         const TAG_HINTS = { CLIP: 'Aparece na home. Coloque o vídeo (YouTube ou arquivo).', RESULT: 'Aparece na home. Conte colocação, loja e deck.', CHAMPION: 'Aparece na home. Foto do troféu vale muito.', SALE: 'Só na comunidade. Preencha preço, estado e contato.', CHANNEL: 'Só na comunidade. Nada de spam repetido.', UNBOXING: 'Só na comunidade. Mostre as peças!', HELP: 'Só na comunidade. Seja específico na dúvida.', OFFTOPIC: 'Só na comunidade.', ANNOUNCE: 'Só equipe. Aparece na home com destaque de anúncio.' };
         const HOME_TAGS = ['CLIP', 'RESULT', 'CHAMPION', 'ANNOUNCE'];
         let files = [];
-        document.title = 'Criar post — Comunidade BX Deck Lab';
-        app.innerHTML = `<div class="composer-page">
+        document.title = `${editing ? 'Editar' : 'Criar'} post — Comunidade BX Deck Lab`;
+        app.innerHTML = `<div class="composer-page ${editing ? 'editing' : ''}">
           <header class="composer-head">
-            <a class="btn ghost" href="/comunidade" style="text-decoration:none">${icon('back', 14)}Comunidade</a>
-            <h1>Criar post</h1>
-            <span class="muted">postando como <b>${esc(me.name)}</b></span>
+            <a class="btn ghost" href="${editing ? esc(editing.url) : '/comunidade'}" style="text-decoration:none">${icon('back', 14)}${editing ? 'Voltar ao post' : 'Comunidade'}</a>
+            <h1>${editing ? 'Editar post' : 'Criar post'}</h1>
+            <span class="muted">${editing ? `editando ${editing.mine ? 'seu post' : `post de <b>${esc(editing.author?.name || '')}</b> (moderação)`}` : `postando como <b>${esc(me.name)}</b>`}</span>
           </header>
+          ${editing ? `<div class="cf-hint" style="margin:-6px 0 10px">${icon('info', 13)}Só título, texto e tag podem ser alterados. Mídia, enquete e dados de venda ficam como estão.</div>` : ''}
           <div class="composer-grid">
             <form class="composer-form" id="cForm" novalidate>
               <div class="composer-types" role="tablist">${TYPES.map(([k, i, l]) => `<button type="button" role="tab" data-type="${k}" class="${type === k ? 'active' : ''}" aria-selected="${type === k}">${icon(i, 15)}<span>${l}</span></button>`).join('')}</div>
@@ -183,7 +196,7 @@
               <footer class="composer-foot">
                 <small class="muted" id="cStatus"></small>
                 <a class="btn secondary" href="/comunidade" style="text-decoration:none">Cancelar</a>
-                <button type="submit" class="btn primary" id="cSend">${icon('publish', 15)}Publicar</button>
+                <button type="submit" class="btn primary" id="cSend">${icon(editing ? 'save' : 'publish', 15)}${editing ? 'Salvar alterações' : 'Publicar'}</button>
               </footer>
             </form>
             <aside class="composer-side">
@@ -271,13 +284,28 @@
           preview();
         });
         // Rascunho: não perder o texto ao trocar de aba/recarregar
-        try { const d = JSON.parse(localStorage.getItem('bx_post_draft') || 'null'); if (d && !q('#cTitle').value) { q('#cTitle').value = d.title || ''; q('#cBody').value = d.body || ''; if (d.tag && TAGS[d.tag]) chosenTag = d.tag; q('#titleCount').textContent = q('#cTitle').value.length; q('#bodyCount').textContent = q('#cBody').value.length; } } catch {}
-        setInterval(() => { try { localStorage.setItem('bx_post_draft', JSON.stringify({ title: q('#cTitle')?.value, body: q('#cBody')?.value, tag: chosenTag })); } catch {} }, 3000);
+        try { const d = editing ? null : JSON.parse(localStorage.getItem('bx_post_draft') || 'null'); if (d && !q('#cTitle').value) { q('#cTitle').value = d.title || ''; q('#cBody').value = d.body || ''; if (d.tag && TAGS[d.tag]) chosenTag = d.tag; q('#titleCount').textContent = q('#cTitle').value.length; q('#bodyCount').textContent = q('#cBody').value.length; } } catch {}
+        if (!editing) setInterval(() => { try { localStorage.setItem('bx_post_draft', JSON.stringify({ title: q('#cTitle')?.value, body: q('#cBody')?.value, tag: chosenTag })); } catch {} }, 3000);
+        if (editing) {
+          q('#cTitle').value = editing.title || ''; q('#cBody').value = editing.body || '';
+          q('#titleCount').textContent = q('#cTitle').value.length; q('#bodyCount').textContent = q('#cBody').value.length;
+          if (editing.tag === 'SALE' || editing.kind !== 'USER') q('#cTagBtn').disabled = true;
+        }
         setType(type); syncTag(); preview();
 
         q('#cForm').addEventListener('submit', async (e) => {
           e.preventDefault();
           const title = q('#cTitle').value.trim();
+          if (editing) {
+            if (title.length < 3) { alertBig('Dê um título ao post', 'Mínimo de 3 letras.'); q('#cTitle').focus(); return; }
+            const btn = q('#cSend'); btn.disabled = true; q('#cStatus').textContent = 'Salvando…';
+            try {
+              const j = await BX.api(`/api/posts/${editing.id}`, { method: 'PATCH', body: { title, body: q('#cBody').value.trim(), tag: chosenTag } });
+              BX.toast('Post atualizado!');
+              location.href = `/comunidade/p/${j.post.id}`;
+            } catch (er) { BX.toast(er.message); btn.disabled = false; q('#cStatus').textContent = ''; }
+            return;
+          }
           if (!chosenTag) { alertBig('Escolha uma tag para o post', 'A tag define onde ele aparece: comunidade ou também na home.'); q('#cTags').closest('.cf-block').classList.add('cf-error'); q('#cTags').scrollIntoView({ block: 'center', behavior: 'smooth' }); return; }
           if (title.length < 3) { alertBig('Dê um título ao post', 'Mínimo de 3 letras.'); q('#cTitle').closest('.cf-block').classList.add('cf-error'); q('#cTitle').focus(); return; }
           const fd = new FormData();

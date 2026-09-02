@@ -268,6 +268,7 @@
 
   if (document.getElementById('metaState')) {
     renderMetaState(); renderHighlights(); renderHomeSide(); renderHomeFeed();
+    BXPost.ready().then(() => BXPost.loadPinned(document.getElementById('homePinned')));
   }
 
   async function renderHome() {

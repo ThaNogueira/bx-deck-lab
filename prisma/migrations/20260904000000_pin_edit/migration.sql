@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "Post" ADD COLUMN "pinnedAt" DATETIME;
+ALTER TABLE "Post" ADD COLUMN "editedAt" DATETIME;
