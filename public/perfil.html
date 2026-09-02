@@ -231,7 +231,7 @@
       async function loadMyDecks() {
         const { decks } = await BX.api(`/api/decks?author=${encodeURIComponent(me.slug)}`);
         document.getElementById('myDecks').innerHTML = decks.length
-          ? decks.map((d) => `<div class="bey-line"><span style="flex:1"><a href="/deck/${d.slug}" style="color:white;text-decoration:none;font-weight:700">${BX.esc(d.title)}</a></span><small style="color:var(--muted)">${BX.dateFmt(d.createdAt, { day: '2-digit', month: 'short' })}</small></div>`).join('')
+          ? decks.map((d) => `<div class="bey-line deck-line">${d.beys ? BX.deckPreview(d.beys, { u: 26 }) : ''}<span style="flex:1"><a href="/deck/${d.slug}" style="color:white;text-decoration:none;font-weight:700">${BX.esc(d.title)}</a></span><small style="color:var(--muted)">${BX.dateFmt(d.createdAt, { day: '2-digit', month: 'short' })}</small></div>`).join('')
           : '<div class="empty-state">Nenhum deck publicado.</div>';
       }
 

@@ -1049,3 +1049,39 @@ button.user-chip{cursor:pointer}
 .archive-actions{margin-top:auto;display:flex;gap:5px;flex-wrap:wrap}
 .archive-actions .btn{padding:6px 9px;font-size:10px;text-decoration:none}
 @media(max-width:900px){.archive-layout{grid-template-columns:1fr}.archive-side{position:static}}
+
+/* ===========================================================================
+   v15 — preview de deck estilo builder (bolinhas agrupadas) + fix global das
+   fotos de peça (bits verticais cortadas em todo lugar)
+   =========================================================================== */
+
+/* Fix global: todo círculo de peça vira flex + max-w/h. Cobre .part-art (montador,
+   picker, visual de Bey) e .ptag-thumb (PartTag em listas, meta, admin). */
+.part-art,.ptag-thumb{display:flex;align-items:center;justify-content:center;overflow:hidden}
+.part-art img{width:auto;height:auto;max-width:84%;max-height:84%;object-fit:contain}
+.ptag-thumb img{width:auto;height:auto;max-width:90%;max-height:90%;object-fit:contain}
+.part-art .fallback{display:grid;place-items:center}
+
+/* Preview compacto */
+.deck-mini{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
+.bey-mini{position:relative;display:block;flex:0 0 auto;width:calc(var(--u) * 1.62);height:calc(var(--u) * 1.5);transition:transform .18s ease}
+.bey-mini::before{content:"";position:absolute;left:4%;right:4%;top:10%;bottom:16%;border:1px solid rgba(80,231,255,.09);border-radius:50%;transform:scaleX(1.18) rotate(-8deg)}
+.bey-mini.empty{opacity:.35}
+a.list-card:hover .bey-mini,.archive-card:hover .bey-mini{transform:translateY(-2px)}
+.bm-part{position:absolute;border-radius:50%;display:flex;align-items:center;justify-content:center;overflow:hidden;background:radial-gradient(circle at 50% 36%,#2a3040,#141821 72%);border:1px solid #333a48;box-shadow:0 6px 14px rgba(0,0,0,.38);text-decoration:none}
+.bm-part img{width:auto;height:auto;max-width:84%;max-height:84%;object-fit:contain;filter:drop-shadow(0 3px 6px rgba(0,0,0,.4))}
+.bm-part b{font:800 calc(var(--u) * .24) var(--display);color:#7f8795}
+a.bm-part:hover{border-color:var(--cyan);z-index:9}
+.bm-blade{width:var(--u);height:var(--u);left:50%;top:0;transform:translateX(-50%);z-index:2}
+.bm-ratchet{width:calc(var(--u) * .56);height:calc(var(--u) * .56);left:5%;bottom:0;z-index:3}
+.bm-bit{width:calc(var(--u) * .56);height:calc(var(--u) * .56);right:5%;bottom:0;z-index:3}
+.bm-rib{width:calc(var(--u) * .6);height:calc(var(--u) * .6);left:50%;bottom:0;transform:translateX(-50%);z-index:3}
+.bm-lock{width:calc(var(--u) * .4);height:calc(var(--u) * .4);left:0;top:3%;z-index:4}
+.bm-assist{width:calc(var(--u) * .4);height:calc(var(--u) * .4);right:0;top:3%;z-index:4}
+.bm-over{width:calc(var(--u) * .4);height:calc(var(--u) * .4);left:0;top:46%;z-index:4}
+
+/* onde o preview entra em linhas compactas (perfil) e nos decks populares */
+.bey-line.deck-line{gap:10px}
+.bey-line.deck-line .deck-mini{gap:5px}
+.meta-combo .bey-mini{flex:0 0 auto;margin-right:2px}
+.meta-combo .combo-text{min-width:0;flex:1}

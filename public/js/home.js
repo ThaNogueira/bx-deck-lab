@@ -185,10 +185,7 @@
         <div class="card-grid" style="margin-bottom:22px">${decks.map((d) => `
           <a class="list-card" href="/deck/${d.slug}">
             <div style="display:flex;justify-content:space-between;gap:8px"><h3>${esc(d.title)}</h3>${d.featured ? '<span class="badge owned">★</span>' : ''}</div>
-            <div class="combo-tags">${d.beys.flat().slice(0, 6).map((id) => {
-              const p = d.parts?.[id];
-              return p ? BX.partTag({ ...p, display: p.displayName, img: p.imageUrl }, { size: 34 }) : '';
-            }).join('')}${d.beys.flat().length > 6 ? `<span class="ptag plain">+${d.beys.flat().length - 6}</span>` : ''}</div>
+            ${BX.deckPreview(d.beys, { u: 54, parts: d.parts })}
             <div class="list-card-foot">
               <span class="author-line">${BX.avatarHtml(d.author, { size: 22 })}<span style="color:#c4cad3">${esc(d.author?.name || '?')}</span></span>
             </div>

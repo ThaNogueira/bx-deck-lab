@@ -185,6 +185,67 @@
   }
 
   /**
+   * Preview compacto de um Bey (bolinhas agrupadas, só fotos): Blade no alto,
+   * Ratchet e Bit embaixo, peças CX menores nas bordas. Usado nos cards de
+   * deck (comunidade, arquivo pessoal, home, decks populares).
+   */
+  function resolvePartRefs(partRefs) {
+    const idx = partTag._idx;
+    return (partRefs || [])
+      .map((ref) => {
+        if (ref && typeof ref === 'object') return ref;
+        return idx ? (idx.byId.get(ref) || idx.byName.get(norm(ref))) : null;
+      })
+      .filter(Boolean)
+      .map((p) => ({
+        kind: p.kind, subKind: p.subKind,
+        name: p.displayName || p.display || p.name,
+        img: p.imageUrl || p.img || null,
+        abbrev: p.abbrev, slug: p.slug,
+      }));
+  }
+
+  function beyMini(partRefs, { u = 52, link = false } = {}) {
+    const parts = resolvePartRefs(partRefs);
+    const used = new Set();
+    const take = (pred) => { const p = parts.find((x) => !used.has(x) && pred(x)); if (p) used.add(p); return p || null; };
+    const blade = take((p) => p.kind === 'BLADE');
+    const main = take((p) => p.kind === 'MAIN_BLADE');
+    const lock = take((p) => p.kind === 'LOCK_CHIP');
+    const assist = take((p) => p.kind === 'ASSIST_BLADE');
+    const over = take((p) => p.kind === 'OVER_BLADE');
+    const ratchet = take((p) => p.kind === 'RATCHET');
+    const rib = take((p) => p.kind === 'BIT' && p.subKind === 'RIB');
+    const bit = take((p) => p.kind === 'BIT');
+    const center = blade || main || take(() => true);
+    const piece = (p, cls) => {
+      if (!p) return '';
+      const inner = p.img
+        ? `<img loading="lazy" src="${esc(p.img)}" alt="">`
+        : `<b>${esc((p.abbrev || p.name.slice(0, 2)).toUpperCase())}</b>`;
+      const tag = link && p.slug ? 'a' : 'span';
+      const href = link && p.slug ? ` href="/peca/${esc(p.slug)}"` : '';
+      return `<${tag} class="bm-part ${cls}"${href} title="${esc(p.name)}">${inner}</${tag}>`;
+    };
+    if (!parts.length) return `<span class="bey-mini empty" style="--u:${u}px"><span class="bm-part bm-blade"><b>?</b></span></span>`;
+    return `<span class="bey-mini" style="--u:${u}px" title="${esc(parts.map((p) => p.name).join(' • '))}">
+      ${piece(center, 'bm-blade')}
+      ${center === blade && main ? piece(main, 'bm-lock') : piece(lock, 'bm-lock')}
+      ${piece(assist, 'bm-assist')}
+      ${piece(over, 'bm-over')}
+      ${piece(ratchet, 'bm-ratchet')}
+      ${piece(rib, 'bm-rib')}
+      ${piece(bit, 'bm-bit')}
+    </span>`;
+  }
+
+  /** Preview de deck: até 3 Beys em miniatura, lado a lado. */
+  function deckPreview(beys, { u = 48, parts = null, link = false } = {}) {
+    const list = (beys || []).slice(0, 3).map((bey) => (bey || []).map((id) => parts?.[id] || id));
+    return `<div class="deck-mini">${list.map((refs) => beyMini(refs, { u, link })).join('')}</div>`;
+  }
+
+  /**
    * Radar de 5 eixos (ATK/DEF/STA/X-DASH/BURST) em SVG, no estilo do site.
    * stats: {atk,def,sta,dash,burst}; max é o teto da escala.
    */
@@ -431,7 +492,7 @@
 
   window.BX = {
     api, me, site, esc, norm, toast, money, dateFmt, icon,
-    partsIndex, partTagReady, partTag, comboTags, partThumb, KIND_PT, radar, beyVisual,
+    partsIndex, partTagReady, partTag, comboTags, partThumb, KIND_PT, radar, beyVisual, beyMini, deckPreview,
     avatarHtml, renderTopbar, renderShell, mountUserWidget, userChipHtml, setActiveNav,
     report, requireLogin, qs, pathPart, ytEmbed,
   };

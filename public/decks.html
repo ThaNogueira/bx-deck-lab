@@ -50,7 +50,7 @@
                 <h3>${BX.esc(d.title)}</h3>
                 ${d.featured ? '<span class="badge owned">★ destaque</span>' : ''}
               </div>
-              <div>${d.beys.map((bey, i) => `<div class="bey-line"><b>${i + 1}</b><span class="muted" style="font-size:11px">${bey.length} peça(s)</span></div>`).join('')}</div>
+              ${BX.deckPreview(d.beys, { u: 50 })}
               ${d.description ? `<p class="muted" style="margin:0">${BX.esc(d.description.slice(0, 120))}${d.description.length > 120 ? '…' : ''}</p>` : ''}
               <div class="list-card-foot">
                 <span class="author-line">${BX.avatarHtml(d.author, { size: 24 })}<span style="color:#c4cad3">${BX.esc(d.author?.name || '?')}</span></span>

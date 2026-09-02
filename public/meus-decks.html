@@ -51,9 +51,7 @@
               ${d.isPublic ? '🌐 Público' : '🔒 Privado'}
             </button>
           </div>
-          <div class="archive-beys">
-            ${beys.map((bey, i) => `<span class="archive-bey"><b>${i + 1}</b>${bey.length} peça(s)</span>`).join('') || '<span class="muted">sem peças</span>'}
-          </div>
+          ${BX.deckPreview(beys, { u: 46 })}
           <div class="archive-meta">
             ${d.folder ? `<span class="folder-chip">📁 ${esc(d.folder)}</span>` : '<span class="folder-chip empty">sem pasta</span>'}
             ${d.featured ? '<span class="badge owned">★ destaque</span>' : ''}

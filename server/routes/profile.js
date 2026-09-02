@@ -255,7 +255,7 @@ router.get('/api/users/:slug', ah(async (req, res) => {
         ? waLink(user.whatsapp, `Olá! Tenho interesse no combo "${c.title}" que você anunciou no BX Deck Lab.`)
         : null,
     })),
-    decks: decks.map((d) => ({ slug: d.slug, title: d.title, createdAt: d.createdAt })),
+    decks: decks.map((d) => ({ slug: d.slug, title: d.title, createdAt: d.createdAt, beys: json(d.beysJson, []) })),
   });
 }));
 
