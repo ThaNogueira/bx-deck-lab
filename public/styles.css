@@ -1897,3 +1897,15 @@ body.mesa .noise{display:none}
   .create-ic:nth-of-type(n+3){display:none}
 }
 @media (max-width:480px){.ms-list{grid-template-columns:1fr}}
+
+/* v30 — compositor: aviso central e marcação de erro */
+.cf-alert{position:fixed;inset:0;z-index:1400;display:grid;place-items:center;pointer-events:none;opacity:0;transition:opacity .18s ease}
+.cf-alert.show{opacity:1;pointer-events:auto;background:rgba(3,5,8,.55);backdrop-filter:blur(3px)}
+.cf-alert-box{display:grid;justify-items:center;gap:8px;text-align:center;min-width:min(90vw,360px);max-width:90vw;padding:26px 28px;border-radius:18px;border:1px solid rgba(255,156,75,.6);background:linear-gradient(160deg,#1c1712,#0e1015);box-shadow:0 30px 80px rgba(0,0,0,.6);color:#ffb87a;transform:scale(.96);transition:transform .18s ease}
+.cf-alert.show .cf-alert-box{transform:scale(1)}
+.cf-alert-box strong{font:800 26px/1.05 var(--display);text-transform:uppercase;color:white}
+.cf-alert-box span{color:#c9cfd8;font-size:13px}
+.cf-block.cf-error{outline:2px solid rgba(255,156,75,.7);outline-offset:8px;border-radius:8px}
+.composer-types button{position:relative}
+.composer-types button.has::after{content:attr(data-badge);position:absolute;top:6px;right:6px;min-width:8px;height:8px;padding:0 4px;border-radius:999px;background:var(--cyan);color:#06222a;font:800 9px/8px var(--display)}
+.composer-types button.has[data-badge=""]::after{padding:0}

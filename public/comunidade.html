@@ -190,13 +190,29 @@
           </div>
         </div>`;
         const q = (s) => app.querySelector(s);
+        // Aviso grande no meio da tela (validação do compositor)
+        let alertTimer = 0;
+        const alertBig = (title, text = '') => {
+          let el = document.getElementById('cfAlert');
+          if (!el) { el = document.createElement('div'); el.id = 'cfAlert'; el.className = 'cf-alert'; el.setAttribute('role', 'alert'); document.body.appendChild(el); }
+          el.innerHTML = `<div class="cf-alert-box">${icon('warn', 34)}<strong>${esc(title)}</strong>${text ? `<span>${esc(text)}</span>` : ''}</div>`;
+          el.classList.add('show');
+          clearTimeout(alertTimer); alertTimer = setTimeout(() => el.classList.remove('show'), 2800);
+          el.onclick = () => el.classList.remove('show');
+        };
         const setType = (t) => {
           type = t;
           app.querySelectorAll('[data-type]').forEach((b) => { b.classList.toggle('active', b.dataset.type === t); b.setAttribute('aria-selected', b.dataset.type === t); });
+          syncTypeBadges();
           app.querySelectorAll('[data-for]').forEach((s) => { s.hidden = !s.dataset.for.split(' ').includes(t) && !(t === 'texto' && s.dataset.for.includes('texto')); });
           if (t === 'venda' && chosenTag !== 'SALE') { chosenTag = 'SALE'; syncTag(); }
           if (t !== 'venda' && chosenTag === 'SALE') { chosenTag = ''; syncTag(); }
           preview();
+        };
+        // Bolinha na aba quando há conteúdo preenchido nela (nada se perde ao trocar de aba)
+        const syncTypeBadges = () => {
+          const has = { midia: files.length, link: !!q('#cEmbed')?.value.trim(), enquete: [...(q('#cPollOpts')?.querySelectorAll('input') || [])].filter((i) => i.value.trim()).length >= 2, venda: chosenTag === 'SALE' };
+          app.querySelectorAll('[data-type]').forEach((b) => { const n = has[b.dataset.type]; b.classList.toggle('has', !!n); b.dataset.badge = typeof n === 'number' && n > 0 ? n : ''; });
         };
         const syncTag = () => {
           q('#cTags').querySelectorAll('[data-tag]').forEach((b) => b.classList.toggle('active', b.dataset.tag === chosenTag));
@@ -214,6 +230,7 @@
         let pt = 0;
         const preview = () => { clearTimeout(pt); pt = setTimeout(() => { q('#cPreviewCard').innerHTML = BXPost.card(draft()); q('#cPreviewCard').querySelectorAll('.pc-menu-wrap,.pc-foot').forEach((x) => x.remove()); }, 120); };
         const renderFiles = () => {
+          syncTypeBadges();
           q('#cPreview').innerHTML = files.map((f, i) => `<div class="mp">${f.type.startsWith('video/') ? `<video src="${f._url || (f._url = URL.createObjectURL(f))}" muted></video>` : `<img src="${f._url || (f._url = URL.createObjectURL(f))}" alt="">`}<button type="button" data-rm="${i}" aria-label="Remover">${icon('x', 12)}</button><small>${f.type.startsWith('video/') ? 'vídeo · aprovação manual' : (f.size / 1048576).toFixed(1) + ' MB'}</small></div>`).join('');
           preview();
         };
@@ -221,7 +238,7 @@
 
         app.addEventListener('click', (e) => {
           const tb = e.target.closest('[data-type]'); if (tb) return setType(tb.dataset.type);
-          const tg = e.target.closest('#cTags [data-tag]'); if (tg) { chosenTag = tg.dataset.tag; syncTag(); preview(); return; }
+          const tg = e.target.closest('#cTags [data-tag]'); if (tg) { chosenTag = tg.dataset.tag; tg.closest('.cf-block').classList.remove('cf-error'); syncTag(); preview(); return; }
           const rm = e.target.closest('[data-rm]'); if (rm) { files.splice(+rm.dataset.rm, 1); renderFiles(); return; }
           if (e.target.closest('#cDrop')) return q('#cFiles').click();
           if (e.target.closest('#cPollAdd')) { const n = q('#cPollOpts').children.length; if (n >= 8) return; q('#cPollOpts').insertAdjacentHTML('beforeend', `<div class="row"><input placeholder="Opção ${n + 1}" maxlength="80"></div>`); preview(); }
@@ -232,6 +249,7 @@
         q('#cDrop').addEventListener('drop', (e) => { e.preventDefault(); q('#cDrop').classList.remove('over'); addFiles(e.dataTransfer.files); });
         q('#cDrop').addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); q('#cFiles').click(); } });
         app.addEventListener('input', (e) => {
+          e.target.closest('.cf-block')?.classList.remove('cf-error');
           if (e.target.id === 'cTitle') q('#titleCount').textContent = e.target.value.length;
           if (e.target.id === 'cBody') { q('#bodyCount').textContent = e.target.value.length; e.target.style.height = 'auto'; e.target.style.height = Math.min(600, e.target.scrollHeight) + 'px'; }
           if (e.target.id === 'cEmbed') { const id = ytIdOf(e.target.value); q('#embedPreview').innerHTML = id ? `<div class="pc-media" style="margin-top:8px"><img src="https://i.ytimg.com/vi/${id}/hqdefault.jpg" alt="" style="max-height:220px"></div>` : (e.target.value.trim() ? '<small class="cf-hint warn">Só links do YouTube são aceitos.</small>' : ''); }
@@ -245,14 +263,16 @@
         q('#cForm').addEventListener('submit', async (e) => {
           e.preventDefault();
           const title = q('#cTitle').value.trim();
-          if (!chosenTag) { BX.toast('Escolha uma tag.'); q('#cTags').scrollIntoView({ block: 'center' }); return; }
-          if (title.length < 3) { BX.toast('Dê um título (mínimo 3 letras).'); q('#cTitle').focus(); return; }
+          if (!chosenTag) { alertBig('Escolha uma tag para o post', 'A tag define onde ele aparece: comunidade ou também na home.'); q('#cTags').closest('.cf-block').classList.add('cf-error'); q('#cTags').scrollIntoView({ block: 'center', behavior: 'smooth' }); return; }
+          if (title.length < 3) { alertBig('Dê um título ao post', 'Mínimo de 3 letras.'); q('#cTitle').closest('.cf-block').classList.add('cf-error'); q('#cTitle').focus(); return; }
           const fd = new FormData();
           fd.append('tag', chosenTag); fd.append('title', title); fd.append('body', q('#cBody').value.trim());
-          if (type === 'link') fd.append('embedUrl', q('#cEmbed').value.trim());
-          if (type === 'enquete') fd.append('poll', JSON.stringify({ options: [...q('#cPollOpts').querySelectorAll('input')].map((i) => i.value), hours: q('#cPollHours').value }));
+          if (q('#cEmbed').value.trim()) fd.append('embedUrl', q('#cEmbed').value.trim());
+          const pollFilled = [...q('#cPollOpts').querySelectorAll('input')].filter((i) => i.value.trim()).length >= 2;
+          if (pollFilled) fd.append('poll', JSON.stringify({ options: [...q('#cPollOpts').querySelectorAll('input')].map((i) => i.value), hours: q('#cPollHours').value }));
           if (chosenTag === 'SALE') fd.append('sale', JSON.stringify({ price: q('#cPrice').value, condition: q('#cCond').value, contact: q('#cContact').value, trade: q('#cTrade').checked }));
-          if (type === 'midia') files.forEach((f) => fd.append('media', f));
+          files.forEach((f) => fd.append('media', f));
+          if (!q('#cBody').value.trim() && !files.length && !q('#cEmbed').value.trim() && !pollFilled) { alertBig('O post precisa de texto, mídia, link ou enquete.'); return; }
           const btn = q('#cSend'); btn.disabled = true; q('#cStatus').textContent = files.length ? 'Enviando mídia…' : 'Publicando…';
           try {
             const res = await fetch('/api/posts', { method: 'POST', body: fd });
