@@ -116,6 +116,7 @@
     SYSTEM: `<span class="pc-kind sys" title="Card gerado automaticamente pelo site">${icon('bolt', 12)}BX Deck Lab</span>`,
     DECK: `<span class="pc-kind deck" title="Deck compartilhado do builder">${icon('decks', 12)}Deck compartilhado</span>`,
   };
+  const ANNOUNCE_BADGE = `<span class="pc-kind announce" title="Anúncio oficial da equipe">${icon('megaphone', 12)}Anúncio</span>`;
 
   /**
    * @param p post DTO
@@ -138,8 +139,8 @@
         ${!sys ? `<button type="button" role="menuitem" data-report="${p.id}">${icon('flag', 14)}Denunciar</button>` : ''}
         ${canDelete ? `<button type="button" role="menuitem" class="danger" data-del="${p.id}">${icon('trash', 14)}${p.mine ? 'Excluir meu post' : 'Excluir (moderação)'}</button>` : ''}
       </div></div>`;
-    return `<article class="pc pc-${kind.toLowerCase()} ${p.tag === 'SALE' ? 'pc-sale' : ''} ${p.status !== 'VISIBLE' ? 'pc-pending' : ''}" data-post="${p.id}" id="p-${p.id}">
-      <header class="pc-head">${who}${KIND_BADGE[kind] || ''}${tagChip(p.tag)}${menu}</header>
+    return `<article class="pc pc-${kind.toLowerCase()} ${p.tag === 'SALE' ? 'pc-sale' : ''} ${p.tag === 'ANNOUNCE' ? 'pc-announce' : ''} ${p.status !== 'VISIBLE' ? 'pc-pending' : ''}" data-post="${p.id}" id="p-${p.id}">
+      <header class="pc-head">${who}${p.tag === 'ANNOUNCE' ? ANNOUNCE_BADGE : KIND_BADGE[kind] || ''}${p.tag === 'ANNOUNCE' ? '' : tagChip(p.tag)}${menu}</header>
       ${p.status === 'SCANNING' ? `<div class="pc-note">${icon('pending', 14)} Publicando: analisando a mídia enviada. Vídeos passam por aprovação manual.</div>` : ''}
       ${p.status === 'PENDING' ? `<div class="pc-note warn">${icon('warn', 14)} Em revisão pela moderação${p.flag?.reasons?.length ? `: ${esc(p.flag.reasons.join('; '))}` : ''}. Só você vê este post por enquanto.</div>` : ''}
       <h2 class="pc-title">${full ? titleHtml(p.title) : `<a href="/comunidade/p/${p.id}">${titleHtml(p.title)}</a>`}</h2>

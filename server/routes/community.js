@@ -30,10 +30,11 @@ export const TAGS = {
   CHAMPION: { label: 'Campeão', icon: 'champion' },
   HELP: { label: 'Dúvida / Ajuda', icon: 'help' },
   OFFTOPIC: { label: 'Off-topic', icon: 'offtopic' },
+  ANNOUNCE: { label: 'Anúncio', icon: 'megaphone', staff: true }, // só MOD/ADMIN; post ganha destaque visual e vai para a home
   DECK: { label: 'Deck', icon: 'decks', auto: true }, // aplicada automaticamente ao compartilhar um deck do builder
 };
 /** Tags que aparecem na home (feed curado, foco competitivo). Fixo: o usuário não configura. */
-export const HOME_TAGS = ['DECK', 'RESULT', 'CLIP', 'CHAMPION'];
+export const HOME_TAGS = ['ANNOUNCE', 'DECK', 'RESULT', 'CLIP', 'CHAMPION'];
 /** Inclusões padrão de um post (autor pode ser null nos cards do sistema). */
 const POST_INCLUDE = { author: true, deck: { include: { author: true } } };
 export const REACTIONS = ['FIRE', 'TOP', 'LOL', 'WOW'];
@@ -191,7 +192,7 @@ async function reactionsFor(targetType, ids) {
 
 const hotScore = (p) => {
   const hours = (Date.now() - new Date(p.createdAt).getTime()) / 3_600_000;
-  const base = p.kind === 'SYSTEM' ? 4 : p.kind === 'DECK' ? 2 : 1;
+  const base = p.tag === 'ANNOUNCE' ? 6 : p.kind === 'SYSTEM' ? 4 : p.kind === 'DECK' ? 2 : 1;
   return (p.reactionCount * 3 + p.commentCount * 2 + base) / Math.pow(hours + 2, 1.4);
 };
 
@@ -313,6 +314,7 @@ router.post('/api/posts', requireUser, uploadPost.array('media', 6), moderateFie
   const tag = TAGS[b.tag] && !TAGS[b.tag].auto ? b.tag : null;
   const title = String(b.title || '').trim().slice(0, 140);
   const body = String(b.body || '').trim().slice(0, 5000) || null;
+  if (tag && TAGS[tag].staff && !canModerate(req.user)) { cleanup(); return res.status(403).json({ error: 'Só a equipe do site pode usar a tag Anúncio.' }); }
   if (!tag) { cleanup(); return res.status(422).json({ error: b.tag === 'DECK' ? 'Para postar um deck, use "Compartilhar na comunidade" na página do deck ou no builder.' : 'Escolha uma tag.' }); }
   if (title.length < 3) { cleanup(); return res.status(422).json({ error: 'Dê um título (mínimo 3 letras).' }); }
 

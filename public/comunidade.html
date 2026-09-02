@@ -29,7 +29,9 @@
       const meta = await BXPost.ready();
       const me = BXPost.me;
       const TAGS = meta.tags;
-      const USER_TAGS = Object.keys(TAGS).filter((k) => !TAGS[k].auto);
+      const IS_STAFF = !!me && ['MOD', 'ADMIN'].includes(me.role);
+      // Tags que o usuário pode escolher: sem as automáticas (DECK) e sem as de equipe (ANNOUNCE) para quem não é staff
+      const USER_TAGS = Object.keys(TAGS).filter((k) => !TAGS[k].auto && (!TAGS[k].staff || IS_STAFF));
       const path = location.pathname;
       const postId = path.startsWith('/comunidade/p/') ? BX.pathPart(2) : null;
       const isNew = path === '/comunidade/novo';
@@ -42,7 +44,7 @@
             <p>O feed da galera do Beyblade X. Posts competitivos (deck, resultado, clipe, campeão) também aparecem na <a href="/">home</a>.</p>
             <a class="btn primary" href="/comunidade/novo" style="text-decoration:none;width:100%;justify-content:center">${icon('plus', 15)}Criar post</a>
           </div>
-          <div class="panel-card"><h3>Tags</h3><div class="tag-chips">${Object.keys(TAGS).map((k) => `<a class="tag-chip sm ${k.toLowerCase()}" href="/comunidade?tag=${k}">${icon(TAGS[k].icon, 13)}${esc(TAGS[k].label)}</a>`).join('')}</div></div>
+          <div class="panel-card"><h3>Tags</h3><div class="tag-chips">${Object.keys(TAGS).filter((k) => !TAGS[k].staff || IS_STAFF).map((k) => `<a class="tag-chip sm ${k.toLowerCase()}" href="/comunidade?tag=${k}">${icon(TAGS[k].icon, 13)}${esc(TAGS[k].label)}</a>`).join('')}</div></div>
           <div class="panel-card"><h3>Regras da casa</h3><ol class="com-rules">
             <li>Respeito sempre. Sem ofensa, sem spam.</li>
             <li>Venda/troca só com a tag certa, preço e estado claros.</li>
@@ -117,8 +119,8 @@
         const TYPES = [['texto', 'edit', 'Texto'], ['midia', 'image', 'Imagens e vídeo'], ['link', 'video', 'Link do YouTube'], ['enquete', 'poll', 'Enquete'], ['venda', 'sale', 'Venda / troca']];
         let type = TYPES.some(([k]) => k === params.get('tipo')) ? params.get('tipo') : 'texto';
         let chosenTag = TAGS[params.get('tag')] && !TAGS[params.get('tag')].auto ? params.get('tag') : (type === 'venda' ? 'SALE' : '');
-        const TAG_HINTS = { CLIP: 'Aparece na home. Coloque o vídeo (YouTube ou arquivo).', RESULT: 'Aparece na home. Conte colocação, loja e deck.', CHAMPION: 'Aparece na home. Foto do troféu vale muito.', SALE: 'Só na comunidade. Preencha preço, estado e contato.', CHANNEL: 'Só na comunidade. Nada de spam repetido.', UNBOXING: 'Só na comunidade. Mostre as peças!', HELP: 'Só na comunidade. Seja específico na dúvida.', OFFTOPIC: 'Só na comunidade.' };
-        const HOME_TAGS = ['CLIP', 'RESULT', 'CHAMPION'];
+        const TAG_HINTS = { CLIP: 'Aparece na home. Coloque o vídeo (YouTube ou arquivo).', RESULT: 'Aparece na home. Conte colocação, loja e deck.', CHAMPION: 'Aparece na home. Foto do troféu vale muito.', SALE: 'Só na comunidade. Preencha preço, estado e contato.', CHANNEL: 'Só na comunidade. Nada de spam repetido.', UNBOXING: 'Só na comunidade. Mostre as peças!', HELP: 'Só na comunidade. Seja específico na dúvida.', OFFTOPIC: 'Só na comunidade.', ANNOUNCE: 'Só equipe. Aparece na home com destaque de anúncio.' };
+        const HOME_TAGS = ['CLIP', 'RESULT', 'CHAMPION', 'ANNOUNCE'];
         let files = [];
         document.title = 'Criar post — Comunidade BX Deck Lab';
         app.innerHTML = `<div class="composer-page">

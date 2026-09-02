@@ -1974,3 +1974,11 @@ body.mesa .noise{display:none}
 .tag-dd-txt strong{font:800 13px var(--display);color:#eef1f5}
 .tag-dd-txt small{color:#7f889a;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tag-dd-home{display:inline-flex;align-items:center;gap:4px;border:1px solid #2c3340;border-radius:999px;padding:3px 8px;font:800 9px var(--display);text-transform:uppercase;letter-spacing:.06em;color:#9aa4b2}
+
+/* v31c: tag Anúncio (equipe) */
+.tag-chip[data-tag=ANNOUNCE].active,.tag-chip.announce{border-color:rgba(255,205,60,.6);color:#ffd44d;background:rgba(255,205,60,.07)}
+.tag-dd-opt.announce .tag-dd-ic{color:#ffd44d}
+.pc-kind.announce{color:#ffd44d;border-color:rgba(255,205,60,.55);background:rgba(255,205,60,.1)}
+.pc-announce{border:1px solid rgba(255,205,60,.55);background:linear-gradient(160deg,#181710,#0f1015);box-shadow:0 0 0 1px rgba(255,205,60,.12),0 8px 30px rgba(255,205,60,.07)}
+.pc-announce::before{content:"";position:absolute;left:0;top:14px;bottom:14px;width:3px;border-radius:0 3px 3px 0;background:linear-gradient(180deg,#ffd44d,rgba(255,205,60,.15))}
+.pc-announce .pc-title,.pc-announce .pc-title a{color:#fff2bf}
