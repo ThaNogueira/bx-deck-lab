@@ -386,6 +386,33 @@
   }
 
   /**
+   * Confirmação genérica (substitui window.confirm): título, texto, botão de perigo e
+   * "não perguntar novamente" (guardado em localStorage[rememberKey]). Resolve true/false.
+   */
+  function confirmDialog({ title = 'Confirmar?', text = '', okLabel = 'Confirmar', cancelLabel = 'Cancelar', danger = false, rememberKey = null, rememberLabel = 'Não perguntar novamente' } = {}) {
+    if (rememberKey) { try { if (localStorage.getItem(rememberKey) === '1') return Promise.resolve(true); } catch {} }
+    return new Promise((resolve) => {
+      let el = document.getElementById('bxConfirmDialog');
+      if (!el) { el = document.createElement('div'); el.id = 'bxConfirmDialog'; el.className = 'modal-backdrop color-dialog'; document.body.appendChild(el); }
+      el.hidden = false;
+      el.innerHTML = `<div class="modal color-modal confirm-modal" role="alertdialog" aria-modal="true" aria-label="${esc(title)}">
+        <h2 class="confirm-title">${esc(title)}</h2>
+        ${text ? `<p class="color-hint confirm-text">${esc(text)}</p>` : ''}
+        ${rememberKey ? `<label class="confirm-remember"><input type="checkbox" data-remember> <span>${esc(rememberLabel)}</span></label>` : ''}
+        <div class="confirm-actions"><button class="btn secondary" data-cancel>${esc(cancelLabel)}</button><button class="btn ${danger ? 'danger' : 'primary'}" data-ok>${esc(okLabel)}</button></div>
+      </div>`;
+      const onKey = (e) => { if (e.key === 'Escape') done(false); };
+      const done = (v) => {
+        if (v && rememberKey && el.querySelector('[data-remember]')?.checked) { try { localStorage.setItem(rememberKey, '1'); } catch {} }
+        el.hidden = true; el.innerHTML = ''; el.onclick = null; document.removeEventListener('keydown', onKey); resolve(v);
+      };
+      el.onclick = (e) => { if (e.target === el || e.target.closest('[data-cancel]')) return done(false); if (e.target.closest('[data-ok]')) done(true); };
+      document.addEventListener('keydown', onKey);
+      el.querySelector('[data-ok]')?.focus();
+    });
+  }
+
+  /**
    * Dado id/nome/objeto de peça do catálogo do site, pergunta a cor quando a
    * peça tem recolors. Resolve com o id final (filha, ou pai se "padrão") ou
    * null se cancelou. Peça sem recolors resolve direto.
@@ -660,7 +687,7 @@
 
   window.BX = {
     api, me, site, esc, norm, toast, money, dateFmt, icon,
-    partsIndex, partTagReady, partTag, comboTags, partThumb, KIND_PT, radar, beyVisual, beyMini, deckPreview, colorDialog, itemDialog, pickColor, collectionProgress, progressBarHtml, KIND_SORT,
+    partsIndex, partTagReady, partTag, comboTags, partThumb, KIND_PT, radar, beyVisual, beyMini, deckPreview, colorDialog, itemDialog, confirmDialog, pickColor, collectionProgress, progressBarHtml, KIND_SORT,
     avatarHtml, renderTopbar, renderShell, mountUserWidget, userChipHtml, setActiveNav,
     report, requireLogin, qs, pathPart, ytEmbed,
   };

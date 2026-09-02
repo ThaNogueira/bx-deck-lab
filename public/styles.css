@@ -1363,8 +1363,8 @@ button,[role=button],a.btn,.tab,.side-item{cursor:pointer;-webkit-tap-highlight-
 .tabs::-webkit-scrollbar{display:none}
 .tab{scroll-snap-align:start;white-space:nowrap}
 
-/* Tablet */
-@media (max-width:1024px){
+/* Tablet (só a faixa 821–1024px: abaixo disso valem as regras de celular mais acima) */
+@media (min-width:821px) and (max-width:1024px){
   .deck-grid{grid-template-columns:1fr;overflow:visible}
   .parts-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
   .popular-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -1473,4 +1473,79 @@ button,[role=button],a.btn,.tab,.side-item{cursor:pointer;-webkit-tap-highlight-
   .bracket-viewport:not(.list){max-height:none}
   .bracket-viewport:not(.list) ~ .bracket-scroll-hint{display:block}
   .bracket-viewport.list .bracket-round > h3{top:68px}
+}
+
+
+/* ===================== v26 — confirmação, X da coleção, tela de mesa ===================== */
+.btn.danger{background:var(--red);color:white}
+.btn.danger:hover{background:#ff4d70}
+.confirm-modal{max-width:440px}
+.confirm-title{margin:4px 0 8px;font:800 24px var(--display);text-transform:uppercase}
+.confirm-text{margin:0 0 6px}
+.confirm-remember{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:13px;margin-top:14px;cursor:pointer;user-select:none}
+.confirm-remember input{width:18px;height:18px;margin:0;accent-color:var(--red);border-radius:4px;min-height:0!important}
+.confirm-actions{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;margin-top:16px}
+.part-card.item{position:relative;overflow:visible}
+.item-remove{position:absolute;top:-9px;right:-9px;width:26px;height:26px;border-radius:50%;border:1px solid var(--line);background:#1a1d26;color:#aab1bd;font:600 16px/1 var(--body);display:grid;place-items:center;padding:0;z-index:2;transition:.15s ease;min-height:0!important}
+.item-remove::before{content:'';position:absolute;inset:-9px;border-radius:50%}
+.item-remove:hover{background:var(--red);border-color:var(--red);color:white;transform:scale(1.08)}
+.mesa-link{text-decoration:none;margin-top:8px}
+
+/* Tela de mesa (companion) — alto contraste, fonte grande, pensada pra ficar apoiada na mesa */
+body.mesa{background:#07080c;height:100vh;height:100dvh;overflow:hidden;padding-left:0!important}
+body.mesa .noise{display:none}
+.mesa-app{display:grid;grid-template-rows:auto minmax(0,1fr) auto minmax(0,1fr);height:100vh;height:100dvh}
+.mesa-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 12px;border-bottom:1px solid var(--line);font:800 12px var(--display);text-transform:uppercase;letter-spacing:.08em;color:#9aa3b2;min-height:56px}
+.mesa-bar a{color:#c4cad3;text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;font-size:13px}
+.mesa-bar .mesa-meta{white-space:nowrap}
+.mesa-bar-actions{display:flex;gap:6px;flex:none}
+.mesa-bar button{min-width:44px;min-height:44px;border:1px solid var(--line);background:#12161d;color:#c4cad3;border-radius:10px;font-size:18px;padding:0 10px}
+.mesa-side{position:relative;display:grid;grid-template-rows:auto minmax(0,1fr) auto;align-items:center;justify-items:center;gap:6px;padding:10px 14px;background:#0b0d12;transition:background .35s ease,opacity .35s ease;min-height:0;overflow:hidden}
+.mesa-score-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:0;height:100%;width:100%;container-type:size;overflow:hidden}
+.mesa-side.p1.flip{transform:rotate(180deg)}
+.mesa-side.leading{background:radial-gradient(ellipse at 50% 100%,rgba(84,230,156,.18),#0b0d12 72%)}
+.mesa-side.trailing{background:radial-gradient(ellipse at 50% 100%,rgba(255,53,93,.14),#0b0d12 72%)}
+.mesa-side.won{background:radial-gradient(ellipse at 50% 60%,rgba(244,220,88,.2),#0b0d12 72%)}
+.mesa-side.lost{opacity:.6}
+.mesa-side.claimed{box-shadow:inset 0 0 0 3px rgba(80,231,255,.35)}
+.mesa-player{display:flex;align-items:center;gap:12px;max-width:100%;min-width:0}
+.mesa-player h2{margin:0;font:800 clamp(18px,4.5vw,40px)/1 var(--display);text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:min(78vw,600px)}
+.mesa-player .avatar{flex:none}
+.mesa-score{font:800 clamp(34px,min(12vh,26vw),170px)/.9 var(--display);color:white;letter-spacing:-.02em}
+@supports (font-size:1cqh){.mesa-score{font-size:clamp(34px,68cqh,170px)}.mesa-score.small{font-size:clamp(20px,30cqh,48px)}}
+.mesa-score.small{font-size:clamp(28px,6vh,48px);color:#c4cad3}
+.mesa-side.leading .mesa-score{color:#8ff5c1}
+.mesa-side.trailing .mesa-score{color:#ff8098}
+.mesa-side.won .mesa-score{color:var(--yellow)}
+.mesa-dots{display:flex;gap:10px}
+.mesa-dots i{width:16px;height:16px;border-radius:50%;border:2px solid #3a414d;display:block}
+.mesa-dots i.on{background:#54e69c;border-color:#54e69c;box-shadow:0 0 12px rgba(84,230,156,.6)}
+.mesa-dots i.pend{border-color:#50e7ff;animation:bxpulse 1.2s ease-in-out infinite}
+.mesa-actions{display:flex;flex-direction:column;align-items:center;gap:8px;width:100%;max-width:560px}
+.mesa-actions p{margin:0;color:#dfe4ec;font-size:clamp(13px,1.9vh,20px);text-align:center;line-height:1.3}
+.mesa-actions p.mesa-muted{color:#8a94a3;font-size:14px}
+.mesa-btn{width:100%;min-height:clamp(48px,7vh,84px);border:0;border-radius:16px;font:800 clamp(16px,2.6vh,28px) var(--display);text-transform:uppercase;letter-spacing:.04em;color:white;display:flex;align-items:center;justify-content:center;gap:10px;transition:transform .12s ease;-webkit-tap-highlight-color:transparent}
+.mesa-btn:active{transform:scale(.98)}
+.mesa-btn.win,.mesa-btn.ok{background:linear-gradient(150deg,#1faa53,#137a3a);box-shadow:0 12px 30px rgba(84,230,156,.22)}
+.mesa-btn.no{background:linear-gradient(150deg,var(--red),var(--red2));box-shadow:0 12px 30px rgba(255,53,93,.22)}
+.mesa-btn.lose,.mesa-btn.ghost{background:transparent;border:1px solid #3a414d;color:#aab1bd;min-height:46px;font-size:15px;letter-spacing:.06em}
+.mesa-btn.judge{background:#1b1e27;border:1px solid var(--line);color:#f4dc58;min-height:46px;font-size:14px}
+.mesa-row{display:flex;gap:10px;width:100%}
+.mesa-row .mesa-btn{flex:1}
+.mesa-center{display:flex;align-items:center;justify-content:center;gap:6px 10px;flex-wrap:wrap;padding:8px 12px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:#0e1116;font:800 clamp(13px,2vh,18px) var(--display);text-transform:uppercase;letter-spacing:.1em;color:#dfe4ec;text-align:center}
+.mesa-center .m-status{font-size:11px}
+.mesa-center .sep{color:#3a414d}
+.mesa-judge{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;align-items:center;width:100%;padding:4px 0 0}
+.mesa-judge .mesa-btn.judge{flex:1 1 auto;width:auto;min-height:40px;font-size:12px;padding:0 10px;letter-spacing:.04em}
+.mesa-final{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:rgba(7,8,12,.88);backdrop-filter:blur(6px);z-index:50;text-align:center;padding:20px}
+.mesa-final .trophy{font-size:clamp(64px,16vh,120px);line-height:1}
+.mesa-final h1{margin:0;font:800 clamp(34px,9vw,80px)/1 var(--display);text-transform:uppercase;color:var(--yellow);max-width:92vw;overflow:hidden;text-overflow:ellipsis}
+.mesa-final p{color:#c4cad3;font-size:18px;margin:0}
+.mesa-final .mesa-final-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:8px}
+.mesa-final .btn{text-decoration:none;min-height:48px;display:inline-flex;align-items:center}
+@media (orientation:landscape) and (min-width:720px){
+  .mesa-app{grid-template-rows:auto minmax(0,1fr);grid-template-columns:minmax(0,1fr) auto minmax(0,1fr)}
+  .mesa-bar{grid-column:1/-1}
+  .mesa-center{border-top:0;border-bottom:0;border-left:1px solid var(--line);border-right:1px solid var(--line);flex-direction:column;max-width:240px;padding:20px 14px}
+  .mesa-side.p1.flip{transform:none}
 }

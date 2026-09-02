@@ -124,6 +124,7 @@ const DYNAMIC = [
   ['/torneio/:slug', 'torneio.html'],
   ['/t/:slug', 'inscricao.html'],
   ['/torneio/:slug/cartaz', 'cartaz.html'],
+  ['/mesa/:slug/:matchId', 'mesa.html'],
 ];
 for (const [route, file] of DYNAMIC) {
   app.get(route, (_req, res) => res.sendFile(path.resolve('public', file)));

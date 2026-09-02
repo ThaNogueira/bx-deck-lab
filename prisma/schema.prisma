@@ -239,13 +239,34 @@ model TMatch {
   p2Report     String? // WIN | LOSS
   winnerId     String? // TournamentPlayer.id
   status       String    @default("PENDING") // PENDING | CONFLICT | DONE
-  resolvedBy   String? // AUTO | ORGANIZER
+  resolvedBy   String? // AUTO | ORGANIZER | ROUNDS
+  p1Score      Int       @default(0) // rounds vencidos (MD3) / 1-0 no modo único
+  p2Score      Int       @default(0)
+  tableToken   String? // link da tela de mesa (dispositivo do organizador na mesa)
   updatedAt    DateTime  @updatedAt
+  rounds       MatchRound[]
   tournament   Tournament        @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
   p1           TournamentPlayer  @relation("p1", fields: [p1Id], references: [id], onDelete: Cascade)
   p2           TournamentPlayer? @relation("p2", fields: [p2Id], references: [id], onDelete: Cascade)
 
   @@index([tournamentId, round])
+}
+
+/// Round de uma partida (histórico completo, inclusive no modo único): quem reportou,
+/// quem confirmou, se foi contestado ou anulado — auditoria do resultado.
+model MatchRound {
+  id          String    @id @default(cuid())
+  matchId     String
+  no          Int
+  winnerId    String? // TournamentPlayer.id
+  claimedBy   String // P1 | P2 | ORGANIZER
+  status      String    @default("PENDING") // PENDING | CONFIRMED | DISPUTED | VOID
+  resolvedBy  String? // OPPONENT | AUTO | ORGANIZER
+  createdAt   DateTime  @default(now())
+  confirmedAt DateTime?
+  match       TMatch    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@index([matchId])
 }
 
 // ---------------------------------------------------------------------------

@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="referrer" content="no-referrer" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;0,700;0,800;1,700&family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;0,700;0,800;1,700&family=Inter:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'">
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;0,700;0,800;1,700&family=Inter:wght@400;500;600;700&display=swap"></noscript>
+  <meta name="theme-color" content="#07080c" />
+  <title>Mesa — BX Deck Lab</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body class="mesa">
+  <main id="app" class="mesa-app"><div class="empty-state" style="grid-row:1/-1;align-self:center">Carregando partida…</div></main>
+  <script src="/js/shared.js"></script>
+  <script>
+    (async () => {
+      const slug = BX.pathPart(1);
+      const matchId = BX.pathPart(2);
+      const app = document.getElementById('app');
+
+      // Token da mesa (dispositivo do organizador): vem no link (?t=) e fica só nesta aba
+      const tokenKey = `bx_table_${matchId}`;
+      const qt = BX.qs('t');
+      if (qt) { try { sessionStorage.setItem(tokenKey, qt); } catch {} history.replaceState(null, '', location.pathname); }
+      let token = ''; try { token = sessionStorage.getItem(tokenKey) || ''; } catch {}
+      const q = token ? `?t=${encodeURIComponent(token)}` : '';
+      const api = (path = '', opts) => BX.api(`/api/tournaments/${encodeURIComponent(slug)}/matches/${encodeURIComponent(matchId)}${path}${q}`, opts);
+      const post = (path, body) => api(path, { method: 'POST', body: { ...body, token: token || undefined } });
+
+      let state = null;
+      let sig = '';
+      let flip = false; try { flip = localStorage.getItem('bx_mesa_flip') === '1'; } catch {}
+      let busy = false;
+
+      const other = (s) => (s === 'p1' ? 'p2' : 'p1');
+      const nameOf = (m, s) => m[s]?.user?.name || '?';
+
+      async function refresh(force = false) {
+        try {
+          const d = await api('');
+          const s = JSON.stringify(d);
+          if (force || s !== sig) { sig = s; state = d; render(); }
+        } catch (e) {
+          if (!state) app.innerHTML = `<div class="empty-state" style="grid-row:1/-1;align-self:center">${BX.esc(e.message)} — <a href="/torneio/${BX.esc(slug)}" style="color:var(--cyan)">voltar ao torneio</a></div>`;
+        }
+      }
+
+      function statusOf(m, t) {
+        if (m.status === 'DONE') return ['done', 'Finalizada'];
+        if (m.disputed || m.status === 'CONFLICT') return ['conflict', 'Conflito · chame o organizador'];
+        if (m.pending) return ['live', 'Aguardando confirmação'];
+        if (t.status !== 'RUNNING') return ['pending', 'Torneio ' + (t.status === 'OPEN' ? 'não começou' : 'encerrado')];
+        if (m.round !== t.currentRound) return ['pending', `Rodada ${m.round} (não é a atual)`];
+        return ['live', 'Ao vivo'];
+      }
+
+      function sideActions(side) {
+        const { tournament: t, match: m, can } = state;
+        const rules = t.rules;
+        const done = m.status === 'DONE';
+        const me = nameOf(m, side), opp = nameOf(m, other(side));
+        const unit = rules.perRound ? 'round' : 'partida';
+        if (done) return m.winnerId === m[side]?.id ? '<p>🏆 Vencedor</p>' : '<p class="mesa-muted">Partida encerrada</p>';
+        if (t.status !== 'RUNNING' || m.round !== t.currentRound) return '<p class="mesa-muted">Sem reporte nesta partida agora.</p>';
+        if (m.disputed) {
+          const claimant = m.disputed.claimedBy === 'P1' ? 'p1' : 'p2';
+          return `<p>⚠ ${BX.esc(nameOf(m, claimant))} reportou vitória e ${BX.esc(nameOf(m, other(claimant)))} contestou.</p><p class="mesa-muted">O organizador resolve pelo painel central.</p>`;
+        }
+        if (m.pending) {
+          const claimant = m.pending.claimedBy === 'P1' ? 'p1' : 'p2';
+          const winnerSide = m.pending.winnerId === m.p1?.id ? 'p1' : 'p2';
+          if (claimant === side) {
+            return `<p>Aguardando ${BX.esc(opp)} confirmar…</p>${can[side] ? `<button class="mesa-btn ghost" data-act="cancel" data-side="${side}">Cancelar reporte</button>` : ''}`;
+          }
+          const what = rules.perRound ? 'este round' : 'a partida';
+          const claim = winnerSide === claimant ? `${BX.esc(nameOf(m, claimant))} diz que venceu ${what}` : `${BX.esc(nameOf(m, claimant))} diz que você venceu ${what}`;
+          if (!can[side]) return `<p>${claim}.</p><p class="mesa-muted">Aguardando ${BX.esc(me)} confirmar.</p>`;
+          return `<p>${claim}. Confere?</p>
+            <div class="mesa-row"><button class="mesa-btn ok" data-act="confirm" data-side="${side}">✔ Confirmar</button><button class="mesa-btn no" data-act="dispute" data-side="${side}">✖ Contestar</button></div>`;
+        }
+        if (!can[side]) return `<p class="mesa-muted">${state.viewerSide ? 'Lado do adversário — ele reporta no aparelho dele.' : 'Só quem está na partida (ou a mesa do organizador) reporta aqui.'}</p>`;
+        return `<button class="mesa-btn win" data-act="win" data-side="${side}">🌀 ${rules.perRound ? 'Venci o round' : 'Ganhei'}</button>
+          <button class="mesa-btn lose" data-act="lose" data-side="${side}">Perdi ${rules.perRound ? 'este round' : 'a partida'}</button>`;
+      }
+
+      function sideHtml(side) {
+        const { match: m, tournament: t } = state;
+        const rules = t.rules;
+        const pl = m[side];
+        const score = side === 'p1' ? m.p1Score : m.p2Score;
+        const oppScore = side === 'p1' ? m.p2Score : m.p1Score;
+        const done = m.status === 'DONE';
+        const won = done && m.winnerId === pl?.id;
+        const cls = [side, flip && side === 'p1' ? 'flip' : '', done ? (won ? 'won' : 'lost') : score > oppScore ? 'leading' : score < oppScore ? 'trailing' : '',
+          m.pending && ((m.pending.claimedBy === 'P1') === (side === 'p1')) ? 'claimed' : ''].filter(Boolean).join(' ');
+        const dots = rules.perRound ? `<div class="mesa-dots" aria-label="${score} de ${rules.roundsToWin} rounds">${Array.from({ length: rules.roundsToWin }, (_, i) => `<i class="${i < score ? 'on' : (m.pending && m.pending.winnerId === pl?.id && i === score ? 'pend' : '')}"></i>`).join('')}</div>` : '';
+        const scoreHtml = rules.perRound
+          ? `<div class="mesa-score">${score}</div>`
+          : `<div class="mesa-score ${done ? '' : 'small'}">${done ? (won ? 'W' : 'L') : 'ATÉ 4 PONTOS'}</div>`;
+        return `<section class="mesa-side ${cls}" data-side="${side}">
+          <div class="mesa-player">${BX.avatarHtml(pl?.user, { size: 44 })}<h2 title="${BX.esc(nameOf(m, side))}">${BX.esc(nameOf(m, side))}</h2></div>
+          <div class="mesa-score-wrap">${scoreHtml}${dots}</div>
+          <div class="mesa-actions">${sideActions(side)}</div>
+        </section>`;
+      }
+
+      function judgeHtml() {
+        const { match: m, can, tournament: t } = state;
+        if (!can.organizer) return '';
+        const parts = [];
+        if (m.disputed || (m.pending && can.organizer)) {
+          const r = m.disputed || m.pending;
+          parts.push(`<span style="font-size:11px;color:var(--yellow)">JUIZ · round ${r.no}:</span>
+            <button class="mesa-btn judge" data-act="resolve" data-round="${r.id}" data-w="p1">🏆 ${BX.esc(nameOf(m, 'p1'))}</button>
+            <button class="mesa-btn judge" data-act="resolve" data-round="${r.id}" data-w="p2">🏆 ${BX.esc(nameOf(m, 'p2'))}</button>
+            <button class="mesa-btn judge" data-act="resolve" data-round="${r.id}" data-w="void">Anular round</button>`);
+        } else if (m.status !== 'DONE' && t.status === 'RUNNING' && m.round === t.currentRound) {
+          parts.push(`<span style="font-size:11px;color:var(--yellow)">JUIZ:</span>
+            <button class="mesa-btn judge" data-act="judge" data-w="p1">Round p/ ${BX.esc(nameOf(m, 'p1'))}</button>
+            <button class="mesa-btn judge" data-act="judge" data-w="p2">Round p/ ${BX.esc(nameOf(m, 'p2'))}</button>`);
+        }
+        return parts.length ? `<div class="mesa-judge">${parts.join('')}</div>` : '';
+      }
+
+      function render() {
+        const { tournament: t, match: m } = state;
+        const rules = t.rules;
+        document.title = `Mesa ${m.tableNo} · ${t.name} — BX Deck Lab`;
+        if (!m.p2) { app.innerHTML = `<div class="empty-state" style="grid-row:1/-1;align-self:center">${BX.esc(nameOf(m, 'p1'))} tem BYE nesta rodada.</div>`; return; }
+        const [st, label] = statusOf(m, t);
+        const played = m.rounds.filter((r) => r.status === 'CONFIRMED').length;
+        const roundNo = Math.min(played + 1, rules.maxRounds);
+        const done = m.status === 'DONE';
+        const winnerSide = done ? (m.winnerId === m.p1.id ? 'p1' : 'p2') : null;
+        app.innerHTML = `
+          <header class="mesa-bar">
+            <a href="/torneio/${BX.esc(t.slug)}" title="Voltar ao torneio">‹ ${BX.esc(t.name)}</a>
+            <span class="mesa-meta">Mesa ${m.tableNo} · Rodada ${m.round}</span>
+            <div class="mesa-bar-actions">
+              <button data-act="flip" title="Girar o lado de cima (aparelho no meio da mesa)" aria-label="Girar lado de cima" aria-pressed="${flip}">⇅</button>
+              <button data-act="fs" title="Tela cheia" aria-label="Tela cheia">⛶</button>
+            </div>
+          </header>
+          ${sideHtml('p1')}
+          <div class="mesa-center">
+            <span>${rules.perRound ? `Round ${roundNo} de até ${rules.maxRounds}` : 'Partida única'}</span><span class="sep">•</span>
+            <span>${BX.esc(rules.label)}</span><span class="sep">•</span>
+            <span class="m-status ${st}">${label}</span>
+            ${judgeHtml()}
+          </div>
+          ${sideHtml('p2')}
+          ${done ? `<div class="mesa-final" role="status">
+            <div class="trophy">🏆</div>
+            <h1>${BX.esc(nameOf(m, winnerSide))}</h1>
+            <p>venceu ${rules.perRound ? `por ${m.p1Score > m.p2Score ? m.p1Score : m.p2Score} a ${Math.min(m.p1Score, m.p2Score)} em rounds` : 'a partida'} · Mesa ${m.tableNo}, rodada ${m.round}</p>
+            <div class="mesa-final-actions">
+              <a class="btn primary" href="/torneio/${BX.esc(t.slug)}">Voltar ao torneio</a>
+              ${state.can.organizer ? '<button class="btn secondary" data-act="reopen">Reabrir partida</button>' : ''}
+            </div>
+          </div>` : ''}`;
+      }
+
+      async function run(fn, okMsg) {
+        if (busy) return; busy = true;
+        try { const d = await fn(); if (d && d.match) { sig = JSON.stringify(d); state = d; render(); } if (okMsg) BX.toast(okMsg); }
+        catch (e) { BX.toast(e.message); refresh(true); }
+        finally { busy = false; }
+      }
+
+      app.addEventListener('click', async (e) => {
+        const b = e.target.closest('[data-act]'); if (!b || !state) return;
+        const { match: m, tournament: t } = state;
+        const rules = t.rules;
+        const side = b.dataset.side;
+        const unit = rules.perRound ? 'o round' : 'a partida';
+        const act = b.dataset.act;
+        if (act === 'flip') { flip = !flip; try { localStorage.setItem('bx_mesa_flip', flip ? '1' : '0'); } catch {} render(); return; }
+        if (act === 'fs') { const el = document.documentElement; if (document.fullscreenElement) document.exitFullscreen?.(); else el.requestFullscreen?.().catch(() => {}); keepAwake(); return; }
+        if (act === 'win') {
+          const ok = await BX.confirmDialog({ title: `${nameOf(m, side)} venceu ${unit}?`, text: `${nameOf(m, other(side))} vai precisar confirmar no lado dele.`, okLabel: 'Sim, venci' });
+          if (ok) run(() => post('/rounds', { side, winnerSide: side }), 'Reportado — aguardando o adversário confirmar.');
+        } else if (act === 'lose') {
+          const ok = await BX.confirmDialog({ title: `${nameOf(m, side)} perdeu ${unit}?`, text: `O ponto vai para ${nameOf(m, other(side))}. Quem admite a derrota não precisa de confirmação.`, okLabel: 'Sim, perdi', danger: true });
+          if (ok) run(() => post('/rounds', { side, winnerSide: other(side) }));
+        } else if (act === 'confirm') {
+          const ok = await BX.confirmDialog({ title: `Confirmar resultado d${unit}?`, text: 'Isso fecha o resultado e atualiza o placar.', okLabel: 'Confirmar' });
+          if (ok) run(() => post(`/rounds/${m.pending.id}/confirm`, { side }));
+        } else if (act === 'dispute') {
+          const ok = await BX.confirmDialog({ title: 'Contestar o resultado?', text: 'A partida fica marcada em conflito e o organizador decide com vocês.', okLabel: 'Contestar', danger: true });
+          if (ok) run(() => post(`/rounds/${m.pending.id}/dispute`, { side }), 'Contestado — chame o organizador.');
+        } else if (act === 'cancel') {
+          run(() => post(`/rounds/${m.pending.id}/cancel`, { side }));
+        } else if (act === 'resolve') {
+          const w = b.dataset.w;
+          const ok = await BX.confirmDialog({ title: w === 'void' ? 'Anular este round?' : `Dar o round para ${nameOf(m, w)}?`, text: 'Decisão do organizador (fica registrada no histórico).', okLabel: 'Confirmar' });
+          if (ok) run(() => post(`/rounds/${b.dataset.round}/resolve`, { winnerSide: w }));
+        } else if (act === 'judge') {
+          const w = b.dataset.w;
+          const ok = await BX.confirmDialog({ title: `Registrar ${rules.perRound ? 'round' : 'vitória'} para ${nameOf(m, w)}?`, text: 'Como organizador, o resultado entra confirmado.', okLabel: 'Registrar' });
+          if (ok) run(() => post('/rounds', { side: w, winnerSide: w, judge: true }));
+        } else if (act === 'reopen') {
+          const ok = await BX.confirmDialog({ title: 'Reabrir a partida?', text: 'O placar volta a zero e os rounds ficam anulados no histórico.', okLabel: 'Reabrir', danger: true });
+          if (ok) run(async () => { await BX.api(`/api/tournaments/${encodeURIComponent(slug)}/matches/${encodeURIComponent(matchId)}/reopen`, { method: 'POST' }); return api(''); });
+        }
+      });
+
+      // Mantém a tela acesa enquanto a mesa está aberta (quando o navegador permite)
+      let lock = null;
+      async function keepAwake() { try { if (!lock && navigator.wakeLock) { lock = await navigator.wakeLock.request('screen'); lock.addEventListener('release', () => { lock = null; }); } } catch {} }
+      document.addEventListener('pointerdown', keepAwake, { once: true });
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) { keepAwake(); refresh(true); } });
+
+      await refresh(true);
+      const timer = setInterval(() => { if (!document.hidden && !busy) refresh(); }, 3000);
+      window.addEventListener('pagehide', () => clearInterval(timer));
+    })();
+  </script>
+</body>
+</html>

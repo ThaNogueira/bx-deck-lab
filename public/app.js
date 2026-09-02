@@ -1263,6 +1263,14 @@
     }).join('');
     root.innerHTML=items.length?overall+sections:'<div class="empty-state collection-empty"><p>Sua coleção começa vazia.</p><button class="btn primary" id="addBeysEmptyBtn">＋ Adicionar Beys</button><small>Escolha peças no catálogo, busque o produto que você comprou ou cole uma lista.</small></div>';
     root.querySelectorAll('[data-edit]').forEach(btn=>btn.addEventListener('click',()=>editItem(btn.dataset.edit)));
+    root.querySelectorAll('[data-remove]').forEach(btn=>btn.addEventListener('click',async e=>{
+      e.stopPropagation();
+      const p=PARTS[btn.dataset.remove]; const qty=Math.max(0,+btn.dataset.qty||0); if(!p)return;
+      const color=p.parentId&&p.colorLabel?` · ${p.colorLabel}`:'';
+      const ok=await (window.BX?.confirmDialog?window.BX.confirmDialog({title:'Remover da coleção?',text:`${p.display}${color} — ${qty} unidade${qty===1?'':'s'} sai${qty===1?'':'rão'} da sua coleção.`,okLabel:'Remover',danger:true,rememberKey:'bx_skip_remove_confirm'}):Promise.resolve(confirm(`Remover ${p.display} da coleção?`)));
+      if(!ok)return;
+      adjustMany([[p.id,-qty]]); toast(`${p.display} removida da coleção.`);
+    }));
     const bk=document.getElementById('colBackups');
     if(bk){const list=collectionBackups();bk.innerHTML=list.length?list.map((b,i)=>`<button class="backup-row" data-restore="${i}" title="Restaurar este backup"><span>${new Date(b.at).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</span><small>${b.count} item(ns) • ${escapeHTML(b.reason||'')}</small><b>↺</b></button>`).join(''):'<small class="muted">Nenhum backup ainda — eles são criados automaticamente quando a coleção muda.</small>';
       bk.querySelectorAll('[data-restore]').forEach(b=>b.addEventListener('click',()=>{if(confirm('Restaurar este backup? A coleção atual será guardada como backup antes.'))restoreCollectionBackup(+b.dataset.restore);}));}
@@ -1320,6 +1328,7 @@
     const p=item.part; const h=partHeuristic(p);const cls=h?.type==='Attack'?'attack':h?.type==='Stamina'?'stamina':h?.type==='Defense'?'defense':'balance';
     const colorChip=p.parentId?`<span class="color-chip">${escapeHTML(p.colorLabel||'Cor')}</span>`:(item.hasColors?'<span class="color-chip none">sem cor definida</span>':'');
     return `<article class="part-card item ${p.banned?'banned':''}" title="${escapeAttr(partTooltip(p))}">
+      <button class="item-remove" data-remove="${escapeAttr(p.id)}" data-qty="${item.qty}" title="Remover da coleção" aria-label="Remover ${escapeAttr(p.display)} da coleção">×</button>
       <div class="item-photo">${partArt(p)}<button class="item-edit" data-edit="${escapeAttr(p.id)}" title="Editar cor e quantidade" aria-label="Editar">${window.BX?.icon?window.BX.icon('edit',13):'✎'}</button></div>
       <div class="part-meta"><small>${KIND_LABEL[p.kind] || p.kind}</small><strong><a class="plink" href="/peca/${slug(p.display||p.name)}" title="Ver página da peça">${escapeHTML(p.display)}</a>${p.abbrev?` <span style="color:#707887">${escapeHTML(p.abbrev)}</span>`:''}</strong>
         <div class="item-tags">${colorChip}${p.banned?'<span class="badge banned">Banida</span>':''}${h?.type?`<span class="badge ${cls}">${escapeHTML(h.type)}</span>`:''}</div>

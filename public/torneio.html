@@ -123,8 +123,9 @@
         const card = (m) => {
           const [st, label] = matchStatus(t, m);
           const done = m.status === 'DONE';
+          const score = t.format === 'MD3' && (m.p1Score || m.p2Score) ? ` · ${m.p1Score}–${m.p2Score}` : '';
           return `<article class="bracket-match ${st} ${done ? 'decided' : ''}">
-            <header class="bm-head"><small>Mesa ${m.tableNo}</small><span class="m-status ${st}">${label}</span></header>
+            <header class="bm-head"><small>${m.bye ? `Mesa ${m.tableNo}` : `<a href="/mesa/${t.slug}/${m.id}" style="color:inherit;text-decoration:none" title="Abrir tela de mesa">Mesa ${m.tableNo}${score}</a>`}</small><span class="m-status ${st}">${label}</span></header>
             ${competitor(m.p1, { won: done && m.winnerId === m.p1?.id, lost: done && !!m.winnerId && m.winnerId !== m.p1?.id, reported: !done && m.p1Reported })}
             ${competitor(m.p2, { won: done && m.winnerId === m.p2?.id, lost: done && !!m.winnerId && m.winnerId !== m.p2?.id, reported: !done && m.p2Reported, bye: m.bye })}
           </article>`;
@@ -204,7 +205,8 @@
             <p class="eyebrow">RODADA ${myData.round} • ${t.format === 'MD3' ? 'MELHOR DE 3' : 'ATÉ 4 PONTOS'}</p>
             <div style="margin:6px 0 2px">${BX.avatarHtml(m.opponent, { size: 84 })}</div>
             <div class="match-vs">VS ${BX.esc(m.opponent?.name || '?')}</div>
-            <div class="match-table">Mesa ${m.tableNo}</div>
+            <div class="match-table">Mesa ${m.tableNo}${t.format === 'MD3' && (m.myScore || m.oppScore) ? ` · rounds ${m.myScore}–${m.oppScore}` : ''}</div>
+            ${!done ? `<a class="btn primary mesa-link" href="/mesa/${t.slug}/${m.id}">📺 Abrir tela de mesa</a>` : ''}
             ${done
               ? `<div class="match-score-zero" style="color:${m.won ? 'var(--green)' : 'var(--red)'}">${m.won ? 'VITÓRIA' : 'DERROTA'}</div><p style="color:var(--muted)">Resultado fechado. Aguarde a próxima rodada.</p>`
               : `<div class="match-score-zero">0 — 0</div>
@@ -250,7 +252,7 @@
                     const rep = (r) => r == null ? '<span style="color:#5a6270">—</span>' : r ? `<b style="color:var(--green)">reportou</b>` : '';
                     return `
                     <div class="org-match-row ${m.status === 'CONFLICT' ? 'conflict' : ''} ${m.status === 'DONE' ? 'done' : ''}">
-                      <b style="font:800 15px var(--display);color:var(--yellow)">M${m.tableNo}</b>
+                      <a style="font:800 15px var(--display);color:var(--yellow);text-decoration:none" href="/mesa/${t.slug}/${m.id}" title="Abrir tela de mesa">M${m.tableNo}</a>
                       <div style="font-size:12px">
                         <b>${BX.esc(m.p1?.user.name || '?')}</b> ${m.p1Reported ? '✓' : ''} vs <b>${BX.esc(m.p2?.user.name || 'BYE')}</b> ${m.p2Reported ? '✓' : ''}
                         <small style="display:block;color:var(--muted)">${m.status === 'DONE' ? `✔ vencedor: ${BX.esc((m.winnerId === m.p1?.id ? m.p1 : m.p2)?.user.name || '?')}${m.resolvedBy === 'ORGANIZER' ? ' (manual)' : ''}` : m.status === 'CONFLICT' ? '⚠ conflito — escolha o vencedor' : 'aguardando reportes'}</small>
@@ -261,6 +263,7 @@
                           <button class="btn secondary" data-win="${m.id}:${m.p1?.id}">🏆 ${BX.esc(m.p1?.user.name || '')}</button>
                           <button class="btn secondary" data-win="${m.id}:${m.p2?.id}">🏆 ${BX.esc(m.p2?.user.name || '')}</button>` : ''}
                         ${m.status === 'DONE' && !m.bye ? `<button class="btn ghost" data-reopen="${m.id}">Reabrir</button>` : ''}
+                        ${!m.bye ? `<button class="btn ghost" data-mesa="${m.id}" title="Abrir a tela de mesa desta partida no dispositivo da mesa (reporta pelos dois lados)">📺 Mesa</button>` : ''}
                       </div>
                     </div>`;
                   }).join('') || '<div class="empty-state">Nenhuma partida nesta rodada.</div>'}
@@ -310,6 +313,12 @@
           return BX.api(`/api/tournaments/${slug}/matches/${matchId}/resolve`, { method: 'POST', body: { winnerId } });
         })));
         box.querySelectorAll('[data-reopen]').forEach((b) => b.addEventListener('click', act(() => BX.api(`/api/tournaments/${slug}/matches/${b.dataset.reopen}/reopen`, { method: 'POST' }))));
+        box.querySelectorAll('[data-mesa]').forEach((b) => b.addEventListener('click', async () => {
+          try {
+            const { url } = await BX.api(`/api/tournaments/${slug}/matches/${b.dataset.mesa}/table-token`, { method: 'POST' });
+            const w = window.open(url, '_blank'); if (!w) location.href = url;
+          } catch (e) { BX.toast(e.message); }
+        }));
         box.querySelectorAll('[data-kick]').forEach((b) => b.addEventListener('click', act(() => confirm('Remover este jogador?') && BX.api(`/api/tournaments/${slug}/players/${b.dataset.kick}`, { method: 'DELETE' }))));
         document.getElementById('copyLink')?.addEventListener('click', async () => {
           await navigator.clipboard.writeText(t.joinUrl);
