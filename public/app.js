@@ -138,6 +138,26 @@
     return part.id;
   }
 
+  /** Backups automáticos da coleção local (peças manuais + lista colada). Guarda os 6 últimos, só quando muda. */
+  const BACKUP_KEY='bx_collection_backups_v1';
+  function collectionBackups(){ return loadJSON(BACKUP_KEY,[]); }
+  function backupCollection(reason){
+    try{
+      const manual=localStorage.getItem('bx_manual_parts_v5')||'{}', text=localStorage.getItem('bx_v5_inventory_text')||'';
+      if(manual==='{}'&&!text.trim())return;
+      const list=collectionBackups(); const last=list[0];
+      if(last&&last.manual===manual&&last.text===text)return;
+      list.unshift({at:Date.now(),reason,manual,text,count:Object.values(JSON.parse(manual)).reduce((n,r)=>n+Math.max(0,r.qty||0),0)+text.split(/\r?\n/).filter(Boolean).length});
+      localStorage.setItem(BACKUP_KEY,JSON.stringify(list.slice(0,6)));
+    }catch{}
+  }
+  function restoreCollectionBackup(i){
+    const b=collectionBackups()[i]; if(!b)return false;
+    backupCollection('antes de restaurar');
+    localStorage.setItem('bx_manual_parts_v5',b.manual); manualParts=loadJSON('bx_manual_parts_v5',{});
+    localStorage.setItem('bx_v5_inventory_text',b.text); inventoryText=b.text;
+    importInventory(b.text,true); toast('Coleção restaurada do backup.'); return true;
+  }
   /** Funde uma peça local duplicada na canônica: move quantidades manuais, filhas e referências de deck/sessão. */
   function mergeLocalPart(dup, canon){
     if(!dup||!canon||dup.id===canon.id)return;
@@ -1208,6 +1228,9 @@
     }).join('');
     root.innerHTML=items.length?overall+sections:'<div class="empty-state collection-empty"><p>Sua coleção começa vazia.</p><button class="btn primary" id="addBeysEmptyBtn">＋ Adicionar Beys</button><small>Escolha peças no catálogo, busque o produto que você comprou ou cole uma lista.</small></div>';
     root.querySelectorAll('[data-edit]').forEach(btn=>btn.addEventListener('click',()=>editItem(btn.dataset.edit)));
+    const bk=document.getElementById('colBackups');
+    if(bk){const list=collectionBackups();bk.innerHTML=list.length?list.map((b,i)=>`<button class="backup-row" data-restore="${i}" title="Restaurar este backup"><span>${new Date(b.at).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</span><small>${b.count} item(ns) • ${escapeHTML(b.reason||'')}</small><b>↺</b></button>`).join(''):'<small class="muted">Nenhum backup ainda — eles são criados automaticamente quando a coleção muda.</small>';
+      bk.querySelectorAll('[data-restore]').forEach(b=>b.addEventListener('click',()=>{if(confirm('Restaurar este backup? A coleção atual será guardada como backup antes.'))restoreCollectionBackup(+b.dataset.restore);}));}
     document.getElementById('addBeysEmptyBtn')?.addEventListener('click',()=>document.getElementById('addBeysBtn')?.click());
     hydrateImages(root);
   }
@@ -2050,6 +2073,7 @@
   document.getElementById('resetTournamentBtn').addEventListener('click',()=>{if(confirm('Apagar inscrições, resultados e chave deste torneio?')){tournament={maxPlayers:tournament.maxPlayers||8,players:[],rounds:[],thirdPlaceEnabled:!!tournament.thirdPlaceEnabled,thirdPlaceMatch:null};saveTournament();renderTournament();toast('Torneio resetado.');}});
 
   loadLiveCatalog();
+  backupCollection('sessão');
   loadProductCatalog();
   onlineStockCache=loadJSON(ONLINE_STOCK_KEY,[]);
   onlineStockCache.forEach(rec=>{if(rec?.match&&!STOCK.some(s=>s.match.some(x=>rec.match.includes(x))))STOCK.push(rec);});
@@ -2088,8 +2112,9 @@
           if(!exists.image&&sp.img){exists.image=sp.img;enriched++;}
           if(!exists.type&&sp.type)exists.type=sp.type;
           if(!exists.serverId){exists.serverId=sp.id;enriched++;}
+          if(sp.display&&exists.display!==sp.display){exists.aliases=[...new Set([...(exists.aliases||[]),exists.display])];exists.display=sp.display;enriched++;}
           // outras locais que também casam com esta peça do servidor são duplicatas → funde
-          for(const dup of PARENTS().filter(p=>p!==exists&&p.kind===kind&&!p.serverId&&([p.name,p.display,p.abbrev,...(p.aliases||[])].some(x=>x&&keys.includes(equivalentKey(x)))||(abbr&&['bit','ratchet','rib'].includes(kind)&&(p.abbrev||'').toUpperCase()===abbr)))){ mergeLocalPart(dup,exists); enriched++; }
+          for(const dup of PARENTS().filter(p=>p!==exists&&p.kind===kind&&!p.serverId&&(backupCollection('antes de fundir duplicatas'),true)&&([p.name,p.display,p.abbrev,...(p.aliases||[])].some(x=>x&&keys.includes(equivalentKey(x)))||(abbr&&['bit','ratchet','rib'].includes(kind)&&(p.abbrev||'').toUpperCase()===abbr)))){ mergeLocalPart(dup,exists); enriched++; }
         } else {
           const id=reg(P(kind,sp.name||display,{display,aliases:sp.aliases||[],abbrev:sp.abbrev||'',type:sp.type||'',image:sp.img||'',basicLock:kind==='lock',source:'catálogo do site',serverId:sp.id}));
           exists=PARTS[id]; added++;
@@ -2105,7 +2130,7 @@
         if(!PARTS[id]){
           PARTS[id]={...parent,id,aliases:[],image:sp.img||parent.image,parentId:parent.id,serverId:sp.id,colorLabel:sp.variantLabel||'Cor',colorOrder:order++,source:'catálogo do site',wiki:''};
           added++;
-        } else { const c=PARTS[id]; if(sp.img)c.image=sp.img; c.colorLabel=sp.variantLabel||c.colorLabel; c.serverId=sp.id; c.colorOrder=order++; }
+        } else { const c=PARTS[id]; if(sp.img)c.image=sp.img; c.colorLabel=sp.variantLabel||c.colorLabel; c.serverId=sp.id; c.colorOrder=order++; c.display=parent.display; c.name=parent.name; c.abbrev=parent.abbrev; c.type=parent.type||c.type; }
       }
       if(added||enriched){saveLiveCatalog();importInventory(inventoryText,true);}
       return {added,enriched};
@@ -2120,8 +2145,13 @@
         if(sp.subKind==='RIB')kind='rib';
         const display=sp.displayName||sp.display||sp.name; if(!display)continue;
         const keys=[display,sp.name,...(sp.aliases||[])].filter(Boolean).map(equivalentKey);
-        let p=Object.values(PARTS).find(x=>x.kind===kind&&[x.name,x.display,x.abbrev,...(x.aliases||[])].some(y=>y&&keys.includes(equivalentKey(y))));
-        if(!p){reg(P(kind,sp.name||display,{display,aliases:sp.aliases||[],abbrev:sp.abbrev||'',type:sp.type||'',image:sp.imageUrl||sp.img||'',basicLock:kind==='lock',source:'catálogo do site'}));p=findEquivalent(kind,display);}
+        let p=sp.id?Object.values(PARTS).find(x=>x.serverId===sp.id):null; // cor específica do produto (peça-filha)
+        if(!p&&sp.parentId){ // filha ainda não conhecida localmente: cria a partir do pai
+          const parent=Object.values(PARTS).find(x=>x.serverId===sp.parentId)||PARENTS().find(x=>x.kind===kind&&[x.name,x.display,x.abbrev,...(x.aliases||[])].some(y=>y&&keys.includes(equivalentKey(y))));
+          if(parent){const id=parent.id+'#'+sp.id;PARTS[id]=PARTS[id]||{...parent,id,aliases:[],image:sp.imageUrl||sp.img||parent.image,parentId:parent.id,serverId:sp.id,colorLabel:sp.variantLabel||'Cor',colorOrder:sp.variantOrder||0,source:'catálogo do site',wiki:''};p=PARTS[id];}
+        }
+        if(!p)p=PARENTS().find(x=>x.kind===kind&&[x.name,x.display,x.abbrev,...(x.aliases||[])].some(y=>y&&keys.includes(equivalentKey(y))));
+        if(!p){reg(P(kind,sp.name||display,{display,aliases:sp.aliases||[],abbrev:sp.abbrev||'',type:sp.type||'',image:sp.imageUrl||sp.img||'',basicLock:kind==='lock',source:'catálogo do site',serverId:sp.id||''}));p=findEquivalent(kind,display);}
         if(p)ids.push(p.id);
       }
       const n=addManualParts(ids);

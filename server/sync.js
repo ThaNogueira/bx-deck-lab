@@ -1,6 +1,7 @@
 import { prisma } from './db.js';
 import { slugify } from './util.js';
 import { mapKind } from './catalog-data.js';
+import { syncProductCombos } from './beycommunity.js';
 
 /**
  * Sincronização do catálogo de PRODUTOS com as listas públicas da
@@ -537,9 +538,12 @@ export async function syncAll(actor = null) {
   const links = await autoLinkProducts();
   const dedupe = await dedupeParts();
   const variants = await syncVariants();
+  let combos = { scanned: 0, linked: 0, failed: 0 };
+  try { combos = await syncProductCombos(); } catch (e) { await prisma.syncLog.create({ data: { source: 'cores por produto', ok: false, message: String(e.message || e) } }); }
   return {
     dedupe,
     variants,
+    combos,
     products: bc.products,
     parts: {
       created: bc.parts.created + parts.created,

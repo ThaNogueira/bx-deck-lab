@@ -28,7 +28,19 @@
       const { part, products } = data;
       document.title = `${part.displayName} — BX Deck Lab`;
       const aliases = (part.aliases || []).filter(Boolean);
-      const gallery = [...new Set([part.imageUrl, ...(part.images || [])].filter(Boolean))];
+      const variants = part.variants || [];
+      const gallery = variants.length
+        ? variants.map((v) => v.imageUrl).filter(Boolean)
+        : [...new Set([part.imageUrl, ...(part.images || [])].filter(Boolean))];
+      const variantByImg = new Map(variants.map((v) => [v.imageUrl, v]));
+      const colorInfo = (url) => {
+        const v = variantByImg.get(url);
+        if (!v) return '';
+        const prods = v.products || [];
+        return `<div class="color-info"><b>${BX.esc(v.label || 'Cor')}</b>${prods.length
+          ? `<span>vem em: ${prods.map((p) => `<a href="/produto/${BX.esc(p.slug)}">${BX.esc(p.code || p.name)}</a>`).join(', ')}</span>`
+          : '<span class="muted">produto de origem ainda não mapeado</span>'}</div>`;
+      };
       const s = part.stats || {};
       const hasStats = ['atk', 'def', 'sta', 'dash', 'burst'].some((k) => s[k] != null);
 
@@ -73,7 +85,8 @@
               ${gallery.length ? `<img src="${BX.esc(gallery[0])}" alt="${BX.esc(part.displayName)}">` : `<span class="fallback" style="font:800 42px var(--display);color:#6f7787">${BX.esc((part.abbrev || part.displayName.slice(0, 2)).toUpperCase())}</span>`}
             </div>
             ${gallery.length > 1 ? `<div class="variant-thumbs">${gallery.map((url, i) => `
-              <button class="variant-thumb ${i === 0 ? 'selected' : ''}" data-img="${BX.esc(url)}"><img loading="lazy" src="${BX.esc(url)}" alt=""></button>`).join('')}</div>` : ''}
+              <button class="variant-thumb ${i === 0 ? 'selected' : ''}" data-img="${BX.esc(url)}" title="${BX.esc(variantByImg.get(url)?.label || '')}"><img loading="lazy" src="${BX.esc(url)}" alt=""></button>`).join('')}</div>` : ''}
+            <div id="colorInfo">${colorInfo(gallery[0])}</div>
           </div>
           <div>
             <p class="eyebrow">${BX.KIND_PT[part.kind]}${part.subKind === 'INTEGRATED' ? ' • RATCHET INTEGRADA' : part.subKind === 'RIB' ? ' • RATCHET-INTEGRATED BIT' : ''}</p>
@@ -103,6 +116,7 @@
       document.querySelectorAll('.variant-thumb').forEach((btn) => btn.addEventListener('click', () => {
         document.querySelectorAll('.variant-thumb').forEach((b) => b.classList.toggle('selected', b === btn));
         document.getElementById('mainImg').innerHTML = `<img src="${btn.dataset.img}" alt="">`;
+        const ci = document.getElementById('colorInfo'); if (ci) ci.innerHTML = colorInfo(btn.dataset.img);
       }));
     })();
   </script>

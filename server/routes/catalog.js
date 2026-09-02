@@ -112,6 +112,16 @@ router.get('/api/parts/:slug', ah(async (req, res) => {
   }
   if (!part || (part.hidden && !isStaff(req.user))) return res.status(404).json({ error: 'Peça não encontrada.' });
   const [withKids] = await withVariants([part]);
+  // produtos em que cada COR aparece (vínculos das peças-filhas)
+  if (withKids.variants.length) {
+    const kidLinks = await prisma.productPart.findMany({ where: { partId: { in: withKids.variants.map((v) => v.id) } }, include: { product: true } });
+    for (const v of withKids.variants) {
+      v.products = kidLinks.filter((l) => l.partId === v.id && (!l.product.hidden || isStaff(req.user)))
+        .map((l) => ({ id: l.product.id, slug: l.product.slug, code: l.product.code, name: l.product.name, imageUrl: l.product.imageUrl, googleUrl: googleSearchUrl(l.product.name, l.product.brand) }));
+    }
+    // a lista geral de produtos da peça inclui também os produtos das cores
+    for (const l of kidLinks) if (!part.products.some((pp) => pp.product.id === l.productId)) part.products.push({ product: l.product });
+  }
   const products = part.products
     .map((pp) => pp.product)
     .filter((p) => !p.hidden || isStaff(req.user))
@@ -153,11 +163,13 @@ router.get('/api/products/:slug', ah(async (req, res) => {
     include: { parts: { include: { part: true } } },
   });
   if (!product || (product.hidden && !isStaff(req.user))) return res.status(404).json({ error: 'Produto não encontrado.' });
-  // "Contém essas peças", agrupado na ordem de montagem (item 6)
+  // "Contém essas peças", agrupado na ordem de montagem (item 6).
+  // Quando o produto já tem a COR específica (peça-filha), a peça-pai genérica sai da lista.
+  const withColor = new Set(product.parts.filter((pp) => pp.part.parentId).map((pp) => pp.part.parentId));
   const grouped = KIND_ORDER.map((kind) => ({
     kind,
     parts: product.parts
-      .filter((pp) => pp.part.kind === kind && (!pp.part.hidden || isStaff(req.user)))
+      .filter((pp) => pp.part.kind === kind && (!pp.part.hidden || isStaff(req.user)) && !(!pp.part.parentId && withColor.has(pp.part.id)))
       .map((pp) => ({ ...partDto(pp.part), qty: pp.qty })),
   })).filter((g) => g.parts.length > 0);
   res.json({ product: productDto(product), partsByKind: grouped });

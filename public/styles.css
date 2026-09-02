@@ -1323,3 +1323,16 @@ details.pcol-group .pcol-grid{padding:10px}
 .pcol-caret{font-style:normal;color:#6b7482;font-size:11px;transition:transform .15s;display:inline-block}
 details.pcol-group[open] .pcol-caret{transform:rotate(90deg)}
 details.pcol-group summary small b{color:#74eeb0}
+
+/* ===== v24: cores por produto + backups da coleção ===== */
+.color-info{margin-top:8px;display:flex;flex-direction:column;gap:2px;font-size:11px;color:#aeb8c6}
+.color-info b{font:800 12px var(--display);text-transform:uppercase;letter-spacing:.05em;color:#74eeb0}
+.color-info a{color:var(--cyan);text-decoration:none}
+.color-info .muted{color:#6b7482}
+details.backups{margin-top:4px;border-top:1px solid #232933;padding-top:8px}
+details.backups summary{cursor:pointer;color:#7c8694;font:800 9px var(--display);text-transform:uppercase;letter-spacing:.08em}
+.backup-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:center;width:100%;text-align:left;border:1px solid #262c36;border-radius:9px;background:#10141b;color:#c4cad3;padding:6px 9px;margin-top:6px}
+.backup-row:hover{border-color:var(--cyan)}
+.backup-row span{font:800 10px var(--display)}
+.backup-row small{color:#7c8694;font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.backup-row b{color:var(--cyan)}

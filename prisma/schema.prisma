@@ -111,6 +111,7 @@ model Product {
   bcSlug      String? // slug na BeyCommunity
   hidden      Boolean   @default(false)
   notes       String?
+  combosSyncedAt DateTime? // quando as cores das peças (combos da BeyCommunity) foram lidas
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 

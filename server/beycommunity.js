@@ -348,6 +348,86 @@ export async function syncBCProductDetails({ limit = 400 } = {}) {
   return { scanned: pending.length, updated, failed };
 }
 
+const COMBO_KINDS = {
+  blade: ['BLADE', null], riblade: ['BLADE', 'INTEGRATED'], ratchet: ['RATCHET', null], bit: ['BIT', null], rib: ['BIT', 'RIB'],
+  lock_chip: ['LOCK_CHIP', null], main_blade: ['MAIN_BLADE', null], metal_blade: ['MAIN_BLADE', null],
+  assist_blade: ['ASSIST_BLADE', null], over_blade: ['OVER_BLADE', null],
+};
+
+/**
+ * Cores certas de cada produto: a página do produto na BeyCommunity traz os
+ * "combos" com <kind>_variant {image_url}. Casamos a variante com a nossa
+ * peça-filha pela URL da imagem (mesma chave usada em syncVariants) e ligamos o
+ * produto à COR específica (ProductPart). Sem variante → liga a peça-pai.
+ * Roda depois de syncVariants. Reprocessa produtos nunca lidos (ou todos, com force).
+ */
+export async function syncProductCombos({ limit = 500, force = false } = {}) {
+  const where = { bcSlug: { not: null } };
+  if (!force) where.combosSyncedAt = null;
+  const pending = await prisma.product.findMany({ where, take: limit });
+  if (!pending.length) return { scanned: 0, linked: 0, failed: 0 };
+  const children = await prisma.part.findMany({ where: { parentId: { not: null } }, select: { id: true, imageUrl: true, parentId: true } });
+  const byImage = new Map(children.map((c) => [c.imageUrl, c]));
+  const idx = await loadPartIndex();
+  let linked = 0, failed = 0, scanned = 0;
+  const queue = [...pending];
+  await Promise.all(Array.from({ length: 4 }, async () => {
+    while (queue.length) {
+      const p = queue.shift();
+      try {
+        const text = flightText(await fetchHtml(`${BASE}/products/${p.bcSlug}/`));
+        const combos = extractObjects(text, '"blade_variant_id"').filter((c) => c && typeof c === 'object');
+        const links = new Map(); // partId -> qty
+        for (const combo of combos) {
+          for (const [key, [kind, subKind]] of Object.entries(COMBO_KINDS)) {
+            const v = combo[`${key}_variant`];
+            if (!v || typeof v !== 'object') continue;
+            let target = v.image_url ? byImage.get(v.image_url) : null;
+            if (!target) {
+              const nested = v[key] && typeof v[key] === 'object' ? v[key] : null;
+              const name = nested?.name || null;
+              const slug = nested?.slug || null;
+              const parent = (slug && idx.byBcSlug.get(slug)) || (name && idx.byKey.get(normKey(name))) || null;
+              if (parent && parent.kind === kind && (parent.subKind || null) === (subKind || null)) target = { id: parent.id, parentId: null };
+              else if (parent) target = { id: parent.id, parentId: null };
+            }
+            if (target) links.set(target.id, (links.get(target.id) || 0) + 1);
+          }
+        }
+        for (const [partId, qty] of links) {
+          await prisma.productPart.upsert({
+            where: { productId_partId: { productId: p.id, partId } },
+            update: { qty },
+            create: { productId: p.id, partId, qty },
+          });
+          linked++;
+        }
+        await prisma.product.update({ where: { id: p.id }, data: { combosSyncedAt: new Date() } });
+        scanned++;
+      } catch { failed++; }
+    }
+  }));
+  await relabelVariantsByProduct();
+  if (linked) await prisma.syncLog.create({ data: { source: 'cores por produto (combos BeyCommunity)', ok: true, message: `${scanned} produto(s) lidos • ${linked} vínculo(s) de cor` } });
+  return { scanned, linked, failed };
+}
+
+/** Cor com rótulo genérico ("Cor N") passa a se chamar pelo(s) produto(s) em que vem (ex.: "UX-03"). */
+export async function relabelVariantsByProduct() {
+  const kids = await prisma.part.findMany({ where: { parentId: { not: null } }, include: { products: { include: { product: true } } } });
+  let n = 0;
+  for (const k of kids) {
+    // só troca rótulos automáticos: "Cor N" ou um código de produto tirado do nome do arquivo
+    const auto = !k.variantLabel || /^Cor \d+$/.test(k.variantLabel) || /^(?:BX|UX|CX|BXG|G)-?\d+[A-Z]?(?: \/ .*)?$/i.test(k.variantLabel);
+    if (!auto) continue;
+    const codes = [...new Set(k.products.map((pp) => pp.product.code).filter(Boolean))].sort();
+    if (!codes.length) continue;
+    const label = codes.slice(0, 2).join(' / ') + (codes.length > 2 ? ` +${codes.length - 2}` : '');
+    if (label !== k.variantLabel) { await prisma.part.update({ where: { id: k.id }, data: { variantLabel: label } }); n++; }
+  }
+  return n;
+}
+
 export async function syncBeyCommunity() {
   const products = await syncBCProducts();
   const parts = await syncBCParts();
