@@ -208,7 +208,7 @@ function parseHubCatalog(text, which) {
 
 /** Índice em memória de todas as peças por nome/alias normalizado. */
 async function loadPartIndex() {
-  const parts = await prisma.part.findMany();
+  const parts = await prisma.part.findMany({ where: { parentId: null } });
   const byKey = new Map();
   const register = (p) => {
     let aliases = [];
@@ -428,7 +428,7 @@ export async function dedupeParts() {
   const NAME_ALIASES = { yielding: 'yield' };
   const nameKey = (p) => [p.name, p.displayName].map((n) => { const k = normKey(n).replace(/disk/g, 'disc'); return NAME_ALIASES[k] || k; }).find(Boolean) || '';
   for (const kind of ['BIT', 'RATCHET']) {
-    const parts = await prisma.part.findMany({ where: { kind }, orderBy: { createdAt: 'asc' } });
+    const parts = await prisma.part.findMany({ where: { kind, parentId: null }, orderBy: { createdAt: 'asc' } });
     const groups = new Map();
     const add = (key, p) => { if (!key) return; if (!groups.has(key)) groups.set(key, new Set()); groups.get(key).add(p); };
     for (const p of parts) {
@@ -455,6 +455,43 @@ export async function dedupeParts() {
   return { merged };
 }
 
+/**
+ * Recolors como peças-filhas: para cada peça-pai com 2+ imagens (galeria da
+ * BeyCommunity), garante uma peça-filha por cor, com id próprio, herdando
+ * nome/stats/sigla do pai. Casa pela URL da imagem; nunca apaga filhas (podem
+ * estar em coleções/decks). Rótulo padrão "Cor N" (admin pode renomear).
+ */
+export async function syncVariants() {
+  const parents = await prisma.part.findMany({ where: { parentId: null } });
+  const children = await prisma.part.findMany({ where: { parentId: { not: null } } });
+  const byParent = new Map();
+  for (const c of children) { if (!byParent.has(c.parentId)) byParent.set(c.parentId, []); byParent.get(c.parentId).push(c); }
+  let created = 0, updated = 0;
+  for (const p of parents) {
+    let imgs = [];
+    try { imgs = JSON.parse(p.imagesJson || '[]'); } catch {}
+    const urls = [...new Set([p.imageUrl, ...imgs].filter(Boolean))];
+    if (urls.length < 2) continue;
+    const mine = byParent.get(p.id) || [];
+    for (let n = 0; n < urls.length; n++) {
+      const url = urls[n];
+      const inherit = {
+        kind: p.kind, subKind: p.subKind, name: p.name, displayName: p.displayName, abbrev: p.abbrev,
+        type: p.type, statsJson: p.statsJson, weightGrams: p.weightGrams, banned: p.banned, hidden: p.hidden,
+        variantOrder: n, imageUrl: url, aliasesJson: '[]', source: 'variante',
+      };
+      const ex = mine.find((c) => c.imageUrl === url);
+      if (ex) { await prisma.part.update({ where: { id: ex.id }, data: inherit }); updated++; continue; }
+      let slug = `${p.slug}-cor-${n + 1}`;
+      if (await prisma.part.findUnique({ where: { slug } })) slug = `${slug}-${Date.now().toString(36)}`;
+      await prisma.part.create({ data: { ...inherit, slug, parentId: p.id, variantLabel: `Cor ${n + 1}` } });
+      created++;
+    }
+  }
+  if (created) await prisma.syncLog.create({ data: { source: 'recolors (peças-filhas)', ok: true, message: `${created} cor(es) nova(s)` } });
+  return { created, updated };
+}
+
 /** Sincronização completa: BeyCommunity (banco inteiro) + enriquecimento. */
 export async function syncAll(actor = null) {
   // 1) BeyCommunity: produtos com código + peças com stats/peso/variantes e
@@ -472,8 +509,10 @@ export async function syncAll(actor = null) {
   // 3) Vínculo heurístico para produtos que ainda ficaram órfãos
   const links = await autoLinkProducts();
   const dedupe = await dedupeParts();
+  const variants = await syncVariants();
   return {
     dedupe,
+    variants,
     products: bc.products,
     parts: {
       created: bc.parts.created + parts.created,
@@ -489,6 +528,9 @@ export async function syncAll(actor = null) {
 export function scheduleAutoSync() {
   const run = async () => {
     try {
+      // recolors (peças-filhas) são derivadas do que já está no banco: garante sempre, é barato
+      const v = await syncVariants();
+      if (v.created) console.log('[sync] recolors: +' + v.created + ' cor(es) como peças-filhas');
       const last = await prisma.syncLog.findFirst({ where: { ok: true }, orderBy: { createdAt: 'desc' } });
       if (last && Date.now() - last.createdAt.getTime() < 24 * 3600e3) return;
       console.log('[sync] catálogo com mais de 24h — sincronizando…');

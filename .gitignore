@@ -14,3 +14,6 @@ data/
 
 # Claude Code (config local da sessão)
 .claude/
+
+# logs do servidor local (Start-Process)
+server.err

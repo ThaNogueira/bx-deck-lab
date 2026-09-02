@@ -197,7 +197,7 @@ function parseCardCategory(text, path) {
 }
 
 async function loadPartIndex() {
-  const parts = await prisma.part.findMany();
+  const parts = await prisma.part.findMany({ where: { parentId: null } });
   const byKey = new Map();
   const byBcSlug = new Map();
   const register = (p) => {

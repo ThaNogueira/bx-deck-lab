@@ -172,46 +172,54 @@
       <div class="hero compact">
         <div>
           <p class="eyebrow">SEU ESTOQUE</p>
-          <h1>Minha coleção</h1>
-          <p>Cole sua lista de Beys. O tipo entre parênteses é opcional. Peças e Beys são consultados em catálogos online; BX, UX, CX, Hasbro/collabs e sistemas com peças integradas são tratados pelo mesmo resolvedor.</p>
+          <h1>Minha <em>coleção</em></h1>
+          <p>Tudo que você tem, por categoria. Adicione peças pelo catálogo, pelo produto que comprou ou colando uma lista de Beys.</p>
         </div>
-        <div>
+        <div class="collection-hero-side">
           <div class="collection-count" id="collectionCount"></div>
-          <button class="btn secondary" id="sendCollectionBtn" style="margin-top:8px;width:100%">☁ Enviar para meu perfil</button>
+          <div class="collection-hero-actions">
+            <button class="btn primary" id="addBeysBtn">＋ Adicionar Beys</button>
+            <button class="btn secondary" id="sendCollectionBtn">☁ Enviar para meu perfil</button>
+          </div>
         </div>
       </div>
 
-      <div class="collection-layout">
-        <div class="panel-card import-card">
-          <div class="section-title-row">
-            <div>
-              <p class="eyebrow">IMPORTAR</p>
-              <h2>Lista de Beys</h2>
-            </div>
-            <button class="btn primary" id="importBtn">Importar lista</button>
-          </div>
-          <textarea id="inventoryText" spellcheck="false" aria-label="Lista de Beyblades"></textarea>
-          <div class="import-note" id="importNote"></div>
-        </div>
+      <div class="collection-pieces" id="collectionPieces"></div>
 
-        <div class="panel-card manual-card picker col-picker">
-          <div class="picker-head">
-            <div><p class="eyebrow">ADICIONAR</p><h2>Peças e produtos</h2></div>
-            <div class="pill-toggle" id="colTabs">
-              <button data-tab="parts" class="active">Peças</button>
-              <button data-tab="products">Produtos</button>
+      <!-- Modal: adicionar à coleção (picker grande + lista no canto) -->
+      <div class="modal-backdrop" id="addModal" hidden>
+        <div class="modal modal-wide add-modal">
+          <button class="modal-close" id="addClose">×</button>
+          <div class="add-layout">
+            <div class="picker col-picker">
+              <div class="picker-head">
+                <div><p class="eyebrow">ADICIONAR À COLEÇÃO</p><h2>Peças e produtos</h2></div>
+                <div class="pill-toggle" id="colTabs">
+                  <button data-tab="parts" class="active">Peças</button>
+                  <button data-tab="products">Produtos</button>
+                </div>
+              </div>
+              <div id="colTabParts">
+                <input id="colPickerSearch" placeholder="Buscar peça…" />
+                <div class="picker-filters" id="colPickerFilters"></div>
+                <div class="picker-grid" id="colPickerGrid"></div>
+                <p class="picker-hint" id="colPickerHint"></p>
+              </div>
+              <div id="colTabProducts" hidden>
+                <input id="colProductSearch" placeholder="Buscar produto pelo nome ou código (ex.: Wizard Rod, BX-35)…" />
+                <div id="colProductResults" class="col-products"><div class="empty-state">Digite o nome do produto que você comprou — ao escolher, todas as peças dele entram na coleção de uma vez.</div></div>
+                <div id="colProductAdded"></div>
+              </div>
             </div>
-          </div>
-          <div id="colTabParts">
-            <input id="colPickerSearch" placeholder="Buscar peça…" />
-            <div class="picker-filters" id="colPickerFilters"></div>
-            <div class="picker-grid" id="colPickerGrid"></div>
-            <p class="picker-hint" id="colPickerHint"></p>
-          </div>
-          <div id="colTabProducts" hidden>
-            <input id="colProductSearch" placeholder="Buscar produto pelo nome ou código (ex.: Wizard Rod, BX-35)…" />
-            <div id="colProductResults" class="col-products"><div class="empty-state">Digite o nome do produto que você comprou — ao escolher, todas as peças dele entram na coleção de uma vez.</div></div>
-            <div id="colProductAdded"></div>
+            <aside class="import-card add-list">
+              <div class="section-title-row">
+                <div><p class="eyebrow">POR LISTA</p><h3>Colar Beys</h3></div>
+              </div>
+              <p class="form-help">Um Bey por linha, ex.: <b>Wizard Rod 5-70DB</b>. O tipo entre parênteses é opcional.</p>
+              <textarea id="inventoryText" spellcheck="false" aria-label="Lista de Beyblades" placeholder="Dran Sword 3-60F&#10;Wizard Rod 5-70DB&#10;Shark Scale 4-60P"></textarea>
+              <button class="btn primary" id="importBtn" style="width:100%">Importar lista</button>
+              <div class="import-note" id="importNote"></div>
+            </aside>
           </div>
         </div>
       </div>

@@ -17,7 +17,7 @@ async function seedParts() {
     const { kind, subKind } = mapKind(p.kind);
     let slug = slugify(p.display || p.name);
     const clash = await prisma.part.findUnique({ where: { slug } });
-    const existing = await prisma.part.findFirst({ where: { kind, name: p.name } });
+    const existing = await prisma.part.findFirst({ where: { kind, name: p.name, parentId: null } });
     if (existing) {
       appIdToDbId.set(p.id, existing.id);
       continue;
@@ -103,7 +103,7 @@ const META_BLADES = [
 async function seedMetaBlades() {
   let created = 0;
   for (const [name, display, type] of META_BLADES) {
-    const existing = await prisma.part.findFirst({ where: { kind: 'BLADE', name } });
+    const existing = await prisma.part.findFirst({ where: { kind: 'BLADE', name, parentId: null } });
     if (existing) continue;
     let slug = slugify(name);
     if (await prisma.part.findUnique({ where: { slug } })) slug = `blade-${slug}`;

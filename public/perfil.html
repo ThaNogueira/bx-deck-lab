@@ -314,11 +314,13 @@
           const q = BX.norm(e.target.value);
           const box = document.getElementById('cResults');
           if (q.length < 2) { box.innerHTML = ''; return; }
-          const found = idx.list.filter((p) => [p.name, p.display, ...(p.aliases || [])].some((v) => BX.norm(v).includes(q))).slice(0, 10);
+          const found = idx.list.filter((p) => !p.parentId && [p.name, p.display, ...(p.aliases || [])].some((v) => BX.norm(v).includes(q))).slice(0, 10);
           box.innerHTML = found.map((p) => `<button class="slot-choice" data-cadd="${p.id}" style="min-height:0;display:flex;gap:8px;align-items:center">${BX.partThumb(p, 24)}<span style="color:white;font-size:11px">${BX.esc(p.display)}</span></button>`).join('');
-          box.querySelectorAll('[data-cadd]').forEach((btn) => btn.addEventListener('click', () => {
+          box.querySelectorAll('[data-cadd]').forEach((btn) => btn.addEventListener('click', async () => {
             if (comboParts.length >= 8) return;
-            comboParts.push(btn.dataset.cadd);
+            const chosen = await BX.pickColor(btn.dataset.cadd); // pergunta a cor se a peça tiver recolors
+            if (!chosen) return;
+            comboParts.push(chosen);
             renderComboParts();
           }));
         });

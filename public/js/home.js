@@ -254,6 +254,7 @@
   // O builder é o único montador do site: /#builder redireciona para cá.
 
   function mapLocalPart(idx, appPart) {
+    if (appPart.serverId && idx.byId.get(appPart.serverId)) return idx.byId.get(appPart.serverId);
     return idx.byName.get(BX.norm(appPart.display || appPart.name))
       || idx.byName.get(BX.norm(appPart.name))
       || (appPart.aliases || []).map((a) => idx.byName.get(BX.norm(a))).find(Boolean)
@@ -330,7 +331,8 @@
     if (!editSlug) return;
     try {
       const { deck } = await BX.api(`/api/decks/${encodeURIComponent(editSlug)}`);
-      const beysNames = deck.beys.map((bey) => bey.map((id) => deck.parts?.[id]?.displayName || id));
+      // '#sid:' preserva a cor (peça-filha) escolhida; nome é o fallback
+      const beysNames = deck.beys.map((bey) => bey.map((id) => (deck.parts?.[id] ? `#sid:${id}` : id)));
       const apply = () => {
         window.BXApp.loadDeck(beysNames);
         window.BXApp.setDeckName(deck.title);
@@ -383,6 +385,14 @@
   (() => {
     const tabs = document.getElementById('colTabs');
     if (!tabs) return;
+    // Modal "Adicionar Beys"
+    const addModal = document.getElementById('addModal');
+    const openAdd = () => { addModal.hidden = false; setTimeout(() => document.getElementById('colPickerSearch')?.focus(), 50); };
+    const closeAdd = () => { addModal.hidden = true; };
+    document.getElementById('addBeysBtn')?.addEventListener('click', openAdd);
+    document.getElementById('addClose')?.addEventListener('click', closeAdd);
+    addModal?.addEventListener('click', (e) => { if (e.target === addModal) closeAdd(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !addModal.hidden) closeAdd(); });
     tabs.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => {
       tabs.querySelectorAll('[data-tab]').forEach((x) => x.classList.toggle('active', x === b));
       document.getElementById('colTabParts').hidden = b.dataset.tab !== 'parts';
@@ -434,14 +444,14 @@
       return;
     }
     const idx = await BX.partTagReady();
-    const inventory = window.BXApp?.getInventory?.() || {};
+    const entries = window.BXApp?.getCollectionItems?.() || Object.entries(window.BXApp?.getInventory?.() || {}).map(([id, qty]) => ({ id, qty }));
     const items = [];
     let unmatched = 0;
-    for (const [appId, qty] of Object.entries(inventory)) {
+    for (const { id: appId, qty } of entries) {
       if (!qty) continue;
       const appPart = window.BXApp.getPart(appId);
       if (!appPart) continue;
-      const p = idx.byName.get(BX.norm(appPart.display || appPart.name)) || idx.byName.get(BX.norm(appPart.name));
+      const p = mapLocalPart(idx, appPart);
       if (p) items.push({ partId: p.id, qty });
       else unmatched++;
     }

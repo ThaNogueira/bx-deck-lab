@@ -114,7 +114,8 @@
       basicLock: opts.basicLock || false, requiresOver: opts.requiresOver || false,
       type: opts.type || '', stats: opts.stats || null, note: opts.note || '', behavior: opts.behavior || '',
       geometry: opts.geometry || '', spin: opts.spin || '', weight: opts.weight || '', line: opts.line || '',
-      source: opts.source || '', image: opts.image || '', remoteCode: opts.remoteCode || ''
+      source: opts.source || '', image: opts.image || '', remoteCode: opts.remoteCode || '',
+      parentId: opts.parentId || '', serverId: opts.serverId || '', colorLabel: opts.colorLabel || ''
     };
   }
 
@@ -135,6 +136,19 @@
       PARTS[part.id]=merged;
     } else PARTS[part.id]=part;
     return part.id;
+  }
+
+  /** Só peças-pai (recolors são filhas e ficam fora das listagens). */
+  const PARENTS=()=>Object.values(PARTS).filter(p=>!p.parentId);
+  function childrenOf(p){ return p?Object.values(PARTS).filter(c=>c.parentId===p.id).sort((x,y)=>(x.colorOrder||0)-(y.colorOrder||0)):[]; }
+  /** Pergunta a cor (popup) quando a peça tem recolors. Resolve com a peça escolhida ou null. */
+  async function chooseColor(p){
+    if(!p||p.parentId)return p;
+    const kids=childrenOf(p);
+    if(!kids.length||!window.BX?.colorDialog)return p;
+    const r=await window.BX.colorDialog({name:p.display,options:kids.map(k=>({id:k.id,img:k.image,label:k.colorLabel||'Cor',qty:inventory[k.id]||0}))});
+    if(r===null)return null;
+    return r==='__default'?p:(PARTS[r]||p);
   }
 
   // Basic / UX / Unique blades
@@ -445,7 +459,7 @@
     raw=raw.replace(/\s+Deck Set$/i,'').replace(/\s+-\s+Entry Package$/i,'').replace(/\s+(?:Metal(?:lic)? Coat|Special Ver(?:sion)?|Ver(?:sion)?\.?\s*\d*(?:\.\d+)?).*$/i,'').trim();
     let key=equivalentKey(raw);
     const aliases=[];
-    Object.values(PARTS).filter(p=>['blade','integrated','lock','main'].includes(p.kind)).forEach(p=>{
+    PARENTS().filter(p=>['blade','integrated','lock','main'].includes(p.kind)).forEach(p=>{
       const canon=equivalentKey(p.display||p.name);for(const a of [p.name,p.display,...(p.aliases||[])]){const ak=equivalentKey(a);if(ak&&ak.length>=4)aliases.push([ak,canon]);}
     });
     aliases.sort((a,b)=>b[0].length-a[0].length);
@@ -461,7 +475,7 @@
   }
   function productLeadPart(product){
     const k=equivalentKey(product.name);let best=null,score=0;
-    for(const p of Object.values(PARTS).filter(x=>['blade','integrated','main'].includes(x.kind))){for(const a of normalizedAliases(p)){if(a.length>=4&&k.includes(a)&&a.length>score){best=p;score=a.length;}}}
+    for(const p of PARENTS().filter(x=>['blade','integrated','main'].includes(x.kind))){for(const a of normalizedAliases(p)){if(a.length>=4&&k.includes(a)&&a.length>score){best=p;score=a.length;}}}
     return best;
   }
   function isProductOwned(p){const pk=equivalentKey(p.name);return stockOwned.some(label=>{const ok=equivalentKey(String(label||'').replace(/\([^)]*\)/g,''));return ok===pk||ok.includes(pk)||pk.includes(ok);});}
@@ -478,7 +492,7 @@
     const norm=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim();
     const q=norm(document.getElementById('missingSearchInput')?.value||'');
     const show=document.getElementById('missingShowFilter')?.value||'all';
-    const all=Object.values(PARTS).filter(p=>CHECK_ORDER.includes(p.kind)&&!p.hidden);
+    const all=PARENTS().filter(p=>CHECK_ORDER.includes(p.kind)&&!p.hidden);
     const ownedTotal=all.filter(p=>(inventory[p.id]||0)>0).length;
     const count=document.getElementById('missingCount');if(count)count.textContent=`${ownedTotal}/${all.length} peças na coleção • faltam ${all.length-ownedTotal}`;
     const st=document.getElementById('missingCatalogStatus');if(st)st.textContent=`${all.length} peças no catálogo`;
@@ -493,7 +507,7 @@
         return `<div class="chk-item ${has?'owned':'missing'}" data-id="${escapeAttr(p.id)}" title="${escapeAttr(has?`Você tem ${qty}`:'Clique para marcar como tenho (adiciona à coleção)')}">${partArt(p)}<div class="chk-meta"><strong><a class="plink" href="/peca/${slug(p.display||p.name)}">${escapeHTML(p.display)}</a></strong><small>${p.abbrev?escapeHTML(p.abbrev):''}${has&&qty>1?` ×${qty}`:''}${p.banned?' • banida':''}</small></div><span class="chk-mark">${has?'✓':'+'}</span></div>`;}).join('')}</div></section>`;
     }).join('');
     root.innerHTML=sections||'<div class="empty-state">Nenhuma peça com esses filtros.</div>';
-    root.querySelectorAll('.chk-item.missing').forEach(el=>el.addEventListener('click',e=>{if(e.target.closest('a'))return;const p=PARTS[el.dataset.id];if(!p)return;changeManualQty(p.id,1);toast(`${p.display} marcada como "tenho".`);}));
+    root.querySelectorAll('.chk-item.missing').forEach(el=>el.addEventListener('click',async e=>{if(e.target.closest('a'))return;const p=PARTS[el.dataset.id];if(!p)return;const c=await chooseColor(p);if(!c)return;changeManualQty(c.id,1);toast(`${c.display}${c.colorLabel?` (${c.colorLabel})`:''} marcada como "tenho".`);}));
     hydrateImages(root);
   }
   function normalizedAliases(part){return [part.name,part.display,part.abbrev,...(part.aliases||[])].filter(Boolean).map(equivalentKey);}
@@ -764,6 +778,8 @@
       }
       add(id, rec.qty, rec.qty>0?'Adicionada à parte':'Ajuste manual', 'loose');
     });
+    // recolors contam para a peça-pai (o montador/validador pensa em peça, a coleção em cor)
+    for (const [id, q] of Object.entries(inv)) { const pid = PARTS[id]?.parentId; if (pid && q > 0) inv[pid] = (inv[pid] || 0) + q; }
     Object.keys(inv).forEach(id => { if (inv[id] <= 0) delete inv[id]; });
 
     inventory = inv;
@@ -878,7 +894,7 @@
 
   function availableParts(kind, slotIndex) {
     const used = currentUsage(slotIndex);
-    return Object.values(PARTS)
+    return PARENTS()
       .filter(p => p.kind===kind && (builderShowAll || (inventory[p.id]||0)>0))
       .sort((a,b)=>((inventory[b.id]||0)>0)-((inventory[a.id]||0)>0) || a.display.localeCompare(b.display))
       .map(p=>{
@@ -1147,16 +1163,31 @@
 
   function renderCollection() {
     document.getElementById('inventoryText').value=inventoryText;
-    const total=Object.values(inventory).reduce((a,b)=>a+b,0);
+    const total=Object.entries(inventory).filter(([id])=>!PARTS[id]?.parentId).reduce((a,[,b])=>a+b,0);
     document.getElementById('collectionCount').innerHTML=`<strong>${stockOwned.length}</strong><small>Beys cadastrados • ${total} peças</small>`;
     const root=document.getElementById('collectionPieces');
     const order=['blade','integrated','lock','over','main','assist','ratchet','bit','rib'];
     root.innerHTML=order.map(kind=>{
-      const items=Object.values(PARTS).filter(p=>p.kind===kind && (inventory[p.id]||0)>0).sort((a,b)=>a.display.localeCompare(b.display));
+      const items=PARENTS().filter(p=>p.kind===kind && (inventory[p.id]||0)>0).sort((a,b)=>a.display.localeCompare(b.display));
       if(!items.length)return'';
       return `<section><div class="part-group-title"><h2>${KIND_LABEL[kind]}</h2><span>${items.length} tipo(s)</span></div><div class="parts-grid">${items.map(partCard).join('')}</div></section>`;
-    }).join('') || '<div class="empty-state">Sua coleção começa vazia. Cole seus Beys acima, busque uma peça no Catálogo Vivo ou adicione manualmente.</div>';
-    root.querySelectorAll('.qty-btn').forEach(btn=>btn.addEventListener('click',()=>changeManualQty(btn.dataset.id,+btn.dataset.delta)));
+    }).join('') || '<div class="empty-state collection-empty"><p>Sua coleção começa vazia.</p><button class="btn primary" id="addBeysEmptyBtn">＋ Adicionar Beys</button><small>Escolha peças no catálogo, busque o produto que você comprou ou cole uma lista.</small></div>';
+    root.querySelectorAll('.qty-btn').forEach(btn=>btn.addEventListener('click',async()=>{
+      const p=PARTS[btn.dataset.id]; if(!p)return; const delta=+btn.dataset.delta;
+      if(delta>0){ const c=await chooseColor(p); if(c)changeManualQty(c.id,1); return; }
+      // remover: primeiro unidades "sem cor" do pai; depois a última cor marcada
+      const kids=childrenOf(p); const kidsQty=kids.reduce((n,k)=>n+(inventory[k.id]||0),0); const generic=(inventory[p.id]||0)-kidsQty;
+      if(generic>0||!kids.length)changeManualQty(p.id,-1);
+      else { const last=[...kids].reverse().find(k=>(inventory[k.id]||0)>0); if(last)changeManualQty(last.id,-1); }
+    }));
+    root.querySelectorAll('.color-thumb').forEach(b=>b.addEventListener('click',e=>{
+      const kid=PARTS[b.dataset.color], parent=PARTS[b.dataset.id]; if(!kid||!parent)return;
+      if(e.target.closest('.ct-minus')){ if((inventory[kid.id]||0)>0)changeManualQty(kid.id,-1); return; }
+      const kidsQty=childrenOf(parent).reduce((n,k)=>n+(inventory[k.id]||0),0); const generic=(inventory[parent.id]||0)-kidsQty;
+      if(generic>0)changeManualQty(parent.id,-1); // converte uma unidade "sem cor" nessa cor
+      changeManualQty(kid.id,1);
+    }));
+    document.getElementById('addBeysEmptyBtn')?.addEventListener('click',()=>document.getElementById('addBeysBtn')?.click());
     hydrateImages(root);
   }
 
@@ -1178,7 +1209,16 @@
   }
   function partCard(p) {
     const h=partHeuristic(p);const cls=h?.type==='Attack'?'attack':h?.type==='Stamina'?'stamina':h?.type==='Defense'?'defense':'balance';const tooltip=partTooltip(p);
-    return `<article class="part-card ${p.banned?'banned':''} ${h?.note?'with-note':''}" title="${escapeAttr(tooltip)}">${partArt(p)}<div class="part-meta"><small>${KIND_LABEL[p.kind] || p.kind}</small><strong><a class="plink" href="/peca/${slug(p.display||p.name)}" title="Ver página da peça">${escapeHTML(p.display)}</a>${p.abbrev?` <span style="color:#707887">${escapeHTML(p.abbrev)}</span>`:''}</strong><div class="qty-row"><button class="qty-btn" data-id="${p.id}" data-delta="-1">−</button><span class="qty">${inventory[p.id]||0}</span><button class="qty-btn" data-id="${p.id}" data-delta="1">+</button>${p.banned?'<span class="badge banned">Banida</span>':''}${h?.type?`<span class="badge ${cls}">${escapeHTML(h.type)}</span>`:''}</div>${h?.note?`<p class="part-note">${escapeHTML(h.note)}</p>`:''}</div></article>`;
+    return `<article class="part-card ${p.banned?'banned':''} ${h?.note?'with-note':''}" title="${escapeAttr(tooltip)}">${partArt(p)}<div class="part-meta"><small>${KIND_LABEL[p.kind] || p.kind}</small><strong><a class="plink" href="/peca/${slug(p.display||p.name)}" title="Ver página da peça">${escapeHTML(p.display)}</a>${p.abbrev?` <span style="color:#707887">${escapeHTML(p.abbrev)}</span>`:''}</strong><div class="qty-row"><button class="qty-btn" data-id="${p.id}" data-delta="-1" title="Remover uma">−</button><span class="qty"><small>×</small>${inventory[p.id]||0}</span><button class="qty-btn" data-id="${p.id}" data-delta="1" title="Adicionar uma">+</button>${p.banned?'<span class="badge banned">Banida</span>':''}${h?.type?`<span class="badge ${cls}">${escapeHTML(h.type)}</span>`:''}</div>${h?.note?`<p class="part-note">${escapeHTML(h.note)}</p>`:''}${colorRow(p)}</div></article>`;
+  }
+  /** Linha de recolors da peça na coleção: clique marca a cor (+1), ✓/×N mostra as que você tem. */
+  function colorRow(p){
+    const kids=childrenOf(p); if(!kids.length)return'';
+    const kidsQty=kids.reduce((n,k)=>n+(inventory[k.id]||0),0); const generic=(inventory[p.id]||0)-kidsQty;
+    return `<div class="color-row" title="Clique numa cor para marcar que você tem essa versão">
+      <span class="color-row-label">${kidsQty?`${kids.filter(k=>inventory[k.id]>0).length} cor${kids.filter(k=>inventory[k.id]>0).length>1?'es':''}`:'Quais cores?'}${generic>0?` <em>${generic} sem cor</em>`:''}</span>
+      ${kids.map(k=>{const q=inventory[k.id]||0;return `<button class="color-thumb ${q?'on':''}" data-color="${escapeAttr(k.id)}" data-id="${escapeAttr(p.id)}" title="${escapeAttr(k.colorLabel||'Cor')}${q?` — você tem ${q}`:''}"><img loading="lazy" src="${escapeAttr(k.image||'')}" alt=""><i>${q>1?`×${q}`:'✓'}</i>${q?'<em class="ct-minus" title="Tirar uma">−</em>':''}</button>`;}).join('')}
+    </div>`;
   }
 
   function changeManualQty(id,delta) {
@@ -1414,7 +1454,7 @@
   }
 
   function availableOwned(kind,usage) {
-    return Object.values(PARTS).filter(p=>p.kind===kind && (inventory[p.id]||0)>(usage[p.id]||0) && !p.banned && (p.basicLock || !(usage[p.id]>0)));
+    return PARENTS().filter(p=>p.kind===kind && (inventory[p.id]||0)>(usage[p.id]||0) && !p.banned && (p.basicLock || !(usage[p.id]>0)));
   }
   function pick(arr){ return arr.length?arr[Math.floor(Math.random()*arr.length)]:null; }
   function usePart(p,usage){ if(!p)return false; usage[p.id]=(usage[p.id]||0)+1; return p.id; }
@@ -1520,7 +1560,8 @@
 
   async function resolveImage(key) {
     const p=PARTS[key]||null;
-    // Foto oficial vinda do catálogo do site (BeyCommunity/BeybladeHub) tem prioridade
+    // Peça-pai: mostra a cor que você tem (se marcou); depois a foto oficial do catálogo
+    if(p&&!p.parentId){const owned=childrenOf(p).find(c=>(inventory[c.id]||0)>0&&c.image);if(owned)return owned.image;}
     if(p?.image) return p.image;
     const title=p?.wiki||key;
     if(!title)return '';
@@ -1557,7 +1598,7 @@
   }
   function sessionAvailableParts(kind,slotIndex) {
     const reserved=reservedUsage(), other=sessionDraftUsage(slotIndex);
-    return Object.values(PARTS).filter(p=>p.kind===kind && (inventory[p.id]||0)>0).sort((a,b)=>a.display.localeCompare(b.display)).map(p=>{
+    return PARENTS().filter(p=>p.kind===kind && (inventory[p.id]||0)>0).sort((a,b)=>a.display.localeCompare(b.display)).map(p=>{
       const left=(inventory[p.id]||0)-(reserved[p.id]||0)-(other[p.id]||0);
       const repeated=(other[p.id]||0)>0 && !p.basicLock;
       return {p,qty:inventory[p.id]||0,left,disabled:left<=0||repeated};
@@ -1613,7 +1654,7 @@
     root.querySelectorAll('.session-clear-slot').forEach(b=>b.addEventListener('click',()=>{sessionDraft[+b.dataset.slot]=emptySlot();saveSession();renderSession();}));hydrateImages(root);
     const stock=document.getElementById('sessionAvailableParts');
     const order=['blade','integrated','lock','over','main','assist','ratchet','bit','rib'];
-    stock.innerHTML=order.map(kind=>{const items=Object.values(PARTS).filter(p=>p.kind===kind&&(inventory[p.id]||0)>0).map(p=>[p,Math.max(0,(inventory[p.id]||0)-(reserved[p.id]||0))]).filter(([,q])=>q>0);if(!items.length)return'';return `<div class="session-stock-group"><b>${KIND_LABEL[kind]||kind}</b>${items.map(([p,q])=>`<span>${escapeHTML(p.display)} <em>×${q}</em></span>`).join('')}</div>`;}).join('')||'<p class="empty-state">Todas as peças estão reservadas.</p>';
+    stock.innerHTML=order.map(kind=>{const items=PARENTS().filter(p=>p.kind===kind&&(inventory[p.id]||0)>0).map(p=>[p,Math.max(0,(inventory[p.id]||0)-(reserved[p.id]||0))]).filter(([,q])=>q>0);if(!items.length)return'';return `<div class="session-stock-group"><b>${KIND_LABEL[kind]||kind}</b>${items.map(([p,q])=>`<span>${escapeHTML(p.display)} <em>×${q}</em></span>`).join('')}</div>`;}).join('')||'<p class="empty-state">Todas as peças estão reservadas.</p>';
     const decksRoot=document.getElementById('sessionDecks');
     if(sessionDecks.some(d=>!d.beys))saveSession();
     decksRoot.innerHTML=sessionDecks.length?sessionDecks.map((d,i)=>`<article class="physical-deck"><div class="physical-deck-head"><div><small>DECK ${i+1}</small><h3>${escapeHTML(d.name||`Deck físico ${i+1}`)}</h3></div><button class="icon-btn release-session-deck" data-i="${i}" title="Desmontar / liberar peças">×</button></div>${window.BX?.deckPreview&&window.BX.partTag?._idx?`<div class="physical-preview">${window.BX.deckPreview(deckBeyNames(d.deck),{u:44})}</div>`:''}${d.deck.map((slot,j)=>`<div class="physical-bey"><b>${j+1}</b><span>${escapeHTML(slotName(slot))}</span></div>`).join('')}<small>${d.deck.flatMap(slotParts).length} componentes reservados</small></article>`).join(''):'<div class="empty-state">Nenhum deck físico reservado ainda.</div>';
@@ -1777,7 +1818,7 @@
         });
       }
       const q=equivalentKey(document.getElementById(cfg.search)?.value||'');
-      let items=Object.values(PARTS).filter(p=>!st.kind||p.kind===st.kind);
+      let items=PARENTS().filter(p=>!st.kind||p.kind===st.kind);
       if(q)items=items.filter(p=>[p.name,p.display,p.abbrev,...(p.aliases||[])].some(x=>x&&equivalentKey(x).includes(q)));
       if(st.ownedOnly)items=items.filter(p=>(inventory[p.id]||0)>0);
       items.sort((a,b)=>((inventory[b.id]||0)>0)-((inventory[a.id]||0)>0)||a.display.localeCompare(b.display));
@@ -1787,7 +1828,7 @@
         return `<button class="picker-tile ${owned?'owned':''}" data-part="${escapeAttr(p.id)}" title="${escapeAttr(p.display)} — ${KIND_LABEL[p.kind]||p.kind}${owned?` (você tem ×${owned})`:''}">
           ${partArt(p,'tile')}
           <span class="picker-tile-name">${escapeHTML(p.display)}</span>
-          ${owned?`<i class="picker-owned">${owned}</i>`:''}
+          ${owned?`<i class="picker-owned">✓${owned>1?` ×${owned}`:''}</i><em class="picker-have">na coleção</em>`:''}
           ${p.banned?'<i class="picker-banned">!</i>':''}
         </button>`;
       }).join('')||'<div class="empty-state">Nenhuma peça com esses filtros.</div>';
@@ -1804,14 +1845,14 @@
   const renderPicker=makePicker({
     search:'pickerSearch',filters:'pickerFilters',grid:'pickerGrid',hint:'pickerHint',
     hintText:()=>`clique para colocar no <b>Bey ${activeSlot+1}</b>.`,
-    onPick:(p)=>{applyPartToSlot(p,activeSlot);toast(`${p.display} → Bey ${activeSlot+1}${(inventory[p.id]||0)?'':' (fora da sua coleção)'}`);},
+    onPick:async(p)=>{const c=await chooseColor(p);if(!c)return;applyPartToSlot(c,activeSlot);toast(`${c.display}${c.colorLabel?` (${c.colorLabel})`:''} → Bey ${activeSlot+1}${(inventory[c.id]||0)?'':' (fora da sua coleção)'}`);},
   });
 
   // Coleção: clique adiciona +1 cópia
   const renderColPicker=makePicker({
     search:'colPickerSearch',filters:'colPickerFilters',grid:'colPickerGrid',hint:'colPickerHint',
     hintText:()=>'clique para adicionar <b>+1</b> à sua coleção (o botão − no card da peça remove).',
-    onPick:(p)=>{changeManualQty(p.id,1);toast(`+1 ${p.display} na coleção (agora ×${inventory[p.id]||1}).`);},
+    onPick:async(p)=>{const c=await chooseColor(p);if(!c)return;changeManualQty(c.id,1);toast(`+1 ${c.display}${c.colorLabel?` (${c.colorLabel})`:''} na coleção (agora ×${inventory[c.id]||1}).`);},
   });
 
   /** Adiciona várias peças de uma vez (ex.: as de um produto) — um só re-render. */
@@ -1905,6 +1946,8 @@
     getMetaDecks: () => metaDecks,
     getWeekly: () => BBX_WEEKLY,
     getInventory: () => ({ ...inventory }),
+    /** Coleção pronta pra enviar: {localId, qty} sem contar a peça-pai duas vezes (só o "sem cor" dela). */
+    getCollectionItems: () => Object.entries(inventory).map(([id,qty])=>{const p=PARTS[id];if(!p)return null;if(p.parentId)return {id,qty};const kidsQty=childrenOf(p).reduce((n,k)=>n+(inventory[k.id]||0),0);const generic=qty-kidsQty;return generic>0?{id,qty:generic}:null;}).filter(Boolean),
     getPart: (id) => PARTS[id],
     listParts: () => Object.values(PARTS),
     partSlug: (p) => slug(p.display || p.name),
@@ -1915,21 +1958,37 @@
     importCatalog: (serverParts) => {
       const KIND_MAP={BLADE:'blade',LOCK_CHIP:'lock',OVER_BLADE:'over',MAIN_BLADE:'main',ASSIST_BLADE:'assist',RATCHET:'ratchet',BIT:'bit'};
       let added=0,enriched=0;
-      for(const sp of serverParts||[]){
+      const list=serverParts||[];
+      const localByServer={};
+      for(const sp of list.filter(x=>!x.parentId)){
         let kind=KIND_MAP[sp.kind]||'blade';
         if(sp.subKind==='INTEGRATED')kind='integrated';
         if(sp.subKind==='RIB')kind='rib';
         const display=sp.display||sp.name;
         if(!display)continue;
         const keys=[display,sp.name,...(sp.aliases||[])].filter(Boolean).map(equivalentKey);
-        const exists=Object.values(PARTS).find(p=>p.kind===kind&&[p.name,p.display,p.abbrev,...(p.aliases||[])].some(x=>x&&keys.includes(equivalentKey(x))));
+        const abbr=(sp.abbrev||'').toUpperCase();
+        let exists=PARENTS().find(p=>p.kind===kind&&([p.name,p.display,p.abbrev,...(p.aliases||[])].some(x=>x&&keys.includes(equivalentKey(x)))||(abbr&&['bit','ratchet','rib'].includes(kind)&&(p.abbrev||'').toUpperCase()===abbr)));
         if(exists){
           if(!exists.image&&sp.img){exists.image=sp.img;enriched++;}
           if(!exists.type&&sp.type)exists.type=sp.type;
-          continue;
+          if(!exists.serverId){exists.serverId=sp.id;enriched++;}
+        } else {
+          const id=reg(P(kind,sp.name||display,{display,aliases:sp.aliases||[],abbrev:sp.abbrev||'',type:sp.type||'',image:sp.img||'',basicLock:kind==='lock',source:'catálogo do site',serverId:sp.id}));
+          exists=PARTS[id]; added++;
         }
-        reg(P(kind,sp.name||display,{display,aliases:sp.aliases||[],abbrev:sp.abbrev||'',type:sp.type||'',image:sp.img||'',basicLock:kind==='lock',source:'catálogo do site'}));
-        added++;
+        localByServer[sp.id]=exists;
+      }
+      // recolors: peças-filhas com id próprio, mesma identidade do pai
+      let order=0;
+      for(const sp of list.filter(x=>x.parentId)){
+        const parent=localByServer[sp.parentId]||Object.values(PARTS).find(p=>p.serverId===sp.parentId);
+        if(!parent)continue;
+        const id=parent.id+'#'+sp.id;
+        if(!PARTS[id]){
+          PARTS[id]={...parent,id,aliases:[],image:sp.img||parent.image,parentId:parent.id,serverId:sp.id,colorLabel:sp.variantLabel||'Cor',colorOrder:order++,source:'catálogo do site'};
+          added++;
+        } else { const c=PARTS[id]; if(sp.img)c.image=sp.img; c.colorLabel=sp.variantLabel||c.colorLabel; c.serverId=sp.id; }
       }
       if(added||enriched){saveLiveCatalog();renderAll();}
       return {added,enriched};
@@ -1960,8 +2019,9 @@
       deck = emptyDeck();
       beys.slice(0,3).forEach((bey,i)=>{
         (bey||[]).forEach(name=>{
-          const key=equivalentKey(name);
-          const p=Object.values(PARTS).find(x=>[x.name,x.display,x.abbrev,...(x.aliases||[])].some(a=>a&&equivalentKey(a)===key));
+          let p=null;
+          if(String(name).startsWith('#sid:')){const sid=String(name).slice(5);p=Object.values(PARTS).find(x=>x.serverId===sid)||null;}
+          if(!p){const key=equivalentKey(name);p=Object.values(PARTS).find(x=>[x.name,x.display,x.abbrev,...(x.aliases||[])].some(a=>a&&equivalentKey(a)===key));}
           if(p)applyPartToSlot(p,i);
         });
       });

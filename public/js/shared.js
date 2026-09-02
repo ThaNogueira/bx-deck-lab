@@ -34,14 +34,24 @@
     partsPromise = api('/api/parts-index').then(({ parts }) => {
       const byId = new Map();
       const byName = new Map();
+      const byParent = new Map(); // peça-pai -> recolors (peças-filhas)
       for (const p of parts) {
         byId.set(p.id, p);
+        if (p.parentId) {
+          if (!byParent.has(p.parentId)) byParent.set(p.parentId, []);
+          byParent.get(p.parentId).push(p);
+          continue; // filhas não entram na busca por nome (mesmo nome do pai)
+        }
         for (const n of [p.name, p.display, p.abbrev, ...(p.aliases || [])]) {
           const k = norm(n);
           if (k && !byName.has(k)) byName.set(k, p);
         }
       }
-      return { list: parts, byId, byName };
+      // nome exibido da cor: "Dran Sword · Cor 2"
+      for (const kids of byParent.values()) {
+        for (const k of kids) { const parent = byId.get(k.parentId); k.display = `${parent?.display || k.display} · ${k.variantLabel || 'Cor'}`; }
+      }
+      return { list: parts, byId, byName, byParent, variantsOf: (id) => byParent.get(id) || [] };
     });
     return partsPromise;
   }
@@ -280,6 +290,59 @@
     </svg>`;
   }
 
+  // -------------------------------------------------------------------------
+  // Recolors: popup "escolha a cor" (usado por coleção, builder, combos, vendas)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Abre o popup de cores. options = [{id, img, label, qty?}]. Resolve com o id
+   * escolhido, '__default' (cor padrão/não sei) ou null (cancelou).
+   */
+  function colorDialog({ name, options = [], allowDefault = true, defaultLabel = 'Padrão / não sei a cor', hint = 'Qual versão (recolor) dessa peça?' } = {}) {
+    return new Promise((resolve) => {
+      let el = document.getElementById('bxColorDialog');
+      if (!el) { el = document.createElement('div'); el.id = 'bxColorDialog'; el.className = 'modal-backdrop color-dialog'; document.body.appendChild(el); }
+      el.hidden = false;
+      el.innerHTML = `<div class="modal color-modal" role="dialog" aria-label="Escolha a cor">
+        <button class="modal-close" data-x>×</button>
+        <p class="eyebrow">ESCOLHA A COR</p>
+        <h2>${esc(name || 'Peça')}</h2>
+        <p class="color-hint">${esc(hint)}</p>
+        <div class="color-grid">
+          ${options.map((o) => `<button class="color-opt" data-pick="${esc(o.id)}"><span class="color-opt-img">${o.img ? `<img src="${esc(o.img)}" alt="">` : '<b>?</b>'}</span><span class="color-opt-label">${esc(o.label || 'Cor')}</span>${o.qty ? `<i class="color-opt-qty">×${o.qty}</i>` : ''}</button>`).join('')}
+          ${allowDefault ? `<button class="color-opt default" data-pick="__default"><span class="color-opt-img"><b>?</b></span><span class="color-opt-label">${esc(defaultLabel)}</span></button>` : ''}
+        </div>
+      </div>`;
+      const onKey = (e) => { if (e.key === 'Escape') done(null); };
+      const done = (v) => { el.hidden = true; el.innerHTML = ''; el.onclick = null; document.removeEventListener('keydown', onKey); resolve(v); };
+      el.onclick = (e) => {
+        if (e.target === el) return done(null);
+        const b = e.target.closest('[data-pick]');
+        if (b) return done(b.dataset.pick);
+        if (e.target.closest('[data-x]')) done(null);
+      };
+      document.addEventListener('keydown', onKey);
+    });
+  }
+
+  /**
+   * Dado id/nome/objeto de peça do catálogo do site, pergunta a cor quando a
+   * peça tem recolors. Resolve com o id final (filha, ou pai se "padrão") ou
+   * null se cancelou. Peça sem recolors resolve direto.
+   */
+  async function pickColor(ref, opts = {}) {
+    const idx = await partTagReady();
+    const p = ref && typeof ref === 'object' ? ref : (idx.byId.get(ref) || idx.byName.get(norm(ref)));
+    if (!p) return typeof ref === 'string' ? ref : null;
+    const parentId = p.parentId || p.id;
+    const kids = idx.variantsOf(parentId);
+    if (!kids.length) return p.id;
+    const parent = idx.byId.get(parentId) || p;
+    const r = await colorDialog({ name: parent.display, options: kids.map((k) => ({ id: k.id, img: k.img, label: k.variantLabel || 'Cor' })), ...opts });
+    if (r === null) return null;
+    return r === '__default' ? parentId : r;
+  }
+
   const money = (cents) => cents == null ? '' : (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   const dateFmt = (d, opts) => new Date(d).toLocaleString('pt-BR', opts ?? { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 
@@ -400,12 +463,14 @@
     mount.className = 'topbar shell';
     mount.innerHTML = `
       <button class="nav-toggle" id="navToggle" title="Menu" aria-label="Abrir menu">☰</button>
+      <button class="nav-toggle nav-back" id="navBack" title="Voltar" aria-label="Voltar" ${history.length > 1 ? '' : 'hidden'}><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
       <a class="brand mini" href="/#home" style="text-decoration:none">
         <div class="brand-mark" aria-hidden="true"><span>X</span></div>
       </a>
       <div class="header-status" id="headerStatus"></div>
       <div class="header-user" id="headerUser"></div>`;
     document.getElementById('headerUser').innerHTML = await userChipHtml();
+    document.getElementById('navBack')?.addEventListener('click', () => { if (history.length > 1) history.back(); else location.href = '/#home'; });
 
     // Comportamento: colapsar (desktop) / abrir (mobile)
     const isMobile = () => matchMedia('(max-width: 900px)').matches;
@@ -492,7 +557,7 @@
 
   window.BX = {
     api, me, site, esc, norm, toast, money, dateFmt, icon,
-    partsIndex, partTagReady, partTag, comboTags, partThumb, KIND_PT, radar, beyVisual, beyMini, deckPreview,
+    partsIndex, partTagReady, partTag, comboTags, partThumb, KIND_PT, radar, beyVisual, beyMini, deckPreview, colorDialog, pickColor,
     avatarHtml, renderTopbar, renderShell, mountUserWidget, userChipHtml, setActiveNav,
     report, requireLogin, qs, pathPart, ytEmbed,
   };

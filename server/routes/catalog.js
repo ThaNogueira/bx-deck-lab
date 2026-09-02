@@ -25,7 +25,21 @@ export function partDto(p) {
     weightGrams: p.weightGrams,
     banned: p.banned,
     hidden: p.hidden,
+    parentId: p.parentId || null,
+    variantLabel: p.variantLabel || null,
+    variantOrder: p.variantOrder || 0,
   };
+}
+
+/** Recolor (peça-filha) em formato compacto. */
+export const variantDto = (c) => ({ id: c.id, slug: c.slug, imageUrl: c.imageUrl, label: c.variantLabel || 'Cor', order: c.variantOrder || 0 });
+
+/** Anexa `variants` (peças-filhas) a uma lista de peças-pai. */
+export async function withVariants(parts) {
+  const ids = parts.map((p) => p.id);
+  if (!ids.length) return [];
+  const kids = await prisma.part.findMany({ where: { parentId: { in: ids } }, orderBy: { variantOrder: 'asc' } });
+  return parts.map((p) => ({ ...partDto(p), variants: kids.filter((k) => k.parentId === p.id).map(variantDto) }));
 }
 
 export function productDto(p) {
@@ -57,6 +71,7 @@ router.get('/api/parts-index', ah(async (_req, res) => {
         id: p.id, slug: p.slug, kind: p.kind, subKind: p.subKind,
         name: p.name, display: p.displayName, aliases: json(p.aliasesJson, []),
         abbrev: p.abbrev, type: p.type, img: p.imageUrl,
+        parentId: p.parentId || null, variantLabel: p.variantLabel || null,
       })),
     };
   }
@@ -69,10 +84,11 @@ export function invalidatePartsIndex() {
 }
 
 router.get('/api/parts', ah(async (req, res) => {
-  const { query = '', kind = '' } = req.query;
+  const { query = '', kind = '', all = '' } = req.query;
   const where = {};
   if (!isStaff(req.user)) where.hidden = false;
   if (kind && KIND_ORDER.includes(String(kind))) where.kind = String(kind);
+  if (all !== '1') where.parentId = null; // catálogo lista só as peças-pai (recolors vêm em `variants`)
   let parts = await prisma.part.findMany({ where, orderBy: [{ kind: 'asc' }, { displayName: 'asc' }] });
   const q = String(query).toLowerCase().trim();
   if (q) {
@@ -81,20 +97,26 @@ router.get('/api/parts', ah(async (req, res) => {
         .some((v) => v && String(v).toLowerCase().includes(q)),
     );
   }
-  res.json({ parts: parts.map(partDto) });
+  res.json({ parts: all === '1' ? parts.map(partDto) : await withVariants(parts) });
 }));
 
 router.get('/api/parts/:slug', ah(async (req, res) => {
-  const part = await prisma.part.findUnique({
+  let part = await prisma.part.findUnique({
     where: { slug: req.params.slug },
     include: { products: { include: { product: true } } },
   });
+  let selectedVariant = null;
+  if (part?.parentId) { // slug de uma cor → página da peça-pai com a cor pré-selecionada
+    selectedVariant = part.id;
+    part = await prisma.part.findUnique({ where: { id: part.parentId }, include: { products: { include: { product: true } } } });
+  }
   if (!part || (part.hidden && !isStaff(req.user))) return res.status(404).json({ error: 'Peça não encontrada.' });
+  const [withKids] = await withVariants([part]);
   const products = part.products
     .map((pp) => pp.product)
     .filter((p) => !p.hidden || isStaff(req.user))
     .sort((a, b) => (a.line || 'Z').localeCompare(b.line || 'Z') || (a.code || '').localeCompare(b.code || ''));
-  res.json({ part: partDto(part), products: products.map(productDto) });
+  res.json({ part: withKids, selectedVariant, products: products.map(productDto) });
 }));
 
 const LINE_RANK = { BX: 0, UX: 1, CX: 2, HASBRO: 3, OTHER: 4 };

@@ -81,6 +81,12 @@ model Part {
   banned      Boolean  @default(false)
   hidden      Boolean  @default(false)
   source      String?
+  // Recolors: cada cor é uma peça-filha (id próprio) agrupada pela peça-pai
+  parentId     String?
+  variantLabel String? // ex.: "Cor 2", "Ver. Vermelha"
+  variantOrder Int      @default(0)
+  parent       Part?    @relation("PartVariants", fields: [parentId], references: [id], onDelete: Cascade)
+  variants     Part[]   @relation("PartVariants")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -88,6 +94,7 @@ model Part {
   favoriteOf  User[]
 
   @@index([kind])
+  @@index([parentId])
 }
 
 model Product {
