@@ -107,7 +107,7 @@
   function beyBubble(s, i, min, max) {
     const p = s.part;
     const t = max === min ? 1 : (s.score - min) / (max - min);
-    const size = Math.round(42 + Math.pow(t, 0.62) * 62);  // 42px … 104px
+    const size = Math.round(52 + Math.pow(t, 0.62) * 74);  // 52px … 126px
     const dur = (11 + ((i * 37) % 60) / 10).toFixed(1);    // 11s … 16.9s (bem lento)
     const delay = -(((i * 53) % 70) / 10).toFixed(1);      // dessincroniza sem atrasar a entrada
     const drift = (i % 2 ? 1 : -1) * (2 + (i % 3));        // deriva lateral discreta

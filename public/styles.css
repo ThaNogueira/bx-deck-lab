@@ -1002,3 +1002,11 @@ button.user-chip{cursor:pointer}
 .morb img{width:auto;height:auto;max-width:100%;max-height:100%;object-fit:contain}
 .mfloat{position:relative}
 .mname{position:relative;z-index:2}
+
+/* ---- v13.3 — beys da home levemente maiores (respiro proporcional) ---- */
+.meta-cloud{grid-template-columns:repeat(auto-fit,minmax(370px,1fr))}
+.mblock-field{padding:18px 10px 14px;gap:12px 4px}
+@media(max-width:900px){
+  .mbey{width:calc(min(var(--s),96px) + 16px)}
+  .morb{width:min(var(--s),96px);height:min(var(--s),96px)}
+}
