@@ -96,6 +96,25 @@
   partTag._idx = null;
   const partTagReady = () => partsIndex().then((idx) => { partTag._idx = idx; return idx; });
 
+  // Service worker: cache-first de imagens de peças + SWR dos dados do catálogo. Na primeira
+  // visita, depois de tudo carregar, manda a lista de fotos pro SW aquecer em segundo plano.
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    navigator.serviceWorker.register('/sw.js').then(async (reg) => {
+      const sw = reg.active || reg.waiting || reg.installing;
+      if (!sw) return;
+      const warm = async () => {
+        if (navigator.connection?.saveData) return;
+        try {
+          const idx = await partTagReady();
+          const urls = [...new Set(idx.list.map((p) => p.img).filter((u) => u && /^https?:/.test(u)))];
+          (reg.active || sw).postMessage({ type: 'warm', urls });
+        } catch {}
+      };
+      const start = () => ('requestIdleCallback' in window ? requestIdleCallback(() => setTimeout(warm, 1500), { timeout: 8000 }) : setTimeout(warm, 4000));
+      if (document.readyState === 'complete') start(); else addEventListener('load', start, { once: true });
+    }).catch(() => {});
+  }
+
   /** Resolve um combo em texto ("WizardRod 1-60 Hexa") em tags clicáveis. */
   function comboTags(text, opts = {}) {
     const idx = partTag._idx;

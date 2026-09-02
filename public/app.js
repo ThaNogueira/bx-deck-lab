@@ -642,7 +642,7 @@
       if(results[5].status==='fulfilled'){products.push(...parseBeyCommunityProducts(results[5].value,'Hasbro'));successful++;}
       if(products.length)mergeProductCatalog(products);
       if(!successful)throw new Error('Todas as fontes falharam');
-      catalogLastSync=Date.now();saveLiveCatalog();updateCatalogStatus(`Online • ${count||'—'} peças • ${productCatalog.length} produtos`,'live');renderAll();
+      catalogLastSync=Date.now();saveLiveCatalog();updateCatalogStatus(`Online • ${PARENTS().length} peças • ${productCatalog.length} produtos`,'live');renderAll();
       if(!quiet)toast('Catálogo e heurísticas atualizados.');
     }catch(e){updateCatalogStatus('Offline • usando cache','error');renderMissing();if(!quiet)toast('Não consegui atualizar agora; mantive o catálogo em cache.');}
     finally{catalogSyncing=false;}
@@ -939,7 +939,7 @@
       banned.forEach(p=>errors.push(`Bey ${i+1}: ${p.display} está banida no regulamento WBO padrão.`));
     });
     Object.entries(counts).forEach(([id,n])=>{
-      const p=PARTS[id];
+      const p=PARTS[id]; if(!p)return; // peça ainda não conhecida (ex.: cor vinda do servidor antes do catálogo carregar)
       if (n > (inventory[id]||0)) {
         // No modo catálogo, não ter a peça é só um aviso — não invalida o deck.
         if (builderShowAll) info.push(`${p.display}: você usa ${n}× mas possui ${(inventory[id]||0)}× (modo catálogo).`);
@@ -1205,7 +1205,7 @@
     const parts=slotParts(slot);
     if (parts.some(id=>PARTS[id]?.banned)) errs.push('contém peça banida');
     const used=currentUsage(i);
-    parts.forEach(id=>{ const p=PARTS[id]; if((used[id]||0)>0 && !p.basicLock) errs.push(`${p.display} já está em outro Bey`); if((used[id]||0)+1>(inventory[id]||0)) errs.push(`sem cópia física de ${p.display}`); });
+    parts.forEach(id=>{ const p=PARTS[id]; if(!p)return; if((used[id]||0)>0 && !p.basicLock) errs.push(`${p.display} já está em outro Bey`); if((used[id]||0)+1>(inventory[id]||0)) errs.push(`sem cópia física de ${p.display}`); });
     return [...new Set(errs)];
   }
 
@@ -1658,11 +1658,17 @@
   function shortLabel(p){ return p.abbrev || p.display.split(/\s+/).map(x=>x[0]).join('').slice(0,3).toUpperCase(); }
 
   const imgQueue=[]; let imgActive=0;
+  const imgObserver=('IntersectionObserver' in window)?new IntersectionObserver((entries)=>{
+    for(const en of entries){ if(!en.isIntersecting)continue; imgObserver.unobserve(en.target); if(!en.target.dataset.loaded){en.target.dataset.loaded='1';enqueueImage(en.target);} }
+  },{rootMargin:'300px 0px'}):null;
   function hydrateImages(root=document) {
-    root.querySelectorAll('.part-art[data-wiki]:not([data-loaded])').forEach(el=>{el.dataset.loaded='1';enqueueImage(el);});
+    root.querySelectorAll('.part-art[data-wiki]:not([data-loaded]):not([data-observed])').forEach(el=>{
+      if(imgObserver){el.dataset.observed='1';imgObserver.observe(el);}
+      else {el.dataset.loaded='1';enqueueImage(el);}
+    });
   }
   function enqueueImage(el){imgQueue.push(el);runImageQueue();}
-  function runImageQueue(){while(imgActive<4&&imgQueue.length){const el=imgQueue.shift();imgActive++;resolveImage(el.dataset.part||el.dataset.wiki).then(url=>{if(url&&el.isConnected){const img=new Image();img.alt='';img.onload=()=>{if(!el.isConnected)return;el.innerHTML='';el.appendChild(img);el.classList.remove('loading');};img.onerror=()=>el.classList.remove('loading');img.src=url;}else el.classList.remove('loading');}).finally(()=>{imgActive--;runImageQueue();});}}
+  function runImageQueue(){while(imgActive<6&&imgQueue.length){const el=imgQueue.shift();imgActive++;resolveImage(el.dataset.part||el.dataset.wiki).then(url=>{if(url&&el.isConnected){const img=new Image();img.alt='';img.onload=()=>{if(!el.isConnected)return;el.innerHTML='';el.appendChild(img);el.classList.remove('loading');};img.onerror=()=>el.classList.remove('loading');img.src=url;}else el.classList.remove('loading');}).finally(()=>{imgActive--;runImageQueue();});}}
 
   async function resolveImage(key) {
     const p=PARTS[key]||null;
@@ -1676,7 +1682,8 @@
     const cache=loadJSON('bx_img_cache',{});
     const ck=p?.id||title;
     const forceExact=p?.id==='blade:pteraswing'; // evita reaproveitar eventual cache ruim de Talon Ptera.
-    if(cache[ck] && !forceExact)return cache[ck];
+    if(typeof cache[ck]==='string'&&cache[ck].startsWith('miss:')){ if(Date.now()-(+cache[ck].slice(5)||0)<7*864e5)return ''; }
+    else if(cache[ck] && !forceExact)return cache[ck];
     try {
       let url=`https://beyblade.fandom.com/api.php?action=query&format=json&origin=*&prop=pageimages&piprop=thumbnail&pithumbsize=512&titles=${encodeURIComponent(title)}`;
       let data=await fetch(url).then(r=>r.json());
@@ -1688,7 +1695,7 @@
         page=Object.values(data.query?.pages||{})[0];
         image=page?.thumbnail?.source||'';
       }
-      if(image){cache[ck]=image;localStorage.setItem('bx_img_cache',JSON.stringify(cache));}
+      cache[ck]=image||('miss:'+Date.now());localStorage.setItem('bx_img_cache',JSON.stringify(cache));
       return image;
     } catch { return ''; }
   }
@@ -1721,7 +1728,7 @@
       slotParts(slot).filter(id=>PARTS[id]?.banned).forEach(id=>warnings.push(`Bey ${i+1}: ${PARTS[id].display} é banida no regulamento WBO padrão, mas a sessão casual permite reservar a peça.`));
     });
     Object.entries(own).forEach(([id,n])=>{
-      const p=PARTS[id]; const total=(reserved[id]||0)+n, have=inventory[id]||0;
+      const p=PARTS[id]; if(!p)return; const total=(reserved[id]||0)+n, have=inventory[id]||0;
       if(total>have)errors.push(`${p.display}: seriam necessárias ${total} cópias físicas, mas você possui ${have}.`);
       if(n>1 && !p.basicLock)errors.push(`${p.display} se repete dentro deste deck 3-on-3.`);
     });
@@ -1788,7 +1795,7 @@
     root.querySelectorAll('.session-bey-card').forEach(c=>c.addEventListener('click',e=>{if(e.target.closest('select,button,a'))return;setSessionActiveSlot(+c.dataset.sessionCard);}));
     renderSessPicker();
     const decksRoot=document.getElementById('sessionDecks');
-    if(sessionDecks.some(d=>!d.beys))saveSession();
+    sessionDecks.forEach(d=>{ if(!d.beys){ d.beys=deckBeyNames(d.deck); d.names=(d.deck||[]).map(slotName); } });
     decksRoot.innerHTML=sessionDecks.length?sessionDecks.map((d,i)=>`<article class="physical-deck"><div class="physical-deck-head"><div><small>DECK ${i+1}</small><h3>${escapeHTML(d.name||`Deck físico ${i+1}`)}</h3></div><button class="icon-btn release-session-deck" data-i="${i}" title="Desmontar / liberar peças">×</button></div>${window.BX?.deckPreview&&window.BX.partTag?._idx?`<div class="physical-preview">${window.BX.deckPreview(deckBeyNames(d.deck),{u:44})}</div>`:''}${d.deck.map((slot,j)=>`<div class="physical-bey"><b>${j+1}</b><span>${escapeHTML(slotName(slot))}</span></div>`).join('')}<small>${d.deck.flatMap(slotParts).length} componentes reservados</small></article>`).join(''):'<div class="empty-state">Nenhum deck físico reservado ainda.</div>';
     decksRoot.querySelectorAll('.release-session-deck').forEach(b=>b.addEventListener('click',()=>{sessionDecks.splice(+b.dataset.i,1);saveSession();renderSession();toast('Peças liberadas para a sessão.');}));
   }
@@ -2035,7 +2042,20 @@
     saveState(); renderAll(); activateView('builder');
     document.getElementById('deckGrid')?.scrollIntoView({behavior:'smooth',block:'start'});
   }
-  function renderAll(){ renderHeader(); renderBuilder(); renderPicker(); renderColPicker(); renderCollection(); renderMissing(); renderPopular(); renderWeekly(); renderSession(); renderTournament(); renderPhysicalPanel(); }
+  // Renderização preguiçosa: só a view visível é desenhada; as demais ficam marcadas como "sujas"
+  // e renderizam quando o usuário abre (evita centenas de imagens/DOM de abas escondidas no boot).
+  const VIEW_RENDERERS={
+    home:[()=>renderWeekly()],
+    builder:[()=>renderBuilder(),()=>renderPicker(),()=>renderPhysicalPanel()],
+    collection:[()=>renderCollection(),()=>renderColPicker()],
+    missing:[()=>renderMissing()],
+    popular:[()=>renderPopular()],
+    session:[()=>renderSession()],
+    tournament:[()=>renderTournament()],
+  };
+  let currentView='home'; const dirtyViews=new Set(Object.keys(VIEW_RENDERERS));
+  function renderView(name){ (VIEW_RENDERERS[name]||[]).forEach(fn=>{try{fn();}catch(e){console.error('[render]',name,e);}}); dirtyViews.delete(name); }
+  function renderAll(){ renderHeader(); Object.keys(VIEW_RENDERERS).forEach(v=>dirtyViews.add(v)); renderView(currentView); }
 
   function escapeHTML(s){return String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
   function escapeAttr(s){return escapeHTML(s).replace(/`/g,'&#96;');}
@@ -2047,9 +2067,8 @@
     const metaJump=(name==='meta'||name==='weekly');
     const target=metaJump?'home':(document.getElementById(`view-${name}`)?name:'home');
     document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.id===`view-${target}`));
-    if(target==='collection') hydrateImages(document.getElementById('view-collection'));
-    if(target==='builder') hydrateImages(document.getElementById('view-builder'));
-    if(target==='missing') renderMissing();
+    currentView=target;
+    if(dirtyViews.has(target))renderView(target);
     if(metaJump){
       const sec=document.getElementById('metaSection');
       if(sec){ requestAnimationFrame(()=>sec.scrollIntoView({behavior:'smooth',block:'start'})); return; }
@@ -2107,7 +2126,7 @@
   document.getElementById('resetTournamentBtn').addEventListener('click',()=>{if(confirm('Apagar inscrições, resultados e chave deste torneio?')){tournament={maxPlayers:tournament.maxPlayers||8,players:[],rounds:[],thirdPlaceEnabled:!!tournament.thirdPlaceEnabled,thirdPlaceMatch:null};saveTournament();renderTournament();toast('Torneio resetado.');}});
 
   loadLiveCatalog();
-  loadProductCatalog();
+  const productSavedAt=loadProductCatalog();
   onlineStockCache=loadJSON(ONLINE_STOCK_KEY,[]);
   onlineStockCache.forEach(rec=>{if(rec?.match&&!STOCK.some(s=>s.match.some(x=>rec.match.includes(x))))STOCK.push(rec);});
   rebuildInventory();
@@ -2127,7 +2146,7 @@
     getPart: (id) => PARTS[id],
     listParts: () => Object.values(PARTS),
     partSlug: (p) => slug(p.display || p.name),
-    rerenderMeta: () => { renderPopular(); renderWeekly(); renderCollection(); },
+    rerenderMeta: () => { renderAll(); },
     rerenderHeader: renderHeader,
     activateView,
     /** Traz o catálogo do servidor (todas as peças + fotos oficiais) para o montador. */
@@ -2170,6 +2189,7 @@
         } else { const c=PARTS[id]; if(sp.img)c.image=sp.img; c.colorLabel=sp.variantLabel||c.colorLabel; c.serverId=sp.id; c.colorOrder=order++; c.display=parent.display; c.name=parent.name; c.abbrev=parent.abbrev; c.type=parent.type||c.type; }
       }
       if(added||enriched){saveLiveCatalog();rebuildInventory();}
+      updateCatalogStatus(`Online • ${PARENTS().length} peças • ${productCatalog.length} produtos`,'live');
       return {added,enriched};
     },
     /** Adiciona à coleção as peças de um produto vindas do servidor. Devolve os nomes adicionados. */
@@ -2213,7 +2233,8 @@
     },
   };
   document.dispatchEvent(new CustomEvent('bxapp-ready'));
-  updateCatalogStatus('Conectando ao catálogo online…','live',true);
-  // A v7 assume conexão: atualiza o catálogo em toda abertura para que lançamentos novos apareçam sem depender do cache do dia anterior.
-  syncLiveCatalog({quiet:true,force:true}).catch(()=>{});
+  updateCatalogStatus('Carregando catálogo…','live',true);
+  // Peças vêm do servidor. O sync remoto legado (produtos/imagens do hub) roda em segundo plano, no máximo 1x a cada 24h, e só quando o navegador está ocioso.
+  const lazySync=()=>{ if(productCatalog.length&&Date.now()-productSavedAt<24*3600e3)return; syncLiveCatalog({quiet:true,force:true}).catch(()=>{}); };
+  if('requestIdleCallback' in window)requestIdleCallback(()=>setTimeout(lazySync,3000),{timeout:10000}); else setTimeout(lazySync,6000);
 })();
