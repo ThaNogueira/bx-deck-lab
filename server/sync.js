@@ -461,6 +461,28 @@ export async function dedupeParts() {
  * nome/stats/sigla do pai. Casa pela URL da imagem; nunca apaga filhas (podem
  * estar em coleções/decks). Rótulo padrão "Cor N" (admin pode renomear).
  */
+/**
+ * Rótulo da cor a partir do nome do arquivo da imagem (BeyCommunity nomeia
+ * "0-80-Green.png", "Ratchet-1-60-UX-01.webp", "1-60-CX08.png"...). Remove o
+ * nome/sigla da peça e palavras genéricas; o que sobra é a cor/produto.
+ */
+export function variantLabelFromUrl(url, part) {
+  try {
+    let f = decodeURIComponent(String(url).split('/').pop() || '').replace(/\.[a-z0-9]+$/i, '');
+    f = f.replace(/_[0-9a-f-]{16,}$/i, '').replace(/[_]+/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2');
+    const drop = new Set(['ratchet', 'blade', 'bit', 'lock', 'chip', 'assist', 'main', 'over', 'metal', 'rib', 'integrated', 'beyblade', 'x', 'image', 'img', 'png', 'webp']);
+    for (const n of [part.displayName, part.name, part.abbrev]) for (const t of String(n || '').toLowerCase().split(/[^a-z0-9]+/)) if (t) drop.add(t);
+    // ratchets: "1-60" vira tokens 1 e 60 — remove também a sigla inteira
+    let s = f;
+    if (part.abbrev) s = s.replace(new RegExp(part.abbrev.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&'), 'ig'), ' ');
+    const tokens = s.split(/[^A-Za-z0-9]+/).filter((t) => t && !drop.has(t.toLowerCase()));
+    if (!tokens.length || tokens.every((t) => /^\d+$/.test(t))) return null;
+    let label = tokens.join(' ').replace(/\b(BX|UX|CX|G)\s?(\d{1,4})\b/gi, (_, a, b) => `${a.toUpperCase()}-${b}`);
+    label = label.replace(/\b([a-z])/g, (m) => m.toUpperCase()).trim();
+    return label.length > 1 && label.length <= 40 ? label : null;
+  } catch { return null; }
+}
+
 export async function syncVariants() {
   const parents = await prisma.part.findMany({ where: { parentId: null } });
   const children = await prisma.part.findMany({ where: { parentId: { not: null } } });
@@ -480,11 +502,16 @@ export async function syncVariants() {
         type: p.type, statsJson: p.statsJson, weightGrams: p.weightGrams, banned: p.banned, hidden: p.hidden,
         variantOrder: n, imageUrl: url, aliasesJson: '[]', source: 'variante',
       };
+      const autoLabel = variantLabelFromUrl(url, p) || `Cor ${n + 1}`;
       const ex = mine.find((c) => c.imageUrl === url);
-      if (ex) { await prisma.part.update({ where: { id: ex.id }, data: inherit }); updated++; continue; }
+      if (ex) {
+        // rótulo automático só substitui rótulo automático (admin pode ter renomeado)
+        if (!ex.variantLabel || /^Cor \d+$/.test(ex.variantLabel)) inherit.variantLabel = autoLabel;
+        await prisma.part.update({ where: { id: ex.id }, data: inherit }); updated++; continue;
+      }
       let slug = `${p.slug}-cor-${n + 1}`;
       if (await prisma.part.findUnique({ where: { slug } })) slug = `${slug}-${Date.now().toString(36)}`;
-      await prisma.part.create({ data: { ...inherit, slug, parentId: p.id, variantLabel: `Cor ${n + 1}` } });
+      await prisma.part.create({ data: { ...inherit, slug, parentId: p.id, variantLabel: autoLabel } });
       created++;
     }
   }

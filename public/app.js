@@ -130,7 +130,7 @@
     if(old){
       const aliases=[...(old.aliases||[]),...(part.aliases||[])].filter(Boolean);
       const merged={...old,...part,display:old.display||part.display,aliases:[...new Set(aliases)]};
-      for(const k of ['stats','note','behavior','geometry','spin','weight','line','source','image','remoteCode','type']){
+      for(const k of ['stats','note','behavior','geometry','spin','weight','line','source','image','remoteCode','type','serverId','parentId','colorLabel','images']){
         if((part[k]===null || part[k]==='') && old[k]) merged[k]=old[k];
       }
       PARTS[part.id]=merged;
@@ -138,6 +138,17 @@
     return part.id;
   }
 
+  /** Funde uma peça local duplicada na canônica: move quantidades manuais, filhas e referências de deck/sessão. */
+  function mergeLocalPart(dup, canon){
+    if(!dup||!canon||dup.id===canon.id)return;
+    if(manualParts[dup.id]){ if(!manualParts[canon.id])manualParts[canon.id]={part:canon,qty:0}; manualParts[canon.id].qty=(manualParts[canon.id].qty||0)+(manualParts[dup.id].qty||0); delete manualParts[dup.id]; localStorage.setItem('bx_manual_parts_v5',JSON.stringify(manualParts)); }
+    for(const c of Object.values(PARTS))if(c.parentId===dup.id)c.parentId=canon.id;
+    const remap=(slot)=>{ for(const k of ['blade','lock','main','assist','over','ratchet','bit','rib'])if(slot?.[k]===dup.id)slot[k]=canon.id; };
+    try{ (deck||[]).forEach(remap); (sessionDraft||[]).forEach(remap); (sessionDecks||[]).forEach(d=>(d.deck||[]).forEach(remap)); }catch{}
+    canon.aliases=[...new Set([...(canon.aliases||[]),dup.name,dup.display,...(dup.aliases||[])].filter(x=>x&&x!==canon.name&&x!==canon.display))];
+    if(!canon.image&&dup.image)canon.image=dup.image;
+    delete PARTS[dup.id];
+  }
   /** Só peças-pai (recolors são filhas e ficam fora das listagens). */
   const PARENTS=()=>Object.values(PARTS).filter(p=>!p.parentId);
   function childrenOf(p){ return p?Object.values(PARTS).filter(c=>c.parentId===p.id).sort((x,y)=>(x.colorOrder||0)-(y.colorOrder||0)):[]; }
@@ -607,7 +618,7 @@
 
   function mapHubImages(text,kinds){
     const imgs=extractImages(text); if(!imgs.length)return 0; let n=0;
-    const candidates=Object.values(PARTS).filter(p=>kinds.includes(p.kind));
+    const candidates=PARENTS().filter(p=>kinds.includes(p.kind)); // recolors mantêm a própria foto
     for(const part of candidates){
       const keys=normalizedAliases(part).filter(x=>x.length>1); if(!keys.length)continue;
       let best=null,bestScore=0;
@@ -1161,34 +1172,74 @@
     saveState(); renderAll();
   }
 
+  /** Itens da coleção: cada cor é um item separado; unidades sem cor da peça-pai são outro item. */
+  function collectionItems(){
+    const items=[];
+    for(const p of PARENTS()){
+      const kids=childrenOf(p);
+      const kidsQty=kids.reduce((n,k)=>n+(inventory[k.id]||0),0);
+      const generic=(inventory[p.id]||0)-kidsQty;
+      if(generic>0)items.push({part:p,qty:generic,hasColors:kids.length>0});
+      for(const k of kids){const q=inventory[k.id]||0;if(q>0)items.push({part:k,qty:q,hasColors:true});}
+    }
+    return items;
+  }
+  function progressBar(owned,total,cls=''){
+    const pct=total?Math.round(owned/total*100):0;
+    return `<div class="cprog ${cls}"><div class="cprog-bar"><i style="width:${pct}%"></i></div><small><b>${owned}</b>/${total} • ${pct}%</small></div>`;
+  }
   function renderCollection() {
     document.getElementById('inventoryText').value=inventoryText;
-    const total=Object.entries(inventory).filter(([id])=>!PARTS[id]?.parentId).reduce((a,[,b])=>a+b,0);
-    document.getElementById('collectionCount').innerHTML=`<strong>${stockOwned.length}</strong><small>Beys cadastrados • ${total} peças</small>`;
-    const root=document.getElementById('collectionPieces');
+    const items=collectionItems();
+    const total=items.reduce((a,i)=>a+i.qty,0);
     const order=['blade','integrated','lock','over','main','assist','ratchet','bit','rib'];
-    root.innerHTML=order.map(kind=>{
-      const items=PARENTS().filter(p=>p.kind===kind && (inventory[p.id]||0)>0).sort((a,b)=>a.display.localeCompare(b.display));
-      if(!items.length)return'';
-      return `<section><div class="part-group-title"><h2>${KIND_LABEL[kind]}</h2><span>${items.length} tipo(s)</span></div><div class="parts-grid">${items.map(partCard).join('')}</div></section>`;
-    }).join('') || '<div class="empty-state collection-empty"><p>Sua coleção começa vazia.</p><button class="btn primary" id="addBeysEmptyBtn">＋ Adicionar Beys</button><small>Escolha peças no catálogo, busque o produto que você comprou ou cole uma lista.</small></div>';
-    root.querySelectorAll('.qty-btn').forEach(btn=>btn.addEventListener('click',async()=>{
-      const p=PARTS[btn.dataset.id]; if(!p)return; const delta=+btn.dataset.delta;
-      if(delta>0){ const c=await chooseColor(p); if(c)changeManualQty(c.id,1); return; }
-      // remover: primeiro unidades "sem cor" do pai; depois a última cor marcada
-      const kids=childrenOf(p); const kidsQty=kids.reduce((n,k)=>n+(inventory[k.id]||0),0); const generic=(inventory[p.id]||0)-kidsQty;
-      if(generic>0||!kids.length)changeManualQty(p.id,-1);
-      else { const last=[...kids].reverse().find(k=>(inventory[k.id]||0)>0); if(last)changeManualQty(last.id,-1); }
-    }));
-    root.querySelectorAll('.color-thumb').forEach(b=>b.addEventListener('click',e=>{
-      const kid=PARTS[b.dataset.color], parent=PARTS[b.dataset.id]; if(!kid||!parent)return;
-      if(e.target.closest('.ct-minus')){ if((inventory[kid.id]||0)>0)changeManualQty(kid.id,-1); return; }
-      const kidsQty=childrenOf(parent).reduce((n,k)=>n+(inventory[k.id]||0),0); const generic=(inventory[parent.id]||0)-kidsQty;
-      if(generic>0)changeManualQty(parent.id,-1); // converte uma unidade "sem cor" nessa cor
-      changeManualQty(kid.id,1);
-    }));
+    const catalog=PARENTS().filter(p=>order.includes(p.kind)&&!p.hidden);
+    const ownedSet=new Set(items.map(i=>i.part.parentId||i.part.id));
+    const ownedDistinct=catalog.filter(p=>ownedSet.has(p.id)).length;
+    document.getElementById('collectionCount').innerHTML=`<strong>${ownedDistinct}</strong><small>de ${catalog.length} peças do catálogo • ${total} unidade(s)</small>`;
+    const root=document.getElementById('collectionPieces');
+    const kindStats=order.map(kind=>{const all=catalog.filter(p=>p.kind===kind);return {kind,total:all.length,owned:all.filter(p=>ownedSet.has(p.id)).length};}).filter(k=>k.total);
+    const overall=`<section class="panel-card col-overview"><div class="col-overview-head"><div><p class="eyebrow">PROGRESSO DA COLEÇÃO</p><h2>Beyblade X completo: ${catalog.length?Math.round(ownedDistinct/catalog.length*100):0}%</h2></div><small>${ownedDistinct} de ${catalog.length} peças diferentes • ${total} unidade(s) no total</small></div>${progressBar(ownedDistinct,catalog.length,'big')}<div class="col-kind-bars">${kindStats.map(k=>`<a class="col-kind-bar" href="#col-${k.kind}" title="${KIND_LABEL[k.kind]}"><span>${KIND_LABEL[k.kind]}</span>${progressBar(k.owned,k.total)}</a>`).join('')}</div></section>`;
+    const sections=order.map(kind=>{
+      const list=items.filter(i=>i.part.kind===kind).sort((a,b)=>a.part.display.localeCompare(b.part.display)||(a.part.parentId?1:0)-(b.part.parentId?1:0)||(a.part.colorOrder||0)-(b.part.colorOrder||0));
+      const st=kindStats.find(k=>k.kind===kind); if(!st)return'';
+      if(!list.length)return `<section id="col-${kind}" class="col-kind empty"><div class="part-group-title"><h2>${KIND_LABEL[kind]}</h2>${progressBar(st.owned,st.total)}</div><div class="col-kind-empty">Nenhuma ${KIND_LABEL[kind].toLowerCase()} na coleção ainda.</div></section>`;
+      return `<section id="col-${kind}" class="col-kind"><div class="part-group-title"><h2>${KIND_LABEL[kind]}</h2>${progressBar(st.owned,st.total)}</div><div class="parts-grid">${list.map(itemCard).join('')}</div></section>`;
+    }).join('');
+    root.innerHTML=items.length?overall+sections:'<div class="empty-state collection-empty"><p>Sua coleção começa vazia.</p><button class="btn primary" id="addBeysEmptyBtn">＋ Adicionar Beys</button><small>Escolha peças no catálogo, busque o produto que você comprou ou cole uma lista.</small></div>';
+    root.querySelectorAll('[data-edit]').forEach(btn=>btn.addEventListener('click',()=>editItem(btn.dataset.edit)));
     document.getElementById('addBeysEmptyBtn')?.addEventListener('click',()=>document.getElementById('addBeysBtn')?.click());
     hydrateImages(root);
+  }
+  /** Ajusta várias quantidades manuais de uma vez (um único re-render). */
+  function adjustMany(changes){
+    for(const [id,delta] of changes){
+      if(!delta)continue;
+      if(!manualParts[id])manualParts[id]={part:PARTS[id],qty:0};
+      manualParts[id].qty=(manualParts[id].qty||0)+delta;
+      if(manualParts[id].qty===0)delete manualParts[id];
+    }
+    localStorage.setItem('bx_manual_parts_v5',JSON.stringify(manualParts));
+    importInventory(inventoryText,true);
+  }
+  /** Popup de edição do item (cor + quantidade + remover). */
+  async function editItem(id){
+    const p=PARTS[id]; if(!p||!window.BX?.itemDialog)return;
+    const parent=p.parentId?PARTS[p.parentId]:p; if(!parent)return;
+    const kids=childrenOf(parent);
+    const kidsQty=kids.reduce((n,k)=>n+(inventory[k.id]||0),0);
+    const curQty=p.parentId?(inventory[p.id]||0):Math.max(0,(inventory[p.id]||0)-kidsQty);
+    const r=await window.BX.itemDialog({
+      name:parent.display, currentId:p.parentId?p.id:parent.id, qty:curQty, defaultId:parent.id,
+      options:kids.map(k=>({id:k.id,img:k.image,label:k.colorLabel||'Cor',qty:k.id!==p.id?(inventory[k.id]||0):0})),
+      allowDefault:kids.length>0,
+    });
+    if(!r)return;
+    if(r.remove){adjustMany([[p.id,-curQty]]);toast(`${parent.display} removida da coleção.`);return;}
+    const target=PARTS[r.id]||parent;
+    if(target.id===p.id)adjustMany([[p.id,r.qty-curQty]]);
+    else adjustMany([[p.id,-curQty],[target.id,r.qty]]);
+    toast(`${parent.display}${target.colorLabel?` (${target.colorLabel})`:''} ×${r.qty} salvo.`);
   }
 
   function partHeuristic(p){
@@ -1207,19 +1258,18 @@
     if(p.kind==='lock')return{type:'CX',note:p.basicLock?'Lock Chip básico CX; define identidade/encaixe e pode ter a exceção de repetição prevista no formato WBO usado pelo site.':'Lock Chip especial; consulte as regras do evento para repetição.'};
     return null;
   }
-  function partCard(p) {
-    const h=partHeuristic(p);const cls=h?.type==='Attack'?'attack':h?.type==='Stamina'?'stamina':h?.type==='Defense'?'defense':'balance';const tooltip=partTooltip(p);
-    return `<article class="part-card ${p.banned?'banned':''} ${h?.note?'with-note':''}" title="${escapeAttr(tooltip)}">${partArt(p)}<div class="part-meta"><small>${KIND_LABEL[p.kind] || p.kind}</small><strong><a class="plink" href="/peca/${slug(p.display||p.name)}" title="Ver página da peça">${escapeHTML(p.display)}</a>${p.abbrev?` <span style="color:#707887">${escapeHTML(p.abbrev)}</span>`:''}</strong><div class="qty-row"><button class="qty-btn" data-id="${p.id}" data-delta="-1" title="Remover uma">−</button><span class="qty"><small>×</small>${inventory[p.id]||0}</span><button class="qty-btn" data-id="${p.id}" data-delta="1" title="Adicionar uma">+</button>${p.banned?'<span class="badge banned">Banida</span>':''}${h?.type?`<span class="badge ${cls}">${escapeHTML(h.type)}</span>`:''}</div>${h?.note?`<p class="part-note">${escapeHTML(h.note)}</p>`:''}${colorRow(p)}</div></article>`;
+  function itemCard(item){
+    const p=item.part; const h=partHeuristic(p);const cls=h?.type==='Attack'?'attack':h?.type==='Stamina'?'stamina':h?.type==='Defense'?'defense':'balance';
+    const colorChip=p.parentId?`<span class="color-chip">${escapeHTML(p.colorLabel||'Cor')}</span>`:(item.hasColors?'<span class="color-chip none">sem cor definida</span>':'');
+    return `<article class="part-card item ${p.banned?'banned':''}" title="${escapeAttr(partTooltip(p))}">
+      <div class="item-photo">${partArt(p)}<button class="item-edit" data-edit="${escapeAttr(p.id)}" title="Editar cor e quantidade" aria-label="Editar">${window.BX?.icon?window.BX.icon('edit',13):'✎'}</button></div>
+      <div class="part-meta"><small>${KIND_LABEL[p.kind] || p.kind}</small><strong><a class="plink" href="/peca/${slug(p.display||p.name)}" title="Ver página da peça">${escapeHTML(p.display)}</a>${p.abbrev?` <span style="color:#707887">${escapeHTML(p.abbrev)}</span>`:''}</strong>
+        <div class="item-tags">${colorChip}${p.banned?'<span class="badge banned">Banida</span>':''}${h?.type?`<span class="badge ${cls}">${escapeHTML(h.type)}</span>`:''}</div>
+      </div>
+      <span class="item-qty" title="Quantidade">×${item.qty}</span>
+    </article>`;
   }
-  /** Linha de recolors da peça na coleção: clique marca a cor (+1), ✓/×N mostra as que você tem. */
-  function colorRow(p){
-    const kids=childrenOf(p); if(!kids.length)return'';
-    const kidsQty=kids.reduce((n,k)=>n+(inventory[k.id]||0),0); const generic=(inventory[p.id]||0)-kidsQty;
-    return `<div class="color-row" title="Clique numa cor para marcar que você tem essa versão">
-      <span class="color-row-label">${kidsQty?`${kids.filter(k=>inventory[k.id]>0).length} cor${kids.filter(k=>inventory[k.id]>0).length>1?'es':''}`:'Quais cores?'}${generic>0?` <em>${generic} sem cor</em>`:''}</span>
-      ${kids.map(k=>{const q=inventory[k.id]||0;return `<button class="color-thumb ${q?'on':''}" data-color="${escapeAttr(k.id)}" data-id="${escapeAttr(p.id)}" title="${escapeAttr(k.colorLabel||'Cor')}${q?` — você tem ${q}`:''}"><img loading="lazy" src="${escapeAttr(k.image||'')}" alt=""><i>${q>1?`×${q}`:'✓'}</i>${q?'<em class="ct-minus" title="Tirar uma">−</em>':''}</button>`;}).join('')}
-    </div>`;
-  }
+  function partCard(p){ return itemCard({part:p,qty:inventory[p.id]||0,hasColors:childrenOf(p).length>0}); }
 
   function changeManualQty(id,delta) {
     if (!manualParts[id]) manualParts[id]={part:PARTS[id],qty:0};
@@ -1560,8 +1610,6 @@
 
   async function resolveImage(key) {
     const p=PARTS[key]||null;
-    // Peça-pai: mostra a cor que você tem (se marcou); depois a foto oficial do catálogo
-    if(p&&!p.parentId){const owned=childrenOf(p).find(c=>(inventory[c.id]||0)>0&&c.image);if(owned)return owned.image;}
     if(p?.image) return p.image;
     const title=p?.wiki||key;
     if(!title)return '';
@@ -1973,6 +2021,8 @@
           if(!exists.image&&sp.img){exists.image=sp.img;enriched++;}
           if(!exists.type&&sp.type)exists.type=sp.type;
           if(!exists.serverId){exists.serverId=sp.id;enriched++;}
+          // outras locais que também casam com esta peça do servidor são duplicatas → funde
+          for(const dup of PARENTS().filter(p=>p!==exists&&p.kind===kind&&!p.serverId&&([p.name,p.display,p.abbrev,...(p.aliases||[])].some(x=>x&&keys.includes(equivalentKey(x)))||(abbr&&['bit','ratchet','rib'].includes(kind)&&(p.abbrev||'').toUpperCase()===abbr)))){ mergeLocalPart(dup,exists); enriched++; }
         } else {
           const id=reg(P(kind,sp.name||display,{display,aliases:sp.aliases||[],abbrev:sp.abbrev||'',type:sp.type||'',image:sp.img||'',basicLock:kind==='lock',source:'catálogo do site',serverId:sp.id}));
           exists=PARTS[id]; added++;
@@ -1986,11 +2036,11 @@
         if(!parent)continue;
         const id=parent.id+'#'+sp.id;
         if(!PARTS[id]){
-          PARTS[id]={...parent,id,aliases:[],image:sp.img||parent.image,parentId:parent.id,serverId:sp.id,colorLabel:sp.variantLabel||'Cor',colorOrder:order++,source:'catálogo do site'};
+          PARTS[id]={...parent,id,aliases:[],image:sp.img||parent.image,parentId:parent.id,serverId:sp.id,colorLabel:sp.variantLabel||'Cor',colorOrder:order++,source:'catálogo do site',wiki:''};
           added++;
-        } else { const c=PARTS[id]; if(sp.img)c.image=sp.img; c.colorLabel=sp.variantLabel||c.colorLabel; c.serverId=sp.id; }
+        } else { const c=PARTS[id]; if(sp.img)c.image=sp.img; c.colorLabel=sp.variantLabel||c.colorLabel; c.serverId=sp.id; c.colorOrder=order++; }
       }
-      if(added||enriched){saveLiveCatalog();renderAll();}
+      if(added||enriched){saveLiveCatalog();importInventory(inventoryText,true);}
       return {added,enriched};
     },
     /** Adiciona à coleção as peças de um produto vindas do servidor. Devolve os nomes adicionados. */

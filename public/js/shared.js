@@ -326,6 +326,47 @@
   }
 
   /**
+   * Popup de edição de um item da coleção: escolher a cor (se houver recolors)
+   * e a quantidade, ou remover. Resolve com {id, qty} | {remove:true} | null.
+   */
+  function itemDialog({ name, options = [], currentId, qty = 1, allowDefault = true, defaultId = '__default', defaultLabel = 'Sem cor definida', canRemove = true } = {}) {
+    return new Promise((resolve) => {
+      let el = document.getElementById('bxColorDialog');
+      if (!el) { el = document.createElement('div'); el.id = 'bxColorDialog'; el.className = 'modal-backdrop color-dialog'; document.body.appendChild(el); }
+      let sel = currentId; let q = Math.max(1, qty | 0);
+      el.hidden = false;
+      const tiles = options.map((o) => `<button class="color-opt ${o.id === sel ? 'selected' : ''}" data-sel="${esc(o.id)}"><span class="color-opt-img">${o.img ? `<img src="${esc(o.img)}" alt="">` : '<b>?</b>'}</span><span class="color-opt-label">${esc(o.label || 'Cor')}</span>${o.qty ? `<i class="color-opt-qty">×${o.qty}</i>` : ''}</button>`).join('')
+        + (allowDefault ? `<button class="color-opt default ${sel === defaultId ? 'selected' : ''}" data-sel="${esc(defaultId)}"><span class="color-opt-img"><b>?</b></span><span class="color-opt-label">${esc(defaultLabel)}</span></button>` : '');
+      el.innerHTML = `<div class="modal color-modal edit-modal" role="dialog" aria-label="Editar item">
+        <button class="modal-close" data-x>×</button>
+        <p class="eyebrow">EDITAR NA COLEÇÃO</p>
+        <h2>${esc(name || 'Peça')}</h2>
+        ${options.length ? `<p class="color-hint">Cor / versão</p><div class="color-grid">${tiles}</div>` : ''}
+        <div class="edit-qty-row">
+          <span class="color-hint" style="margin:0">Quantidade</span>
+          <div class="qty-stepper"><button data-q="-1" aria-label="menos">−</button><b data-qv>${q}</b><button data-q="1" aria-label="mais">+</button></div>
+        </div>
+        <div class="edit-actions">
+          ${canRemove ? '<button class="btn danger-outline" data-remove>Remover da coleção</button>' : ''}
+          <button class="btn primary" data-save>Salvar</button>
+        </div>
+      </div>`;
+      const onKey = (e) => { if (e.key === 'Escape') done(null); };
+      const done = (v) => { el.hidden = true; el.innerHTML = ''; el.onclick = null; document.removeEventListener('keydown', onKey); resolve(v); };
+      el.onclick = (e) => {
+        if (e.target === el || e.target.closest('[data-x]')) return done(null);
+        const t = e.target.closest('[data-sel]');
+        if (t) { sel = t.dataset.sel; el.querySelectorAll('[data-sel]').forEach((x) => x.classList.toggle('selected', x === t)); return; }
+        const s = e.target.closest('[data-q]');
+        if (s) { q = Math.max(1, Math.min(99, q + (+s.dataset.q))); el.querySelector('[data-qv]').textContent = q; return; }
+        if (e.target.closest('[data-remove]')) return done({ remove: true });
+        if (e.target.closest('[data-save]')) return done({ id: sel, qty: q });
+      };
+      document.addEventListener('keydown', onKey);
+    });
+  }
+
+  /**
    * Dado id/nome/objeto de peça do catálogo do site, pergunta a cor quando a
    * peça tem recolors. Resolve com o id final (filha, ou pai se "padrão") ou
    * null se cancelou. Peça sem recolors resolve direto.
@@ -360,6 +401,7 @@
   // -------------------------------------------------------------------------
 
   const ICON_PATHS = {
+    edit: '<path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3Z"/><path d="m13.5 6.5 3 3"/>',
     home: '<path d="M4 11.5 12 4l8 7.5V20h-5.5v-5h-5v5H4Z"/>',
     builder: '<path d="M12 2.5 18.5 6.2l.9 6L12 21.5l-7.4-9.3.9-6Z"/><path d="M12 7.2l3.4 1.9-.8 3.1-2.6 3.2-2.6-3.2-.8-3.1Z"/>',
     meta: '<path d="M4 4v16h16"/><path d="m7 15 4-5.5 3 3L19 6"/><path d="M15.5 6H19v3.5"/>',
@@ -557,7 +599,7 @@
 
   window.BX = {
     api, me, site, esc, norm, toast, money, dateFmt, icon,
-    partsIndex, partTagReady, partTag, comboTags, partThumb, KIND_PT, radar, beyVisual, beyMini, deckPreview, colorDialog, pickColor,
+    partsIndex, partTagReady, partTag, comboTags, partThumb, KIND_PT, radar, beyVisual, beyMini, deckPreview, colorDialog, itemDialog, pickColor,
     avatarHtml, renderTopbar, renderShell, mountUserWidget, userChipHtml, setActiveNav,
     report, requireLogin, qs, pathPart, ytEmbed,
   };
