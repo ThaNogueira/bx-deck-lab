@@ -1149,7 +1149,7 @@
     const total=Object.values(inventory).reduce((a,b)=>a+b,0);
     document.getElementById('collectionCount').innerHTML=`<strong>${stockOwned.length}</strong><small>Beys cadastrados • ${total} peças</small>`;
     const root=document.getElementById('collectionPieces');
-    const order=['blade','integrated','ratchet','bit','rib','lock','main','over','assist'];
+    const order=['blade','integrated','lock','over','main','assist','ratchet','bit','rib'];
     root.innerHTML=order.map(kind=>{
       const items=Object.values(PARTS).filter(p=>p.kind===kind && (inventory[p.id]||0)>0).sort((a,b)=>a.display.localeCompare(b.display));
       if(!items.length)return'';
@@ -1611,7 +1611,7 @@
     root.querySelectorAll('select[data-session-slot]').forEach(x=>x.addEventListener('change',onSessionSlotChange));
     root.querySelectorAll('.session-clear-slot').forEach(b=>b.addEventListener('click',()=>{sessionDraft[+b.dataset.slot]=emptySlot();saveSession();renderSession();}));hydrateImages(root);
     const stock=document.getElementById('sessionAvailableParts');
-    const order=['blade','integrated','ratchet','bit','rib','lock','main','over','assist'];
+    const order=['blade','integrated','lock','over','main','assist','ratchet','bit','rib'];
     stock.innerHTML=order.map(kind=>{const items=Object.values(PARTS).filter(p=>p.kind===kind&&(inventory[p.id]||0)>0).map(p=>[p,Math.max(0,(inventory[p.id]||0)-(reserved[p.id]||0))]).filter(([,q])=>q>0);if(!items.length)return'';return `<div class="session-stock-group"><b>${KIND_LABEL[kind]||kind}</b>${items.map(([p,q])=>`<span>${escapeHTML(p.display)} <em>×${q}</em></span>`).join('')}</div>`;}).join('')||'<p class="empty-state">Todas as peças estão reservadas.</p>';
     const decksRoot=document.getElementById('sessionDecks');
     decksRoot.innerHTML=sessionDecks.length?sessionDecks.map((d,i)=>`<article class="physical-deck"><div class="physical-deck-head"><div><small>DECK ${i+1}</small><h3>${escapeHTML(d.name||`Deck físico ${i+1}`)}</h3></div><button class="icon-btn release-session-deck" data-i="${i}" title="Desmontar / liberar peças">×</button></div>${d.deck.map((slot,j)=>`<div class="physical-bey"><b>${j+1}</b><span>${escapeHTML(slotName(slot))}</span></div>`).join('')}<small>${d.deck.flatMap(slotParts).length} componentes reservados</small></article>`).join(''):'<div class="empty-state">Nenhum deck físico reservado ainda.</div>';
@@ -1723,7 +1723,7 @@
   }
 
   // ---------- Picker de peças (quadradinhos com foto) — builder e coleção ----------
-  const PICKER_KINDS=[['','Tudo'],['blade','Blades'],['integrated','Integradas'],['lock','Lock Chips'],['main','Main'],['over','Over'],['assist','Assist'],['ratchet','Ratchets'],['bit','Bits'],['rib','RIB']];
+  const PICKER_KINDS=[['','Tudo'],['blade','Blades'],['integrated','Integradas'],['lock','Lock Chips'],['over','Over'],['main','Main'],['assist','Assist'],['ratchet','Ratchets'],['bit','Bits'],['rib','RIB']];
   let activeSlot=0;
 
   function setActiveSlot(i){

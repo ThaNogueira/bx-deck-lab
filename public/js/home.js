@@ -101,7 +101,7 @@
     { key: 'BLADE', title: 'Blades', hint: 'a lâmina define o estilo do Bey', kinds: ['BLADE'] },
     { key: 'RATCHET', title: 'Ratchets', hint: 'altura e pontas de contato', kinds: ['RATCHET'] },
     { key: 'BIT', title: 'Bits', hint: 'como o Bey se move no estádio', kinds: ['BIT'] },
-    { key: 'CX', title: 'Peças CX', hint: 'Main, Assist, Over e Lock Chips', kinds: ['MAIN_BLADE', 'ASSIST_BLADE', 'OVER_BLADE', 'LOCK_CHIP'] },
+    { key: 'CX', title: 'Peças CX', hint: 'Lock Chip, Over, Main e Assist', kinds: ['LOCK_CHIP', 'OVER_BLADE', 'MAIN_BLADE', 'ASSIST_BLADE'] },
   ];
 
   function beyBubble(s, i, min, max) {
