@@ -55,23 +55,35 @@ sudo ufw allow 8080/tcp   # se houver firewall
 
 Pronto: `http://SEU_IP:8080`.
 
-## ⚠ Google OAuth precisa de domínio
+## 4b. Domínio (beyxlab.com.br) — HTTPS automático
 
-O Google **não aceita IP** como redirect URI (só `localhost` ou domínio). Ou
-seja: no `http://SEU_IP:8080` o site inteiro funciona, mas o botão "Entrar com
-Google" só vai funcionar quando houver um domínio (um subdomínio grátis do
-[DuckDNS](https://www.duckdns.org) resolve). Quando tiver:
+Um script faz tudo que é do lado da VPS: Caddy com certificado Let's Encrypt
+automático (HTTPS), `SITE_URL` no `.env`, firewall e recriação do container.
+Rode NA VPS, dentro da pasta do projeto:
 
-1. Aponte o domínio para o IP da VPS;
-2. Troque o bloco do Caddy por `bxlab.seudominio.com { reverse_proxy 127.0.0.1:3004 }`
-   (TLS automático) e ajuste `SITE_URL=https://bxlab.seudominio.com` no `.env`;
-3. No Google Cloud Console, na MESMA aplicação OAuth do GLC Hub, adicione o
-   redirect `https://bxlab.seudominio.com/api/oauth/google/callback`;
-4. `docker compose up -d` para recarregar o `.env`.
+```bash
+cd ~/bxdeck/bx-deck-lab && git pull && sudo bash deploy/setup-domain.sh beyxlab.com.br
+```
 
-Para testar login antes disso, rode local com `DEV_LOGIN=1` (`npm run dev` +
-`http://localhost:3000`), ou cadastre `http://localhost:3000/api/oauth/google/callback`
-no Google Console e teste o Google login localmente.
+Ele mantém o acesso antigo por `http://IP:8080` até você desligar
+(`KEEP_IP_PORT=0 sudo bash deploy/setup-domain.sh beyxlab.com.br`).
+Pode rodar de novo quantas vezes quiser (é idempotente).
+
+O que só você faz, fora da VPS:
+
+1. **DNS** (painel do Registro.br ou do provedor de DNS): registro **A** de
+   `beyxlab.com.br` e de `www` apontando para o IP da VPS (o script mostra o IP no passo 1).
+   Se usar Cloudflare, deixe o proxy (nuvem laranja) DESLIGADO nesses registros,
+   senão o Caddy não consegue emitir o certificado.
+2. **Google Cloud Console**, na MESMA aplicação OAuth do GLC Hub:
+   - URI de redirecionamento autorizado: `https://beyxlab.com.br/api/oauth/google/callback`
+   - Origem JavaScript autorizada: `https://beyxlab.com.br`
+
+O Google **não aceita IP** como redirect URI, por isso o login Google só funciona
+depois do domínio. Para testar login local: `DEV_LOGIN=1` + `npm run dev`.
+
+Se algo falhar: `journalctl -u caddy -n 50 --no-pager` mostra o motivo (quase
+sempre DNS ainda não propagado ou porta 80/443 fechada).
 
 ## 5. Backup
 
