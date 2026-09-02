@@ -645,7 +645,7 @@
   const NAV_MAIN = [
     ['home', '/#home', 'Início'],
     ['builder', '/#builder', 'Deck Builder'],
-    ['meta', '/#meta', 'Meta check'],
+    ['meta', '/#meta', 'Meta completo'],
     ['community', '/decks', 'Decks da comunidade'],
     ['popular', '/#popular', 'Decks populares'],
     ['tournaments', '/torneios', 'Torneios'],
@@ -812,7 +812,7 @@
         const { notifications, unread } = await api('/api/notifications');
         setUnread(unread);
         const list = document.getElementById('notifList');
-        list.innerHTML = notifications.length ? notifications.map((n) => `<a class="notif-item ${n.readAt ? '' : 'unread'}" href="${esc(n.url)}">${n.actor ? avatarHtml(n.actor, { size: 30 }) : `<span class="notif-ic">${icon(NOTIF_ICON[n.type] || 'bell', 16)}</span>`}<span><span class="notif-text">${esc(n.text || '')}</span><small>${esc(dateFmt(n.createdAt, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }))}</small></span></a>`).join('') : '<div class="empty-state">Nada por aqui ainda. Interações nos seus posts e menções aparecem aqui.</div>';
+        list.innerHTML = notifications.length ? notifications.map((n) => `<a class="notif-item ${n.readAt ? '' : 'unread'} ${NOTIF_ADMIN.has(n.type) ? 'admin' : ''}" href="${esc(n.url)}">${n.actor ? avatarHtml(n.actor, { size: 30 }) : `<span class="notif-ic">${icon(NOTIF_ICON[n.type] || 'bell', 16)}</span>`}<span><span class="notif-text">${esc(n.text || '')}</span><small>${esc(dateFmt(n.createdAt, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }))}</small></span></a>`).join('') : '<div class="empty-state">Nada por aqui ainda. Interações nos seus posts e menções aparecem aqui.</div>';
         if (unread) { await api('/api/notifications/read', { method: 'POST', body: {} }).catch(() => {}); setUnread(0); }
       } catch (e) { document.getElementById('notifList').innerHTML = `<div class="empty-state">${esc(e.message)}</div>`; }
     };
@@ -821,7 +821,8 @@
     document.addEventListener('click', (e) => { if (!menu.hidden && !box.contains(e.target)) close(); });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
   }
-  const NOTIF_ICON = { REACTION: 'fire', COMMENT: 'comment', REPLY: 'reply', MENTION: 'users', POST_APPROVED: 'check', POST_HIDDEN: 'warn', POST_PENDING: 'pending', REPORT_RESOLVED: 'flag' };
+  const NOTIF_ICON = { REACTION: 'fire', COMMENT: 'comment', REPLY: 'reply', MENTION: 'users', POST_APPROVED: 'check', POST_HIDDEN: 'warn', POST_DELETED: 'trash', POST_PENDING: 'pending', REPORT_RESOLVED: 'flag', REPORT: 'flag', MOD_PENDING: 'shield' };
+  const NOTIF_ADMIN = new Set(['REPORT', 'MOD_PENDING']);
 
   /** Compat: o montador agora usa o shell completo. */
   const mountUserWidget = () => renderShell();

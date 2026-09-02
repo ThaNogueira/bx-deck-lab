@@ -17,6 +17,8 @@ import tournamentRoutes from './routes/tournaments.js';
 import marketRoutes from './routes/market.js';
 import adminRoutes from './routes/admin.js';
 import communityRoutes from './routes/community.js';
+import homeRoutes from './routes/home.js';
+import { scheduleMetaJobs } from './meta.js';
 import { warmModeration } from './moderation.js';
 
 const app = express();
@@ -87,7 +89,9 @@ app.use(tournamentRoutes);
 app.use(marketRoutes);
 app.use(adminRoutes);
 app.use(communityRoutes);
+app.use(homeRoutes);
 warmModeration();
+scheduleMetaJobs();
 
 // Uploads e estáticos
 app.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '30d', immutable: true }));
@@ -110,6 +114,7 @@ const PAGES = {
   '/produtos': 'produtos.html',
   '/torneios': 'torneios.html',
   '/comunidade': 'comunidade.html',
+  '/comunidade/novo': 'comunidade.html',
   '/icones': 'icones.html',
   '/vendas': 'vendas.html',
   '/admin': 'admin.html',

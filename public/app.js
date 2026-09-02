@@ -2139,7 +2139,8 @@
   // Renderização preguiçosa: só a view visível é desenhada; as demais ficam marcadas como "sujas"
   // e renderizam quando o usuário abre (evita centenas de imagens/DOM de abas escondidas no boot).
   const VIEW_RENDERERS={
-    home:[()=>renderWeekly()],
+    home:[],
+    meta:[()=>renderWeekly()],
     builder:[()=>renderBuilder(),()=>renderPicker(),()=>renderPhysicalPanel()],
     collection:[()=>renderCollection(),()=>renderColPicker()],
     missing:[()=>renderMissing()],
@@ -2158,8 +2159,8 @@
   // Views por hash (#builder, #collection, …) — a sidebar do shell navega por aqui
   function activateView(name){
     // A antiga aba de meta virou uma seção da home
-    const metaJump=(name==='meta'||name==='weekly');
-    const target=metaJump?'home':(document.getElementById(`view-${name}`)?name:'home');
+    const metaJump=(name==='weekly');
+    const target=metaJump?'meta':(document.getElementById(`view-${name}`)?name:'home');
     document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.id===`view-${target}`));
     currentView=target;
     if(dirtyViews.has(target))renderView(target);

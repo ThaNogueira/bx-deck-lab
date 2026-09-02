@@ -3,6 +3,7 @@ import { prisma } from '../db.js';
 import { requireUser, publicUser } from '../auth.js';
 import { json, waLink } from '../util.js';
 import { partDto } from './catalog.js';
+import { notifyStaff } from './community.js';
 
 const router = Router();
 const ah = (fn) => (req, res, next) => fn(req, res, next).catch(next);
@@ -68,6 +69,9 @@ router.post('/api/reports', requireUser, ah(async (req, res) => {
   });
   if (recent >= 10) return res.status(429).json({ error: 'Muitas denúncias na última hora — aguarde um pouco.' });
   await prisma.report.create({ data: { reporterId: req.user.id, targetType, targetId, reason, category } });
+  const catLabel = { INAPPROPRIATE: 'conteúdo impróprio', SPAM: 'spam', SCAM: 'golpe', HARASSMENT: 'assédio', OTHER: 'outro' }[category] || 'denúncia';
+  const kind = { POST: 'post', COMMENT: 'comentário', DECK: 'deck', USER: 'perfil', LISTING: 'anúncio', COMBO: 'combo', TOURNAMENT: 'torneio' }[targetType] || targetType.toLowerCase();
+  notifyStaff('REPORT', { text: `Nova denúncia (${catLabel}) em um ${kind}: ${reason.slice(0, 120)}`, url: '/admin#reports', actorId: req.user.id, postId: targetType === 'POST' ? targetId : null }).catch(() => {});
   res.json({ ok: true });
 }));
 

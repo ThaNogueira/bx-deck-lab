@@ -39,6 +39,7 @@ const playerDto = (p) => ({
   id: p.id,
   dropped: p.dropped,
   user: publicUser(p.user),
+  deck: p.deck ? { id: p.deck.id, slug: p.deck.slug, title: p.deck.title, beys: (() => { try { return JSON.parse(p.deck.beysJson || '[]'); } catch { return []; } })() } : (p.deckId ? { id: p.deckId } : null),
 });
 
 function matchDto(m) {
@@ -64,8 +65,8 @@ export async function loadTournament(slug) {
     where: { slug },
     include: {
       organizer: true,
-      players: { include: { user: true } },
-      matches: { include: { p1: { include: { user: true } }, p2: { include: { user: true } } }, orderBy: [{ round: 'asc' }, { tableNo: 'asc' }] },
+      players: { include: { user: true, deck: true } },
+      matches: { include: { p1: { include: { user: true, deck: true } }, p2: { include: { user: true, deck: true } } }, orderBy: [{ round: 'asc' }, { tableNo: 'asc' }] },
     },
   });
 }
@@ -189,7 +190,23 @@ router.post('/api/tournaments', requireUser, moderateFields('name', 'description
     include: { organizer: true, players: true },
   });
   await audit(req.user, 'tournament.create', 'TOURNAMENT', t.id, { name });
+  import('../meta.js').then((m) => m.onTournamentCreated(t)).catch(() => {});
   res.json({ tournament: tournamentDto(t, req.user) });
+}));
+
+/** Jogador inscrito declara (ou remove) o deck que vai usar — alimenta o meta e o card do campeão. */
+router.post('/api/tournaments/:slug/my-deck', requireUser, ah(async (req, res) => {
+  const t = await loadTournament(req.params.slug);
+  if (!t) return res.status(404).json({ error: 'Torneio não encontrado.' });
+  const me = t.players.find((p) => p.userId === req.user.id);
+  if (!me) return res.status(403).json({ error: 'Você não está inscrito neste torneio.' });
+  const deckId = req.body?.deckId ? String(req.body.deckId) : null;
+  if (deckId) {
+    const deck = await prisma.communityDeck.findUnique({ where: { id: deckId } });
+    if (!deck || deck.authorId !== req.user.id) return res.status(403).json({ error: 'Escolha um deck seu.' });
+  }
+  const p = await prisma.tournamentPlayer.update({ where: { id: me.id }, data: { deckId }, include: { user: true, deck: true } });
+  res.json({ player: playerDto(p) });
 }));
 
 router.get('/api/tournaments/:slug', ah(async (req, res) => {
@@ -363,6 +380,7 @@ router.post('/api/tournaments/:slug/next-round', requireManage(bySlug), ah(async
 router.post('/api/tournaments/:slug/finish', requireManage(bySlug), ah(async (req, res) => {
   await prisma.tournament.update({ where: { id: req.tournament.id }, data: { status: 'FINISHED' } });
   await audit(req.user, 'tournament.finish', 'TOURNAMENT', req.tournament.id);
+  import('../meta.js').then((m) => m.onTournamentFinished(req.tournament.slug)).catch(() => {});
   res.json({ ok: true });
 }));
 

@@ -58,7 +58,9 @@
       app.addEventListener('focusout', () => { if (pendingRender && last) { pendingRender = false; setTimeout(() => { if (!editing()) render(last.data, last.me, last.myData); }, 150); } });
       window.addEventListener('hashchange', () => { const v = hashView(); if (v !== view) { view = v; if (last) render(last.data, last.me, last.myData); } });
 
+      let ME = null;
       function render(data, me, myData) {
+        ME = me;
         const t = data.tournament;
         document.title = `${t.name} — BX Deck Lab`;
         const joined = !!data.me;
@@ -178,6 +180,11 @@
           </div>` : '';
         box.innerHTML = `
           ${t.description ? `<div class="panel-card" style="margin-bottom:16px"><p class="prose" style="margin:0">${BX.esc(t.description)}</p></div>` : ''}
+          ${(() => { const mine = ME && data.players.find((p) => p.user.id === ME.id); return mine && t.status !== 'FINISHED' ? `<div class="panel-card my-deck-box" style="margin-bottom:16px">
+            <div class="section-title-row"><div><p class="eyebrow">MEU DECK NESTE TORNEIO</p><h2 style="font-size:20px">${mine.deck?.title ? BX.esc(mine.deck.title) : 'Nenhum deck declarado'}</h2></div>${BX.icon('decks', 22)}</div>
+            <p class="muted" style="font-size:12px;margin:6px 0 10px">Declare o deck que vai usar: ele entra no ranking do meta da home e aparece no card do campeão. Só você e o organizador veem qual é até o torneio encerrar.</p>
+            <div class="composer-row"><select id="myTourDeck" aria-label="Meu deck" style="flex:1;min-width:200px"><option value="">Carregando seus decks…</option></select><button class="btn secondary" id="myTourDeckSave">${BX.icon('check', 14)} Salvar</button>${mine.deck ? `<a class="btn ghost" href="/deck/${BX.esc(mine.deck.slug)}" style="text-decoration:none">Ver deck</a>` : ''}</div>
+          </div>` : ''; })()}
           <div class="section-title-row" style="margin-bottom:10px">
             <div><p class="eyebrow">INSCRITOS</p><h2>${data.players.length} jogador(es)</h2></div>
           </div>
@@ -185,12 +192,23 @@
             ${data.players.map((p) => `
               <a class="player-card" href="/u/${p.user.slug}" style="text-decoration:none;color:inherit;${p.dropped ? 'opacity:.5' : ''}">
                 ${BX.avatarHtml(p.user, { size: 44 })}
-                <div><h3>${BX.esc(p.user.name)}</h3><small>@${BX.esc(p.user.slug)}${p.dropped ? ' • DROP' : ''}</small></div>
+                <div><h3>${BX.esc(p.user.name)}</h3><small>@${BX.esc(p.user.slug)}${p.dropped ? ' • DROP' : ''}${t.status === 'FINISHED' && p.deck?.title ? ` • ${BX.icon('decks', 11)} ${BX.esc(p.deck.title)}` : ''}</small></div>
               </a>`).join('') || '<div class="empty-state">Ninguém inscrito ainda.</div>'}
           </div>
           ${renderRounds(t, data)}
           ${standings}`;
         wireRounds(box);
+        const sel = box.querySelector('#myTourDeck');
+        if (sel) {
+          const mine = data.players.find((p) => p.user.id === ME.id);
+          BX.api('/api/decks?mine=1&sort=updated').then(({ decks }) => {
+            sel.innerHTML = '<option value="">— sem deck declarado —</option>' + decks.map((d) => `<option value="${d.id}" ${mine.deck?.id === d.id ? 'selected' : ''}>${BX.esc(d.title)}${d.isPublic ? '' : ' (privado)'}</option>`).join('');
+            if (!decks.length) sel.innerHTML = '<option value="">Você ainda não salvou decks — monte um no builder</option>';
+          }).catch(() => { sel.innerHTML = '<option value="">Não consegui carregar seus decks</option>'; });
+          box.querySelector('#myTourDeckSave').addEventListener('click', async () => {
+            try { await BX.api(`/api/tournaments/${t.slug}/my-deck`, { method: 'POST', body: { deckId: sel.value || null } }); BX.toast(sel.value ? 'Deck declarado!' : 'Deck removido.'); load(); } catch (e) { BX.toast(e.message); }
+          });
+        }
       }
 
       function renderMatch(box, t, myData) {

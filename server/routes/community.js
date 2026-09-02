@@ -9,6 +9,9 @@ import { siteUrl } from '../util.js';
 import { uploadPost, uploadedUrl } from '../uploads.js';
 import { scanUploads } from '../moderation.js';
 import { standingsOf, loadTournament } from './tournaments.js';
+import { partDto } from './catalog.js';
+import { UPLOADS_DIR } from '../uploads.js';
+import path from 'node:path';
 
 const router = Router();
 const ah = (fn) => (req, res, next) => fn(req, res, next).catch(next);
@@ -27,7 +30,12 @@ export const TAGS = {
   CHAMPION: { label: 'Campeão', icon: 'champion' },
   HELP: { label: 'Dúvida / Ajuda', icon: 'help' },
   OFFTOPIC: { label: 'Off-topic', icon: 'offtopic' },
+  DECK: { label: 'Deck', icon: 'decks', auto: true }, // aplicada automaticamente ao compartilhar um deck do builder
 };
+/** Tags que aparecem na home (feed curado, foco competitivo). Fixo: o usuário não configura. */
+export const HOME_TAGS = ['DECK', 'RESULT', 'CLIP', 'CHAMPION'];
+/** Inclusões padrão de um post (autor pode ser null nos cards do sistema). */
+const POST_INCLUDE = { author: true, deck: { include: { author: true } } };
 export const REACTIONS = ['FIRE', 'TOP', 'LOL', 'WOW'];
 export const REPORT_CATEGORIES = {
   INAPPROPRIATE: 'Conteúdo impróprio',
@@ -87,10 +95,26 @@ function reactionsSummary(rows, targetId, me) {
   return { counts, total: mine.length, mine: my };
 }
 
-function postDto(p, { me = null, reactions = [], votes = [] } = {}) {
+function deckSummary(d, partsMap) {
+  if (!d) return null;
+  const beys = json(d.beysJson, []);
+  const ids = [...new Set(beys.flat())];
+  return {
+    id: d.id, slug: d.slug, title: d.title, description: d.description || null, copyCount: d.copyCount ?? 0,
+    isPublic: d.isPublic, status: d.status,
+    author: d.author ? publicUser(d.author) : null,
+    beys,
+    parts: partsMap ? Object.fromEntries(ids.filter((id) => partsMap.has(id)).map((id) => [id, partsMap.get(id)])) : undefined,
+  };
+}
+
+function postDto(p, { me = null, reactions = [], votes = [], partsMap = null } = {}) {
   const media = json(p.mediaJson, []);
   return {
     id: p.id,
+    kind: p.kind || 'USER',
+    data: json(p.dataJson, null),
+    deck: p.deck ? deckSummary(p.deck, partsMap) : null,
     tag: p.tag,
     tagLabel: TAGS[p.tag]?.label || p.tag,
     title: p.title,
@@ -103,11 +127,47 @@ function postDto(p, { me = null, reactions = [], votes = [] } = {}) {
     reactions: reactionsSummary(reactions, p.id, me),
     commentCount: p.commentCount,
     createdAt: p.createdAt,
-    author: publicUser(p.author),
-    mine: !!me && me.id === p.authorId,
+    author: p.author ? publicUser(p.author) : null,
+    mine: !!me && !!p.authorId && me.id === p.authorId,
     canModerate: canModerate(me),
     url: `${siteUrl()}/comunidade/p/${p.id}`,
   };
+}
+
+/** Reações, votos e peças dos decks de um lote de posts -> DTOs prontos. */
+async function hydratePosts(posts, me) {
+  const ids = posts.map((p) => p.id);
+  const partIds = [...new Set(posts.flatMap((p) => (p.deck ? json(p.deck.beysJson, []).flat() : [])))];
+  const [reactions, votes, parts] = await Promise.all([
+    reactionsFor('POST', ids),
+    ids.length ? prisma.pollVote.findMany({ where: { postId: { in: ids } } }) : [],
+    partIds.length ? prisma.part.findMany({ where: { id: { in: partIds } } }) : [],
+  ]);
+  const partsMap = new Map(parts.map((x) => [x.id, partDto(x)]));
+  return posts.map((p) => postDto(p, { me, reactions, votes: votes.filter((v) => v.postId === p.id), partsMap }));
+}
+
+/**
+ * Lista paginada com ordenação recent|top|hot. Usada pelo feed da comunidade e pela home.
+ * hot = score de engajamento × recência dentro de uma janela (dias).
+ */
+export async function listPosts({ where, sort = 'recent', skip = 0, take = 20, me = null, windowDays = 14 }) {
+  let posts;
+  let total;
+  if (sort === 'hot') {
+    const since = new Date(Date.now() - windowDays * 864e5);
+    const pool = await prisma.post.findMany({ where: { ...where, createdAt: { gt: since } }, include: POST_INCLUDE, take: 400, orderBy: { createdAt: 'desc' } });
+    pool.sort((a, b) => hotScore(b) - hotScore(a));
+    total = pool.length;
+    posts = pool.slice(skip, skip + take);
+  } else {
+    const orderBy = sort === 'top' ? [{ reactionCount: 'desc' }, { commentCount: 'desc' }, { createdAt: 'desc' }] : { createdAt: 'desc' };
+    [posts, total] = await Promise.all([
+      prisma.post.findMany({ where, include: POST_INCLUDE, orderBy, skip, take }),
+      prisma.post.count({ where }),
+    ]);
+  }
+  return { posts: await hydratePosts(posts, me), total, nextOffset: skip + posts.length < total ? skip + posts.length : null };
 }
 
 function commentDto(c, { me = null, reactions = [] } = {}) {
@@ -131,16 +191,40 @@ async function reactionsFor(targetType, ids) {
 
 const hotScore = (p) => {
   const hours = (Date.now() - new Date(p.createdAt).getTime()) / 3_600_000;
-  return (p.reactionCount * 3 + p.commentCount * 2 + 1) / Math.pow(hours + 2, 1.4);
+  const base = p.kind === 'SYSTEM' ? 4 : p.kind === 'DECK' ? 2 : 1;
+  return (p.reactionCount * 3 + p.commentCount * 2 + base) / Math.pow(hours + 2, 1.4);
 };
 
 // ---------------------------------------------------------------------------
 // Notificações
 // ---------------------------------------------------------------------------
 
-async function notify(userId, data) {
+export async function notify(userId, data) {
   if (!userId || userId === data.actorId) return;
   await prisma.notification.create({ data: { userId, ...data } }).catch(() => {});
+}
+
+/** Avisa toda a equipe (MOD/ADMIN): denúncias, posts pendentes, tudo que pede atenção imediata. */
+export async function notifyStaff(type, { text, url = '/admin', postId = null, actorId = null } = {}) {
+  const staff = await prisma.user.findMany({ where: { role: { in: ['MOD', 'ADMIN'] }, status: 'ACTIVE' }, select: { id: true } });
+  if (!staff.length) return;
+  await prisma.notification.createMany({ data: staff.map((u) => ({ userId: u.id, type, text, url, postId, actorId })) }).catch(() => {});
+}
+
+/** Exclusão definitiva: post, comentários, reações, votos, notificações, arquivos e denúncias ligadas. */
+export async function hardDeletePost(p, actor, { reason = 'author' } = {}) {
+  const comments = await prisma.comment.findMany({ where: { postId: p.id }, select: { id: true } });
+  const cids = comments.map((x) => x.id);
+  await prisma.reaction.deleteMany({ where: { OR: [{ targetType: 'POST', targetId: p.id }, ...(cids.length ? [{ targetType: 'COMMENT', targetId: { in: cids } }] : [])] } });
+  await prisma.notification.deleteMany({ where: { postId: p.id } });
+  await prisma.report.updateMany({ where: { OR: [{ targetType: 'POST', targetId: p.id }, ...(cids.length ? [{ targetType: 'COMMENT', targetId: { in: cids } }] : [])], status: 'OPEN' }, data: { status: 'RESOLVED', resolution: reason === 'author' ? 'Post excluído pelo autor.' : 'Post excluído pela moderação.' } });
+  for (const m of json(p.mediaJson, [])) {
+    if (m.type === 'embed' || !String(m.url || '').startsWith('/uploads/')) continue;
+    const file = path.join(UPLOADS_DIR, path.basename(m.url));
+    await fs.promises.unlink(file).catch(() => {});
+  }
+  await prisma.post.delete({ where: { id: p.id } }); // cascade: comentários e votos
+  await audit(actor, 'post.delete', 'POST', p.id, { reason, title: p.title });
 }
 
 const MENTION_RE = /@([a-z0-9][a-z0-9-]{1,40})/gi;
@@ -171,49 +255,23 @@ router.get('/api/posts', ah(async (req, res) => {
   const query = String(q || '').trim().toLowerCase();
   if (query) where.AND = [{ OR: [{ title: { contains: query } }, { body: { contains: query } }] }];
 
-  let orderBy = { createdAt: 'desc' };
-  if (sort === 'top') orderBy = [{ reactionCount: 'desc' }, { commentCount: 'desc' }, { createdAt: 'desc' }];
-  let posts;
-  let total;
-  if (sort === 'hot') {
-    // Em alta: recorta os últimos 14 dias e ordena por score no servidor
-    const since = new Date(Date.now() - 14 * 864e5);
-    const pool = await prisma.post.findMany({ where: { ...where, createdAt: { gt: since } }, include: { author: true }, take: 400, orderBy: { createdAt: 'desc' } });
-    pool.sort((a, b) => hotScore(b) - hotScore(a));
-    total = pool.length;
-    posts = pool.slice(skip, skip + take);
-  } else {
-    [posts, total] = await Promise.all([
-      prisma.post.findMany({ where, include: { author: true }, orderBy, skip, take }),
-      prisma.post.count({ where }),
-    ]);
-  }
-  const ids = posts.map((p) => p.id);
-  const [reactions, votes] = await Promise.all([
-    reactionsFor('POST', ids),
-    ids.length ? prisma.pollVote.findMany({ where: { postId: { in: ids } } }) : [],
-  ]);
-  res.json({
-    posts: posts.map((p) => postDto(p, { me, reactions, votes: votes.filter((v) => v.postId === p.id) })),
-    total,
-    nextOffset: skip + posts.length < total ? skip + posts.length : null,
-  });
+  if (req.query.kind === 'USER') where.kind = 'USER';
+  res.json(await listPosts({ where, sort, skip, take, me }));
 }));
 
 router.get('/api/posts/:id', ah(async (req, res) => {
   const me = req.user || null;
-  const p = await prisma.post.findUnique({ where: { id: req.params.id }, include: { author: true } });
+  const p = await prisma.post.findUnique({ where: { id: req.params.id }, include: POST_INCLUDE });
   if (!p) return res.status(404).json({ error: 'Post não encontrado.' });
-  const visible = p.status === 'VISIBLE' || (me && (me.id === p.authorId || canModerate(me)));
+  const visible = p.status === 'VISIBLE' || (me && ((p.authorId && me.id === p.authorId) || canModerate(me)));
   if (!visible) return res.status(404).json({ error: 'Post não disponível.' });
-  const [comments, votes, pr] = await Promise.all([
+  const [comments, [post]] = await Promise.all([
     prisma.comment.findMany({ where: { postId: p.id, status: { not: 'REMOVED' } }, include: { author: true }, orderBy: { createdAt: 'asc' } }),
-    prisma.pollVote.findMany({ where: { postId: p.id } }),
-    reactionsFor('POST', [p.id]),
+    hydratePosts([p], me),
   ]);
   const cr = await reactionsFor('COMMENT', comments.map((c) => c.id));
   res.json({
-    post: postDto(p, { me, reactions: pr, votes }),
+    post,
     comments: comments.map((c) => commentDto(c, { me, reactions: cr })),
     flag: canModerate(me) ? json(p.flagJson, null) : undefined,
   });
@@ -232,10 +290,16 @@ async function runScan(postId, files) {
     await prisma.post.update({ where: { id: postId }, data: { status, flagJson: JSON.stringify(result) } });
     if (result.flagged) {
       const p = await prisma.post.findUnique({ where: { id: postId } });
-      if (p) await notify(p.authorId, { type: 'POST_PENDING', postId, text: 'Seu post ficou em revisão: a triagem automática sinalizou uma imagem. A moderação vai avaliar.' });
+      if (p) {
+        const why = (result.reasons || []).join('; ');
+        await notify(p.authorId, { type: 'POST_PENDING', postId, text: `Seu post "${p.title}" ficou em revisão (${why || 'triagem automática'}). A moderação vai avaliar.` });
+        await notifyStaff('MOD_PENDING', { text: `Post pendente de revisão: "${p.title}" — ${why || 'triagem automática'}.`, url: '/admin#community', postId });
+      }
     }
   } catch (e) {
-    await prisma.post.update({ where: { id: postId }, data: { status: 'VISIBLE', flagJson: JSON.stringify({ error: e.message }) } }).catch(() => {});
+    // Política restritiva: se a triagem quebrou, o post NÃO publica sozinho.
+    await prisma.post.update({ where: { id: postId }, data: { status: 'PENDING', flagJson: JSON.stringify({ error: e.message, flagged: true, reasons: ['falha na triagem'] }) } }).catch(() => {});
+    await notifyStaff('MOD_PENDING', { text: 'Um post ficou pendente porque a triagem automática falhou.', url: '/admin#community', postId });
   }
 }
 
@@ -246,10 +310,10 @@ router.post('/api/posts', requireUser, uploadPost.array('media', 6), moderateFie
   const files = req.files || [];
   const cleanup = () => files.forEach((f) => fs.promises.unlink(f.path).catch(() => {}));
 
-  const tag = TAGS[b.tag] ? b.tag : null;
+  const tag = TAGS[b.tag] && !TAGS[b.tag].auto ? b.tag : null;
   const title = String(b.title || '').trim().slice(0, 140);
   const body = String(b.body || '').trim().slice(0, 5000) || null;
-  if (!tag) { cleanup(); return res.status(422).json({ error: 'Escolha uma tag.' }); }
+  if (!tag) { cleanup(); return res.status(422).json({ error: b.tag === 'DECK' ? 'Para postar um deck, use "Compartilhar na comunidade" na página do deck ou no builder.' : 'Escolha uma tag.' }); }
   if (title.length < 3) { cleanup(); return res.status(422).json({ error: 'Dê um título (mínimo 3 letras).' }); }
 
   const recent = await prisma.post.count({ where: { authorId: req.user.id, createdAt: { gt: new Date(Date.now() - 3_600_000) } } });
@@ -283,15 +347,15 @@ router.post('/api/posts', requireUser, uploadPost.array('media', 6), moderateFie
 
   if (!body && !media.length && !pollJson) { cleanup(); return res.status(422).json({ error: 'O post precisa de texto, mídia ou enquete.' }); }
 
-  const hasImages = files.some((f) => f.mimetype.startsWith('image/'));
+  const hasMedia = files.length > 0; // imagens passam pela triagem; vídeo sempre fica para aprovação manual
   const post = await prisma.post.create({
     data: {
       authorId: req.user.id, tag, title, body, mediaJson: JSON.stringify(media), pollJson, saleJson,
-      status: hasImages ? 'SCANNING' : 'VISIBLE',
+      status: hasMedia ? 'SCANNING' : 'VISIBLE',
     },
-    include: { author: true },
+    include: POST_INCLUDE,
   });
-  if (hasImages) setImmediate(() => runScan(post.id, files.filter((f) => f.mimetype.startsWith('image/'))));
+  if (hasMedia) setImmediate(() => runScan(post.id, files));
 
   for (const u of await mentionedUsers(`${title} ${body || ''}`, req.user.id)) {
     await notify(u.id, { type: 'MENTION', actorId: req.user.id, postId: post.id, text: `${req.user.name} mencionou você em "${title}".` });
@@ -304,9 +368,10 @@ router.delete('/api/posts/:id', requireUser, ah(async (req, res) => {
   const p = await prisma.post.findUnique({ where: { id: req.params.id } });
   if (!p) return res.status(404).json({ error: 'Post não encontrado.' });
   if (p.authorId !== req.user.id && !canModerate(req.user)) return res.status(403).json({ error: 'Só o autor (ou a moderação) pode apagar.' });
-  await prisma.post.update({ where: { id: p.id }, data: { status: 'REMOVED' } });
-  await audit(req.user, 'post.remove', 'POST', p.id);
-  res.json({ ok: true });
+  const byAuthor = p.authorId === req.user.id;
+  await hardDeletePost(p, req.user, { reason: byAuthor ? 'author' : 'moderation' });
+  if (!byAuthor && p.authorId) await notify(p.authorId, { type: 'POST_DELETED', text: `Seu post "${p.title}" foi excluído pela moderação.`, url: '/comunidade' });
+  res.json({ ok: true, deleted: true });
 }));
 
 // ---------------------------------------------------------------------------
@@ -420,9 +485,8 @@ router.get('/api/users/search', ah(async (req, res) => {
 router.get('/api/users/:slug/posts', ah(async (req, res) => {
   const user = await prisma.user.findUnique({ where: { slug: req.params.slug } });
   if (!user) return res.status(404).json({ error: 'Perfil não encontrado.' });
-  const posts = await prisma.post.findMany({ where: { authorId: user.id, status: 'VISIBLE' }, include: { author: true }, orderBy: { createdAt: 'desc' }, take: 30 });
-  const reactions = await reactionsFor('POST', posts.map((p) => p.id));
-  res.json({ posts: posts.map((p) => postDto(p, { me: req.user || null, reactions })) });
+  const posts = await prisma.post.findMany({ where: { authorId: user.id, status: 'VISIBLE' }, include: POST_INCLUDE, orderBy: { createdAt: 'desc' }, take: 30 });
+  res.json({ posts: await hydratePosts(posts, req.user || null) });
 }));
 
 router.get('/api/users/:slug/tournaments', ah(async (req, res) => {
@@ -462,7 +526,7 @@ router.get('/api/notifications', requireUser, ah(async (req, res) => {
     notifications: list.map((n) => ({
       id: n.id, type: n.type, text: n.text, readAt: n.readAt, createdAt: n.createdAt,
       actor: n.actorId ? byId.get(n.actorId) ?? null : null,
-      url: n.postId ? `/comunidade/p/${n.postId}${n.commentId ? `#c-${n.commentId}` : ''}` : '/comunidade',
+      url: n.url || (n.postId ? `/comunidade/p/${n.postId}${n.commentId ? `#c-${n.commentId}` : ''}` : '/comunidade'),
     })),
   });
 }));
@@ -487,8 +551,31 @@ const MOD = (req, res, next) => { if (!canModerate(req.user)) return res.status(
 router.get('/api/admin/posts', requireUser, MOD, ah(async (req, res) => {
   const status = String(req.query.status || 'PENDING');
   const where = status === 'ALL' ? {} : { status };
-  const posts = await prisma.post.findMany({ where, include: { author: true }, orderBy: { createdAt: 'desc' }, take: 100 });
-  res.json({ posts: posts.map((p) => ({ ...postDto(p, { me: req.user }), flag: json(p.flagJson, null) })) });
+  const posts = await prisma.post.findMany({ where, include: POST_INCLUDE, orderBy: { createdAt: 'desc' }, take: 100 });
+  const dtos = await hydratePosts(posts, req.user);
+  res.json({ posts: dtos.map((d, i) => ({ ...d, flag: json(posts[i].flagJson, null) })) });
+}));
+
+/** Exclusão definitiva pela moderação (some do banco na hora; autor é avisado). */
+router.delete('/api/admin/posts/:id', requireUser, MOD, ah(async (req, res) => {
+  const p = await prisma.post.findUnique({ where: { id: req.params.id } });
+  if (!p) return res.status(404).json({ error: 'Post não encontrado.' });
+  await hardDeletePost(p, req.user, { reason: 'moderation' });
+  if (p.authorId) await notify(p.authorId, { type: 'POST_DELETED', text: `Seu post "${p.title}" foi excluído pela moderação${req.body?.reason ? `: ${String(req.body.reason).slice(0, 200)}` : '.'}`, url: '/comunidade' });
+  res.json({ ok: true, deleted: true });
+}));
+
+router.delete('/api/admin/comments/:id', requireUser, MOD, ah(async (req, res) => {
+  const cm = await prisma.comment.findUnique({ where: { id: req.params.id } });
+  if (!cm) return res.status(404).json({ error: 'Comentário não encontrado.' });
+  await prisma.reaction.deleteMany({ where: { targetType: 'COMMENT', targetId: cm.id } });
+  await prisma.report.updateMany({ where: { targetType: 'COMMENT', targetId: cm.id, status: 'OPEN' }, data: { status: 'RESOLVED', resolution: 'Comentário excluído pela moderação.' } });
+  await prisma.comment.updateMany({ where: { parentId: cm.id }, data: { parentId: null } });
+  await prisma.comment.delete({ where: { id: cm.id } });
+  const count = await prisma.comment.count({ where: { postId: cm.postId, status: 'VISIBLE' } });
+  await prisma.post.update({ where: { id: cm.postId }, data: { commentCount: count } }).catch(() => {});
+  await audit(req.user, 'comment.delete', 'COMMENT', cm.id);
+  res.json({ ok: true, deleted: true, commentCount: count });
 }));
 
 router.post('/api/admin/posts/:id/status', requireUser, MOD, ah(async (req, res) => {

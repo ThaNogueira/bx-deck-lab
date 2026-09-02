@@ -20,19 +20,58 @@
 
   <main>
     <section class="view active" id="view-home">
-      <div class="hero compact">
+      <div class="hero compact home-hero">
         <div>
-          <p class="eyebrow">DASHBOARD DO META • BEYBLADE X</p>
+          <p class="eyebrow">BX DECK LAB • BEYBLADE X</p>
           <h1>O que está <em>girando</em> agora</h1>
-          <p>Tendências do meta competitivo, peças em destaque e decks da comunidade — tudo num lugar só. Os dados vêm das mesmas fontes das abas de meta.</p>
+          <p>Estado do meta, destaques da semana e o feed competitivo da comunidade — num lugar só.</p>
         </div>
         <div class="hero-actions">
-          <a class="btn secondary" href="/decks" style="text-decoration:none">Decks da comunidade</a>
-          <a class="btn secondary" href="/torneios" style="text-decoration:none">Torneios</a>
-          <a class="btn secondary" href="/pecas" style="text-decoration:none">Peças</a>
-          <a class="btn secondary" href="/produtos" style="text-decoration:none">Produtos</a>
-          <a class="btn secondary" href="/vendas" style="text-decoration:none">Vendas</a>
+          <a class="btn primary" href="/#builder" style="text-decoration:none"><svg class="vicon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="bevel" stroke-linecap="square" aria-hidden="true"><use href="#i-builder"/></svg> Montar deck</a>
+          <a class="btn secondary" href="/comunidade" style="text-decoration:none"><svg class="vicon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="bevel" stroke-linecap="square" aria-hidden="true"><use href="#i-feed"/></svg> Comunidade</a>
         </div>
+      </div>
+
+      <section class="meta-state" id="metaState" aria-label="Estado do meta">
+        <div class="ms-head">
+          <div><p class="eyebrow">ESTADO DO META</p><h2>Top 5 desta semana</h2></div>
+          <a class="ms-link" href="/#meta">Meta completo <svg class="vicon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="bevel" stroke-linecap="square" aria-hidden="true"><use href="#i-chevron"/></svg></a>
+        </div>
+        <ol class="ms-list" id="metaStateList"><li class="ms-item sk-item"><span class="sk sk-line w60"></span></li><li class="ms-item sk-item"><span class="sk sk-line w60"></span></li><li class="ms-item sk-item"><span class="sk sk-line w60"></span></li><li class="ms-item sk-item"><span class="sk sk-line w60"></span></li><li class="ms-item sk-item"><span class="sk sk-line w60"></span></li></ol>
+        <small class="ms-foot" id="metaStateFoot"></small>
+      </section>
+
+      <section class="hl-strip-wrap" aria-label="Destaques da semana">
+        <div class="section-title-row" style="margin:22px 0 10px"><div><p class="eyebrow">DESTAQUES DA SEMANA</p><h2>O que bombou</h2></div></div>
+        <div class="hl-strip" id="homeHighlights"><div class="hl-card sk-card"><div class="sk sk-box"></div></div><div class="hl-card sk-card"><div class="sk sk-box"></div></div><div class="hl-card sk-card"><div class="sk sk-box"></div></div><div class="hl-card sk-card"><div class="sk sk-box"></div></div></div>
+      </section>
+
+      <div class="home-layout">
+        <section class="home-feed-col">
+          <div class="section-title-row" style="margin:22px 0 10px">
+            <div><p class="eyebrow">FEED COMPETITIVO</p><h2>Decks, resultados, clipes e campeões</h2></div>
+            <a class="ms-link" href="/comunidade">Feed completo <svg class="vicon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="bevel" stroke-linecap="square" aria-hidden="true"><use href="#i-chevron"/></svg></a>
+          </div>
+          <div class="post-list" id="homeFeed"></div>
+          <div class="feed-more" id="homeFeedMore"></div>
+          <div id="homeSentinel" style="height:1px"></div>
+        </section>
+        <aside class="home-side" id="homeSide">
+          <div class="panel-card"><p class="eyebrow">PRÓXIMOS TORNEIOS</p><div id="sideTournaments" style="margin-top:10px"><div class="sk sk-line w90"></div><div class="sk sk-line w60"></div></div></div>
+          <div class="panel-card"><p class="eyebrow">RANKING DE JOGADORES</p><div id="sideRanking" style="margin-top:10px"><div class="sk sk-line w90"></div><div class="sk sk-line w60"></div></div></div>
+          <a class="btn secondary" href="/comunidade" style="text-decoration:none;justify-content:center"><svg class="vicon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="bevel" stroke-linecap="square" aria-hidden="true"><use href="#i-feed"/></svg> Ver comunidade completa</a>
+        </aside>
+      </div>
+    </section>
+
+    <section class="view" id="view-meta">
+      <div class="hero compact">
+        <div>
+          <p class="eyebrow">META CHECK • BEYBLADE X</p>
+          <h1>Meta <em>completo</em></h1>
+          <p>Presença das peças, ranking BBX Weekly e os gráficos de uso nos decks de torneio. O top 5 da home vem do que a comunidade joga e copia.</p>
+        </div>
+        <div class="hero-actions"><a class="btn secondary" href="/#home" style="text-decoration:none"><svg class="vicon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="bevel" stroke-linecap="square" aria-hidden="true"><use href="#i-back"/></svg> Início</a></div>
       </div>
       <section class="meta-cloud-card" id="metaCloudCard">
         <div class="section-title-row">
@@ -66,6 +105,8 @@
       </section>
 
       <div class="home-grid" id="homeCharts"></div>
+    
+      <div class="home-grid" id="homeCharts"></div>
     </section>
 
     <section class="view" id="view-builder">
@@ -81,6 +122,7 @@
           <button class="btn secondary viable" id="viableDeckBtn"><svg class="vicon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="bevel" stroke-linecap="square" aria-hidden="true"><use href="#i-sparkle"/></svg> Aleatório viável</button>
           <button class="btn secondary" id="clearDeckBtn">Limpar deck</button>
           <button class="btn primary" id="publishDeckBtn"><svg class="vicon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="bevel" stroke-linecap="square" aria-hidden="true"><use href="#i-save"/></svg> Salvar deck</button>
+          <button class="btn secondary" id="shareDeckBtn" title="Publica o deck como um post na comunidade (tag Deck) com botões de abrir e copiar"><svg class="vicon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="bevel" stroke-linecap="square" aria-hidden="true"><use href="#i-feed"/></svg> Compartilhar na comunidade</button>
         </div>
       </div>
 
@@ -445,6 +487,7 @@
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
   <script src="/js/shared.js"></script>
+  <script src="/js/post-card.js"></script>
   <script src="app.js"></script>
   <script src="/js/home.js"></script>
 </body>

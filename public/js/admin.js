@@ -211,15 +211,24 @@
               <small style="display:block;color:var(--muted)">por ${esc(r.reporter?.name || 'anônimo')} • ${BX.dateFmt(r.createdAt)}${r.resolution ? ` • resolução: ${esc(r.resolution)}` : ''}</small>
             </div>
             ${r.status === 'OPEN' ? `<div class="row-actions">
-              ${r.targetType === 'POST' && r.target && r.target.status !== 'REMOVED' ? `<button class="btn secondary" data-hidepost="${r.targetId}" title="Ocultar o post">${I('eye')} Ocultar post</button>` : ''}
-              ${r.targetType === 'COMMENT' && r.target && r.target.status !== 'REMOVED' ? `<button class="btn secondary" data-hidecm="${r.targetId}" title="Remover o comentário">${I('trash')} Remover</button>` : ''}
+              ${r.targetType === 'POST' && r.target ? `<button class="btn secondary" data-hidepost="${r.targetId}" title="Ocultar o post (reversível)">${I('eye')} Ocultar</button><button class="btn danger" data-delpost="${r.targetId}" title="Excluir o post do banco de dados, com mídias e comentários">${I('trash')} Excluir post</button>` : ''}
+              ${r.targetType === 'COMMENT' && r.target ? `<button class="btn danger" data-delcm="${r.targetId}" title="Excluir o comentário do banco">${I('trash')} Excluir comentário</button>` : ''}
               <button class="btn secondary" data-resolve="${r.id}:RESOLVED">${I('check')} Resolver</button>
               <button class="btn secondary" data-resolve="${r.id}:IGNORED">${I('x')} Ignorar</button>
             </div>` : `<span class="status-chip">${r.status}</span>`}
           </div>`).join('') || '<div class="empty-state">Nenhuma denúncia aqui.</div>'}`;
       on('[data-rs]', 'click', (el) => { box.dataset.rstatus = el.dataset.rs; render(); });
       on('[data-hidepost]', 'click', act((el) => BX.api(`/api/admin/posts/${el.dataset.hidepost}/status`, { method: 'POST', body: { status: 'HIDDEN' } })));
-      on('[data-hidecm]', 'click', act((el) => BX.api(`/api/admin/comments/${el.dataset.hidecm}/status`, { method: 'POST', body: { status: 'REMOVED' } })));
+      on('[data-delpost]', 'click', act(async (el) => {
+        if (!(await BX.confirmDialog({ title: 'Excluir este post definitivamente?', text: 'Some do banco na hora, com comentários, reações, mídias e as denúncias ligadas a ele. O autor recebe uma notificação.', okLabel: 'Excluir post', danger: true }))) return;
+        const reason = await BX.promptDialog({ title: 'Motivo (vai para o autor)', text: 'Opcional. Ex.: conteúdo impróprio, golpe, spam.', okLabel: 'Excluir', danger: true });
+        if (reason === null) return;
+        return BX.api(`/api/admin/posts/${el.dataset.delpost}`, { method: 'DELETE', body: { reason } });
+      }));
+      on('[data-delcm]', 'click', act(async (el) => {
+        if (!(await BX.confirmDialog({ title: 'Excluir este comentário?', text: 'Some do banco na hora.', okLabel: 'Excluir', danger: true }))) return;
+        return BX.api(`/api/admin/comments/${el.dataset.delcm}`, { method: 'DELETE' });
+      }));
       on('[data-resolve]', 'click', act(async (el) => {
         const [id, status2] = el.dataset.resolve.split(':');
         let resolution = '';
@@ -232,7 +241,7 @@
     async community() {
       const status = box.dataset.cstatus || 'PENDING';
       const { posts } = await BX.api(`/api/admin/posts?status=${status}`);
-      const LABEL = { PENDING: 'Pendentes', SCANNING: 'Analisando', VISIBLE: 'Visíveis', HIDDEN: 'Ocultos', REMOVED: 'Removidos', ALL: 'Todos' };
+      const LABEL = { PENDING: 'Pendentes', SCANNING: 'Analisando', VISIBLE: 'Visíveis', HIDDEN: 'Ocultos', ALL: 'Todos' };
       const flagTxt = (f) => {
         if (!f) return '';
         const hits = (f.results || []).filter((r) => r.flagged).map((r) => `${r.engine || 'triagem'}: ${(r.hits || []).join(', ')}${r.scores ? ' (' + Object.entries(r.scores).filter(([k]) => ['Porn', 'Hentai', 'Sexy', 'sexual_activity', 'sexual_display', 'erotica', 'gore'].includes(k)).map(([k, v]) => `${k} ${Math.round(v * 100)}%`).join(', ') + ')' : ''}`);
@@ -253,14 +262,19 @@
             <div class="row-actions">
               ${p.status !== 'VISIBLE' ? `<button class="btn secondary" data-pstatus="${p.id}:VISIBLE">${I('check')} Aprovar</button>` : ''}
               ${p.status !== 'HIDDEN' ? `<button class="btn secondary" data-pstatus="${p.id}:HIDDEN">${I('eye')} Ocultar</button>` : ''}
-              ${p.status !== 'REMOVED' ? `<button class="btn secondary" data-pstatus="${p.id}:REMOVED">${I('trash')} Remover</button>` : ''}
+              <button class="btn danger" data-pdelete="${p.id}" title="Excluir do banco de dados (definitivo)">${I('trash')} Excluir</button>
             </div>
           </div>`).join('') || `<div class="empty-state">${{ PENDING: 'Nenhum post pendente.', SCANNING: 'Nenhuma imagem em análise.', VISIBLE: 'Nenhum post visível.', HIDDEN: 'Nenhum post oculto.', REMOVED: 'Nenhum post removido.', ALL: 'Nenhum post ainda.' }[status]}</div>`}`;
       on('[data-cs]', 'click', (el) => { box.dataset.cstatus = el.dataset.cs; render(); });
       on('[data-pstatus]', 'click', act(async (el) => {
         const [id, st] = el.dataset.pstatus.split(':');
-        if (st === 'REMOVED' && !(await BX.confirmDialog({ title: 'Remover este post?', text: 'O autor será notificado. A ação fica no log.', okLabel: 'Remover', danger: true }))) return;
         return BX.api(`/api/admin/posts/${id}/status`, { method: 'POST', body: { status: st } });
+      }));
+      on('[data-pdelete]', 'click', act(async (el) => {
+        if (!(await BX.confirmDialog({ title: 'Excluir este post definitivamente?', text: 'Some do banco na hora, com comentários, reações e mídias. O autor recebe uma notificação. Fica no log.', okLabel: 'Excluir post', danger: true }))) return;
+        const reason = await BX.promptDialog({ title: 'Motivo (vai para o autor)', text: 'Opcional. Ex.: imagem imprópria.', okLabel: 'Excluir', danger: true });
+        if (reason === null) return;
+        return BX.api(`/api/admin/posts/${el.dataset.pdelete}`, { method: 'DELETE', body: { reason } });
       }));
     },
 

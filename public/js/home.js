@@ -169,6 +169,107 @@
     }));
   }
 
+  // ------------------------------------------------------------- Home híbrida
+  const deltaHtml = (x) => {
+    if (x.isNew) return `<span class="ms-delta new" title="Entrou no ranking">${BX.icon('sparkle', 12)} novo</span>`;
+    if (x.delta == null) return `<span class="ms-delta flat" title="Sem semana anterior">${BX.icon('minus', 12)}</span>`;
+    if (x.delta > 0) return `<span class="ms-delta up" title="Subiu ${x.delta}">${BX.icon('top', 12)} ${x.delta}</span>`;
+    if (x.delta < 0) return `<span class="ms-delta down" title="Caiu ${-x.delta}">${BX.icon('chevron', 12)} ${-x.delta}</span>`;
+    return `<span class="ms-delta flat" title="Manteve">${BX.icon('minus', 12)} 0</span>`;
+  };
+
+  async function renderMetaState() {
+    const list = document.getElementById('metaStateList');
+    if (!list) return;
+    let data = null;
+    try { data = await BX.api('/api/home/meta'); } catch { data = null; }
+    const items = [];
+    if (data?.combos?.length) {
+      for (const c of data.combos.slice(0, 5)) items.push({ label: c.label, parts: c.parts, delta: c.delta, isNew: c.isNew, rank: c.rank, sub: `${c.uses} uso(s)${c.deck ? ` · deck "${c.deck.title}"` : ''}`, href: c.deck ? `/deck/${c.deck.slug}` : '/#meta' });
+    }
+    // Amostra pequena: completa com o índice BBX Weekly + decks de torneio que o montador já carrega
+    if (items.length < 5) {
+      const fill = () => {
+        const stats = metaPresence().sort((a, b) => b.score - a.score);
+        for (const s of stats) {
+          if (items.length >= 5) break;
+          if (items.some((i) => i.partId === s.part.id)) continue;
+          const diff = s.recent - s.old;
+          items.push({ partId: s.part.id, label: s.part.display, part: s.part, delta: diff === 0 ? 0 : diff, isNew: false, rank: items.length + 1, sub: s.weekly ? `índice BBX Weekly ${s.weekly}` : `${s.count} aparições em decks de torneio`, href: `/peca/${s.part.slug}` });
+        }
+        return items.length >= 5;
+      };
+      if (!fill()) { await new Promise((r) => { let n = 0; const t = setInterval(() => { if (fill() || ++n > 20) { clearInterval(t); r(); } }, 600); }); }
+    }
+    list.innerHTML = items.length ? items.map((it, i) => `<li class="ms-item">
+        <b class="ms-rank">${i + 1}</b>
+        <a class="ms-main" href="${BX.esc(it.href)}">
+          ${it.parts ? BX.beyMini(it.parts.map((p) => ({ ...p, display: p.displayName, img: p.imageUrl })), { u: 40 }) : (it.part ? BX.partThumb(it.part, 40) : '')}
+          <span class="ms-text"><strong>${BX.esc(it.label)}</strong><small>${BX.esc(it.sub || '')}</small></span>
+        </a>
+        ${deltaHtml(it)}
+      </li>`).join('') : '<li class="empty-state">Sem dados do meta ainda.</li>';
+    const foot = document.getElementById('metaStateFoot');
+    if (foot) foot.textContent = data ? `Semana ${data.weekKey}${data.prevWeekKey ? ` vs. ${data.prevWeekKey}` : ' (primeira semana: sem comparação)'} • fontes: decks em torneios (${data.sources?.tournamentDecks || 0}), cópias no builder (${data.sources?.copies || 0}), decks compartilhados (${data.sources?.sharedDecks || 0})${data.thin ? ' • complementado com o índice BBX Weekly' : ''}` : '';
+  }
+
+  async function renderHighlights() {
+    const el = document.getElementById('homeHighlights');
+    if (!el) return;
+    try {
+      const h = await BX.api('/api/home/highlights');
+      const cards = [];
+      if (h.topDeck) cards.push(`<a class="hl-card deck" href="/deck/${esc(h.topDeck.slug)}"><span class="hl-kind">${BX.icon('decks', 13)} Deck mais copiado</span>${BX.deckPreview(h.topDeck.beys, { u: 40, parts: h.topDeck.parts })}<b>${esc(h.topDeck.title)}</b><small>${h.topDeck.copies7d || h.topDeck.copyCount} cópia(s) · ${esc(h.topDeck.author?.name || '')}</small></a>`);
+      if (h.topClip) cards.push(`<a class="hl-card clip" href="${esc(h.topClip.url)}" ${h.topClip.thumb ? `style="--bg:url('${esc(h.topClip.thumb)}')"` : ''}><span class="hl-kind">${BX.icon('clip', 13)} Clipe mais curtido</span><span class="hl-play">${BX.icon('play', 22)}</span><b>${esc(h.topClip.title)}</b><small>${h.topClip.reactions} reação(ões) · ${esc(h.topClip.author?.name || '')}</small></a>`);
+      if (h.nextTournament) cards.push(`<a class="hl-card tour" href="/torneio/${esc(h.nextTournament.slug)}"><span class="hl-kind">${BX.icon('calendar', 13)} ${h.nextTournament.status === 'RUNNING' ? 'Torneio rolando' : 'Próximo torneio'}</span><b>${esc(h.nextTournament.name)}</b><small>${BX.dateFmt(h.nextTournament.startsAt, { weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}${h.nextTournament.storeName ? ` · ${esc(h.nextTournament.storeName)}` : ''} · ${h.nextTournament.players} inscrito(s)</small></a>`);
+      if (h.champion) cards.push(`<a class="hl-card champ" href="/torneio/${esc(h.champion.tournament.slug)}"><span class="hl-kind">${BX.icon('trophy', 13)} Último campeão</span><span class="hl-user">${BX.avatarHtml(h.champion.user, { size: 34 })}<b>${esc(h.champion.user.name)}</b></span><small>${esc(h.champion.tournament.name)}${h.champion.deck ? ` · deck ${esc(h.champion.deck.title)}` : ''}</small></a>`);
+      if (!cards.length) cards.push(`<a class="hl-card" href="/torneios"><span class="hl-kind">${BX.icon('trophy', 13)} Torneios</span><b>Crie o primeiro torneio</b><small>Os destaques da semana nascem dos torneios e dos decks compartilhados.</small></a>`);
+      el.innerHTML = cards.join('');
+    } catch { el.innerHTML = ''; }
+  }
+
+  async function renderHomeSide() {
+    const tEl = document.getElementById('sideTournaments');
+    const rEl = document.getElementById('sideRanking');
+    if (!tEl || !rEl) return;
+    try {
+      const s = await BX.api('/api/home/side');
+      tEl.innerHTML = s.upcoming.length ? s.upcoming.map((t) => `<a class="side-row" href="/torneio/${esc(t.slug)}"><span class="side-ic">${BX.icon(t.status === 'RUNNING' ? 'live' : 'calendar', 16)}</span><span><b>${esc(t.name)}</b><small>${BX.dateFmt(t.startsAt, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })} · ${t.format === 'POINTS4' ? 'partida única' : 'MD3'}${t.storeName ? ` · ${esc(t.storeName)}` : ''}</small></span><small>${t.players}</small></a>`).join('') + `<a class="side-more" href="/torneios">Todos os torneios ${BX.icon('chevron', 12)}</a>` : '<div class="empty-state">Nenhum torneio agendado. <a href="/torneios" style="color:var(--cyan)">Criar um</a></div>';
+      rEl.innerHTML = s.ranking.length ? s.ranking.map((r, i) => `<a class="side-row" href="/u/${esc(r.user.slug)}"><b class="side-rank ${i < 3 ? 'top' : ''}">${i + 1}</b>${BX.avatarHtml(r.user, { size: 28 })}<span><b>${esc(r.user.name)}</b><small>${r.titles} título(s) · ${r.wins} vitória(s) · ${r.events} evento(s)</small></span></a>`).join('') : '<div class="empty-state">O ranking aparece quando o primeiro torneio encerrar.</div>';
+    } catch { tEl.innerHTML = ''; rEl.innerHTML = ''; }
+  }
+
+  async function renderHomeFeed() {
+    const list = document.getElementById('homeFeed');
+    if (!list || !window.BXPost) return;
+    await BXPost.ready();
+    let offset = 0, loading = false, posts = [];
+    const CACHE_KEY = 'bx_home_feed_v1';
+    // Primeiras posições em cache: aparecem na hora, depois o servidor atualiza
+    try { const c = JSON.parse(sessionStorage.getItem(CACHE_KEY) || 'null'); if (c?.posts?.length && Date.now() - c.at < 300e3) { posts = c.posts; list.innerHTML = posts.map((p) => BXPost.card(p)).join(''); } } catch {}
+    if (!posts.length) list.innerHTML = BXPost.skeleton(3);
+    BXPost.bind(list, { getPost: (id) => posts.find((p) => p.id === id) });
+    const more = document.getElementById('homeFeedMore');
+    const load = async (reset) => {
+      if (loading) return; loading = true;
+      try {
+        const j = await BX.api(`/api/home/feed?offset=${reset ? 0 : offset}&limit=10`);
+        if (reset) { posts = j.posts; list.innerHTML = posts.map((p) => BXPost.card(p)).join('') || '<div class="empty-state">O feed competitivo começa quando alguém compartilhar um deck, um clipe ou um resultado. <a href="/comunidade/novo" style="color:var(--cyan)">Postar agora</a></div>'; try { sessionStorage.setItem(CACHE_KEY, JSON.stringify({ at: Date.now(), posts: posts.slice(0, 10) })); } catch {} }
+        else { posts.push(...j.posts); list.insertAdjacentHTML('beforeend', j.posts.map((p) => BXPost.card(p)).join('')); }
+        offset = j.nextOffset;
+        more.innerHTML = offset != null ? '<button class="btn secondary" id="homeMore">Carregar mais</button>' : (posts.length > 5 ? '<small class="muted">Fim do feed da home — o resto está na comunidade.</small>' : '');
+      } catch (e) { if (!posts.length) list.innerHTML = `<div class="empty-state">${esc(e.message)}</div>`; }
+      loading = false;
+    };
+    more.addEventListener('click', (e) => { if (e.target.closest('#homeMore')) load(false); });
+    new IntersectionObserver((en) => { if (en.some((x) => x.isIntersecting) && offset != null && posts.length) load(false); }, { rootMargin: '500px' }).observe(document.getElementById('homeSentinel'));
+    load(true);
+  }
+
+  if (document.getElementById('metaState')) {
+    renderMetaState(); renderHighlights(); renderHomeSide(); renderHomeFeed();
+  }
+
   async function renderHome() {
     const chartsEl = document.getElementById('homeCharts');
     const featEl = document.getElementById('homeFeatured');
@@ -346,12 +447,56 @@
           ? await BX.api(`/api/decks/${encodeURIComponent(document.getElementById('pubSubmit').dataset.deckId)}`, { method: 'PATCH', body })
           : await BX.api('/api/decks', { method: 'POST', body });
         modal.hidden = true;
-        location.href = `/deck/${saved.deck.slug}`;
+        const shareAfter = document.getElementById('pubSubmit').dataset.shareAfter === '1';
+        location.href = `/deck/${saved.deck.slug}${shareAfter ? '?compartilhar=1' : ''}`;
       } catch (e) { BX.toast(e.message); }
     };
   }
 
   document.getElementById('publishDeckBtn')?.addEventListener('click', openPublish);
+
+  // Compartilhar na comunidade direto do builder: precisa do deck salvo (editar=slug)
+  document.getElementById('shareDeckBtn')?.addEventListener('click', async () => {
+    const me = await BX.requireLogin('/#builder');
+    if (!me) return;
+    const editSlug = new URLSearchParams(location.search).get('editar');
+    if (!editSlug) {
+      BX.toast('Salve o deck primeiro — depois de salvar, o compartilhamento abre sozinho.');
+      document.getElementById('pubSubmit').dataset.shareAfter = '1';
+      openPublish();
+      return;
+    }
+    const { deck } = await BX.api(`/api/decks/${encodeURIComponent(editSlug)}`).catch(() => ({}));
+    if (!deck) { BX.toast('Não encontrei o deck salvo.'); return; }
+    if (deck.sharedPostId) { location.href = `/comunidade/p/${deck.sharedPostId}`; return; }
+    const text = await BX.promptDialog({ title: 'Compartilhar na comunidade', text: 'Descreva a build (opcional): ideia, pontos fortes, contra o que funciona.', placeholder: 'ex.: Deck de stamina com bit Ball para segurar o meta de ataque…', multiline: true, okLabel: 'Publicar na comunidade' });
+    if (text === null) return;
+    try {
+      const r = await BX.api(`/api/decks/${deck.id}/share`, { method: 'POST', body: { body: text } });
+      BX.toast(r.already ? 'Este deck já estava na comunidade.' : 'Deck compartilhado!');
+      location.href = `/comunidade/p/${r.post.id}`;
+    } catch (e) { BX.toast(e.message); }
+  });
+
+  // Abrir um deck da comunidade no builder: /?copiar=slug#builder
+  (async () => {
+    const copySlug = new URLSearchParams(location.search).get('copiar');
+    if (!copySlug) return;
+    try {
+      const { deck } = await BX.api(`/api/decks/${encodeURIComponent(copySlug)}`);
+      const beysNames = deck.beys.map((bey) => bey.map((id) => (deck.parts?.[id] ? `#sid:${id}` : id)));
+      // espera o catálogo do servidor entrar no montador (importCatalog) para os #sid resolverem
+      await BX.partTagReady().catch(() => {});
+      const apply = async () => {
+        for (let i = 0; i < 20 && !window.BXApp.getPart?.(deck.beys[0]?.[0]) && !Object.values(window.BXApp.listParts?.() || {}).some((p) => p.serverId === deck.beys[0]?.[0]); i++) await new Promise((r) => setTimeout(r, 150));
+        window.BXApp.loadDeck(beysNames);
+        window.BXApp.setDeckName(deck.title);
+        document.getElementById('pubTitle').value = deck.title;
+        BX.toast(`Deck "${deck.title}" carregado no builder — edite à vontade e salve como seu.`);
+      };
+      if (window.BXApp) apply(); else document.addEventListener('bxapp-ready', apply, { once: true });
+    } catch (e) { BX.toast(e.message); }
+  })();
 
   // Editar um deck publicado: /#builder?editar=slug carrega as peças no builder
   (async () => {

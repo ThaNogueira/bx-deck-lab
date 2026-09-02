@@ -57,6 +57,8 @@
           </div>
           <div class="hero-actions">
             ${mine ? `<button class="btn secondary" id="visBtn">${deck.isPublic === false ? `${BX.ic('globe', 14)} Tornar público` : `${BX.ic('lock', 14)} Tornar privado`}</button><a class="btn secondary" href="/deck/${deck.slug}/editar">Editar</a><a class="btn ghost" href="/meus-decks">Meus decks</a>` : ''}
+            ${mine ? (deck.sharedPostId ? `<a class="btn secondary" href="/comunidade/p/${deck.sharedPostId}" style="text-decoration:none">${BX.ic('feed', 14)} Ver post na comunidade</a>` : `<button class="btn secondary" id="shareBtn">${BX.ic('feed', 14)} Compartilhar na comunidade</button>`) : ''}
+            ${!mine && deck.isPublic !== false ? `<button class="btn primary" id="copyBtn" title="Salva uma cópia privada em Meus decks e conta no ranking do meta">${BX.ic('save', 14)} Copiar deck<small class="copy-count" id="copyCount">${deck.copyCount || 0}</small></button><a class="btn secondary" href="/?copiar=${deck.slug}#builder" style="text-decoration:none">${BX.ic('builder', 14)} Abrir no builder</a>` : ''}
             ${mine ? `<button class="btn danger-outline" id="delBtn">Excluir</button>` : `<button class="btn ghost" id="reportBtn">${BX.ic('flag', 14)} Denunciar</button>`}
           </div>
         </div>
@@ -72,6 +74,27 @@
         </div>`;
 
       document.getElementById('reportBtn')?.addEventListener('click', () => BX.report('DECK', deck.id, 'este deck'));
+      const shareNow = async () => {
+        const text = await BX.promptDialog({ title: 'Compartilhar na comunidade', text: 'Descreva a build (opcional). O post nasce com a tag Deck e botões de abrir no builder e copiar.', placeholder: 'ex.: Deck de stamina com bit Ball…', multiline: true, okLabel: 'Publicar na comunidade' });
+        if (text === null) return;
+        try {
+          const r = await BX.api(`/api/decks/${deck.id}/share`, { method: 'POST', body: { body: text } });
+          BX.toast(r.already ? 'Este deck já estava na comunidade.' : 'Deck compartilhado!');
+          location.href = `/comunidade/p/${r.post.id}`;
+        } catch (e) { BX.toast(e.message); }
+      };
+      document.getElementById('shareBtn')?.addEventListener('click', shareNow);
+      if (mine && !deck.sharedPostId && new URLSearchParams(location.search).get('compartilhar') === '1') { history.replaceState(null, '', location.pathname); shareNow(); }
+      document.getElementById('copyBtn')?.addEventListener('click', async (e) => {
+        const u = await BX.requireLogin(location.pathname); if (!u) return;
+        const btn = e.currentTarget; btn.disabled = true;
+        try {
+          const r = await BX.api(`/api/decks/${deck.id}/copy`, { method: 'POST' });
+          document.getElementById('copyCount').textContent = r.copyCount;
+          BX.toast(r.counted ? 'Deck copiado para Meus decks (pasta "Copiados").' : 'Nova cópia salva em Meus decks.');
+          btn.innerHTML = `${BX.ic('check', 14)} Copiado <a href="/deck/${r.deck.slug}" style="color:inherit;margin-left:6px;text-decoration:underline">abrir cópia</a>`; btn.disabled = false;
+        } catch (er) { BX.toast(er.message); btn.disabled = false; }
+      });
       document.getElementById('visBtn')?.addEventListener('click', async () => {
         try {
           await BX.api(`/api/decks/${deck.id}`, { method: 'PATCH', body: { isPublic: deck.isPublic === false } });

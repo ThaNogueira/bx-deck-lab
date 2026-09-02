@@ -50,6 +50,7 @@ model User {
   reactions      Reaction[]
   pollVotes      PollVote[]
   notifications  Notification[]    @relation("notifTarget")
+  deckCopies     DeckCopy[]
 }
 
 model AuthSession {
@@ -154,11 +155,35 @@ model CommunityDeck {
   isPublic      Boolean  @default(true) // false = só o autor vê
   folder        String? // pasta do arquivo pessoal do autor
   featuredOrder Int? // não-nulo = fixado na home pelo admin
+  copyCount     Int      @default(0) // vezes que foi copiado/aberto no builder por outra pessoa (métrica do meta)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   author        User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  posts         Post[]
+  copies        DeckCopy[]
+  tournamentEntries TournamentPlayer[]
 
   @@index([authorId])
+}
+
+/// Quem copiou qual deck (1 por pessoa) — alimenta copyCount e o ranking do meta.
+model DeckCopy {
+  id        String   @id @default(cuid())
+  deckId    String
+  userId    String
+  createdAt DateTime @default(now())
+  deck      CommunityDeck @relation(fields: [deckId], references: [id], onDelete: Cascade)
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([deckId, userId])
+}
+
+/// Ranking do meta calculado periodicamente (1 linha por semana ISO) — permite "subiu/caiu" vs. semana anterior.
+model MetaSnapshot {
+  id         String   @id @default(cuid())
+  weekKey    String   @unique // ex.: 2026-W36
+  computedAt DateTime @default(now())
+  dataJson   String // {parts:[{id,score,rank}], combos:[{key,parts,score,rank,deckId}], sources:{...}}
 }
 
 // ---------------------------------------------------------------------------
@@ -225,6 +250,8 @@ model TournamentPlayer {
   userId       String
   joinedAt     DateTime @default(now())
   dropped      Boolean  @default(false)
+  deckId       String? // deck que o jogador declarou usar neste torneio (entra no cálculo do meta)
+  deck         CommunityDeck? @relation(fields: [deckId], references: [id], onDelete: SetNull)
   tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
   user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   asP1         TMatch[]   @relation("p1")
@@ -384,8 +411,12 @@ model PhysicalDeck {
 
 model Post {
   id            String    @id @default(cuid())
-  authorId      String
-  tag           String // CLIP | UNBOXING | CHANNEL | SALE | RESULT | CHAMPION | HELP | OFFTOPIC
+  authorId      String? // null = card gerado pelo sistema
+  kind          String    @default("USER") // USER | SYSTEM (card automático) | DECK (deck compartilhado do builder)
+  deckId        String? // kind DECK (ou card de sistema que aponta pra um deck)
+  systemKey     String?   @unique // cards automáticos: evita duplicar (ex.: t-finished:<slug>)
+  dataJson      String? // extras do card: {icon, cta:{label,url}, delta, tournamentSlug, ...}
+  tag           String // CLIP | UNBOXING | CHANNEL | SALE | RESULT | CHAMPION | HELP | OFFTOPIC | DECK
   title         String
   body          String?
   mediaJson     String    @default("[]") // [{type:image|gif|video|embed, url, poster?}]
@@ -397,12 +428,14 @@ model Post {
   commentCount  Int       @default(0)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
-  author        User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  author        User?     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  deck          CommunityDeck? @relation(fields: [deckId], references: [id], onDelete: SetNull)
   comments      Comment[]
   votes         PollVote[]
 
   @@index([status, createdAt])
   @@index([tag, status])
+  @@index([kind, status, createdAt])
   @@index([authorId])
 }
 
@@ -453,6 +486,7 @@ model Notification {
   actorId   String?
   postId    String?
   commentId String?
+  url       String? // destino explícito (ex.: /admin#reports); se null, deriva do postId
   text      String?
   readAt    DateTime?
   createdAt DateTime  @default(now())

@@ -4,6 +4,7 @@ import { requireUser, publicUser, isStaff } from '../auth.js';
 import { moderateFields, getSetting } from '../settings.js';
 import { json, uniqueSlug } from '../util.js';
 import { partDto } from './catalog.js';
+import { audit } from '../audit.js';
 
 const router = Router();
 const ah = (fn) => (req, res, next) => fn(req, res, next).catch(next);
@@ -24,6 +25,8 @@ async function deckDto(d, { withParts = false } = {}) {
     folder: d.folder,
     updatedAt: d.updatedAt,
     featured: d.featuredOrder != null,
+    copyCount: d.copyCount ?? 0,
+    sharedPostId: d.posts?.find?.((p) => p.kind === 'DECK' && p.status === 'VISIBLE')?.id ?? null,
     createdAt: d.createdAt,
     author: d.author ? publicUser(d.author) : undefined,
     beys,
@@ -101,7 +104,7 @@ router.get('/api/decks-featured', ah(async (_req, res) => {
 router.get('/api/decks/:slug', ah(async (req, res) => {
   const deck = await prisma.communityDeck.findUnique({
     where: { slug: req.params.slug },
-    include: { author: true },
+    include: { author: true, posts: { where: { kind: 'DECK', status: 'VISIBLE' }, select: { id: true, kind: true, status: true }, take: 1 } },
   });
   const isOwner = deck && req.user && deck.authorId === req.user.id;
   const restrito = deck && (deck.status !== 'VISIBLE' || !deck.isPublic);
@@ -168,6 +171,57 @@ router.patch('/api/decks/:id', requireUser, moderateFields('title', 'description
   }
   const updated = await prisma.communityDeck.update({ where: { id: deck.id }, data, include: { author: true } });
   res.json({ deck: await deckDto(updated) });
+}));
+
+/**
+ * Compartilhar na comunidade: cria (uma vez) o post kind=DECK com a tag Deck.
+ * Só o autor; o deck precisa estar público. Texto opcional descreve a build.
+ */
+router.post('/api/decks/:id/share', requireUser, moderateFields('body'), ah(async (req, res) => {
+  const deck = await prisma.communityDeck.findUnique({ where: { id: req.params.id }, include: { author: true } });
+  if (!deck) return res.status(404).json({ error: 'Deck não encontrado.' });
+  if (deck.authorId !== req.user.id && !isStaff(req.user)) return res.status(403).json({ error: 'Só o autor pode compartilhar o deck.' });
+  if (deck.status !== 'VISIBLE') return res.status(403).json({ error: 'Este deck está oculto pela moderação.' });
+  const existing = await prisma.post.findFirst({ where: { deckId: deck.id, kind: 'DECK', status: { in: ['VISIBLE', 'PENDING', 'SCANNING'] } } });
+  if (existing) return res.json({ post: { id: existing.id }, already: true });
+  if (!deck.isPublic) await prisma.communityDeck.update({ where: { id: deck.id }, data: { isPublic: true } });
+  const body = String(req.body?.body || '').trim().slice(0, 3000) || deck.description || null;
+  const post = await prisma.post.create({
+    data: { authorId: req.user.id, kind: 'DECK', deckId: deck.id, tag: 'DECK', title: deck.title.slice(0, 140), body, status: 'VISIBLE', dataJson: JSON.stringify({ icon: 'decks' }) },
+  });
+  await audit(req.user, 'deck.share', 'DECK', deck.id, { postId: post.id });
+  res.json({ post: { id: post.id }, already: false });
+}));
+
+/**
+ * Copiar deck: registra a cópia (1 por pessoa; alimenta copyCount e o meta) e duplica
+ * o deck na conta de quem copiou (privado, pasta "Copiados"). Devolve a cópia.
+ */
+router.post('/api/decks/:id/copy', requireUser, ah(async (req, res) => {
+  const src = await prisma.communityDeck.findUnique({ where: { id: req.params.id } });
+  if (!src) return res.status(404).json({ error: 'Deck não encontrado.' });
+  const own = src.authorId === req.user.id;
+  if (!own && (!src.isPublic || src.status !== 'VISIBLE')) return res.status(403).json({ error: 'Sem permissão.' });
+  let counted = false;
+  if (!own) {
+    const already = await prisma.deckCopy.findUnique({ where: { deckId_userId: { deckId: src.id, userId: req.user.id } } });
+    if (!already) {
+      await prisma.deckCopy.create({ data: { deckId: src.id, userId: req.user.id } });
+      await prisma.communityDeck.update({ where: { id: src.id }, data: { copyCount: { increment: 1 } } });
+      counted = true;
+    }
+  }
+  const title = own ? `${src.title} (cópia)`.slice(0, 80) : src.title.slice(0, 80);
+  const deck = await prisma.communityDeck.create({
+    data: {
+      slug: await uniqueSlug(prisma.communityDeck, title),
+      authorId: req.user.id, title,
+      description: src.description, launchGuide: src.launchGuide, youtubeUrl: src.youtubeUrl, beysJson: src.beysJson,
+      folder: own ? src.folder : 'Copiados', isPublic: false,
+    },
+  });
+  const fresh = await prisma.communityDeck.findUnique({ where: { id: src.id } });
+  res.json({ deck: await deckDto(deck), copyCount: fresh?.copyCount ?? src.copyCount, counted });
 }));
 
 /** Duplica um deck do próprio usuário (a cópia nasce privada). */
