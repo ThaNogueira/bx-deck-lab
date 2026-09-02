@@ -1347,7 +1347,7 @@ body{overflow-x:clip}
 body.nav-open{overflow:hidden}
 h1,h2,h3,p,small,.ptag span,.picker-tile-name{overflow-wrap:break-word}
 img,svg,video,canvas{max-width:100%}
-.avatar img,.avatar .frame-img,.part-art img,.bm-part img,.ptag-thumb img{max-width:none;max-height:none} /* molduras/fotos posicionadas em % do container não podem ser limitadas */
+.avatar img,.avatar .frame-img{max-width:none;max-height:none} /* molduras/fotos posicionadas em % do container não podem ser limitadas */
 :focus-visible{outline:2px solid var(--cyan);outline-offset:2px;border-radius:6px}
 button,[role=button],a.btn,.tab,.side-item{cursor:pointer;-webkit-tap-highlight-color:transparent}
 /* Contraste de textos pequenos (Lighthouse color-contrast) */
