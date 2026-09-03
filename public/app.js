@@ -2205,11 +2205,11 @@
       return {p,owned,disabled,why,current:deck[bey][sheetTarget?.field||'']===p.id};
     });
   }
-  function sheetItemHtml({p,owned,disabled,why,current}){
-    return `<button type="button" class="sh-item ${disabled?'disabled':''} ${current?'current':''}" data-part="${escapeAttr(p.id)}" ${disabled?'data-disabled="1"':''} title="${escapeAttr(p.display)}">
+  function sheetItemHtml({p,owned,disabled,why,current,rec}){
+    return `<button type="button" class="sh-item ${disabled?'disabled':''} ${current?'current':''} ${rec?'rec':''}" data-part="${escapeAttr(p.id)}" ${disabled?'data-disabled="1"':''} title="${escapeAttr(p.display)}">
       ${partArt(p,'sh')}
       <span class="sh-txt"><b>${escapeHTML(p.display)}</b><small>${p.abbrev&&p.abbrev!==p.display?escapeHTML(p.abbrev)+' · ':''}${builderShowAll?(owned?`${BX.ic('check',11)} na coleção${owned>1?` ×${owned}`:''}`:`${BX.ic('backpack',11)} não tenho`):`×${owned} na coleção`}${p.banned?' · <em>banida</em>':''}</small></span>
-      ${why?`<span class="sh-why">${escapeHTML(why)}</span>`:current?`<span class="sh-why cur">${BX.ic('check',12)} atual</span>`:''}
+      ${why?`<span class="sh-why">${escapeHTML(why)}</span>`:current?`<span class="sh-why cur">${BX.ic('check',12)} atual</span>`:rec?`<span class="sh-why rec" title="${escapeAttr(rec.reason)}">${BX.ic('sparkle',11)} recomendada</span>`:''}
       <i class="sh-fav ${favParts.has(p.id)?'on':''}" data-fav="${escapeAttr(p.id)}" title="Favoritar">${BX.ic('star',14)}</i>
     </button>`;
   }
@@ -2218,11 +2218,17 @@
     const {bey,kind}=sheetTarget;
     const list=document.getElementById('sheetList'), quick=document.getElementById('sheetQuick');
     const items=sheetItems(kind,bey);
+    recLoadServer();
+    const recs=recommendParts(kind,bey,{limit:4,candidates:items.filter(x=>!x.disabled).map(x=>x.p)});
+    const recById=new Map(recs.map(r=>[r.p.id,r]));
+    items.forEach(x=>{x.rec=recById.get(x.p.id)||null;});
+    items.sort((a,b)=>((b.rec?1:0)-(a.rec?1:0))||((b.rec?.score||0)-(a.rec?.score||0)));
     const byId=new Map(items.map(x=>[x.p.id,x]));
     const favs=[...favParts].map(id=>byId.get(id)).filter(Boolean);
     const rec=recentParts.map(id=>byId.get(id)).filter(x=>x&&!favParts.has(x.p.id)).slice(0,8);
     const chip=(x,cls='')=>`<button type="button" class="sh-chip ${cls} ${x.disabled?'disabled':''}" data-part="${escapeAttr(x.p.id)}" ${x.disabled?'data-disabled="1"':''} title="${escapeAttr(x.p.display)}${x.why?' — '+escapeAttr(x.why):''}">${partArt(x.p,'chip')}<span>${escapeHTML(x.p.abbrev||x.p.display)}</span></button>`;
-    quick.innerHTML=(favs.length?`<div class="sh-row"><small>${BX.ic('star',11)} Favoritas</small><div>${favs.map(x=>chip(x,'fav')).join('')}</div></div>`:'')
+    quick.innerHTML=(recs.length?`<div class="sh-row rec"><small>${BX.ic('sparkle',11)} Recomendadas para este Bey</small><div>${recs.map(r=>recCardHtml(r)).join('')}</div></div>`:'')
+      +(favs.length?`<div class="sh-row"><small>${BX.ic('star',11)} Favoritas</small><div>${favs.map(x=>chip(x,'fav')).join('')}</div></div>`:'')
       +(rec.length?`<div class="sh-row"><small>${BX.ic('clock',11)} Recentes</small><div>${rec.map(x=>chip(x)).join('')}</div></div>`:'');
     list.innerHTML=items.slice(0,220).map(sheetItemHtml).join('')||`<div class="empty-state">Nenhuma peça desse tipo${builderShowAll?'':' na sua coleção'}.</div>`;
     document.getElementById('sheetCount').textContent=`${items.length} peça(s)`;
@@ -2409,6 +2415,134 @@
   // Fecha a prévia ao rolar ou tocar fora
   document.addEventListener('scroll',hidePreview,{passive:true,capture:true});
 
+  // ---- Recomendações de peças: competitivo (pódios, BBX Weekly, meta do site) + perfil (Blade × Ratchet × Bit) ----
+  // É só sugestão: a peça recomendada sobe para o topo do seletor com um motivo curto. Nenhuma regra muda.
+  const REC_GROUP={blade:'blade',main:'blade',integrated:'blade',ratchet:'ratchet',bit:'bit',rib:'bit',lock:'lock',assist:'assist',over:'over'};
+  const recNameCache=new Map();
+  function recPartByName(name,kindHint=''){
+    const key=`${kindHint}|${equivalentKey(name)}`;
+    if(recNameCache.has(key))return recNameCache.get(key);
+    const k=equivalentKey(name); let hit=null;
+    if(k){
+      const all=Object.values(PARTS).filter(p=>!p.parentId);
+      hit=all.find(p=>(!kindHint||REC_GROUP[p.kind]===kindHint)&&[p.name,p.display,p.abbrev,...(p.aliases||[])].some(a=>a&&equivalentKey(a)===k))||null;
+      if(!hit&&kindHint==='bit'){ const abbr=Object.entries(BIT_NAMES).find(([,n])=>equivalentKey(n)===k)?.[0]; if(abbr)hit=all.find(p=>['bit','rib'].includes(p.kind)&&String(p.abbrev||'').toUpperCase()===abbr)||null; }
+    }
+    recNameCache.set(key,hit); return hit;
+  }
+  let recCombosCache=null, recCombosSig='';
+  let recServerCombos=null; // combos do meta do site (torneios + cópias), carregados uma vez
+  function recLoadServer(){
+    if(recServerCombos!==null)return;
+    recServerCombos=[];
+    BX.api('/api/home/meta').then(j=>{
+      const sid=SID_INDEX();
+      recServerCombos=(j?.combos||[]).map(c=>({ids:new Set((c.parts||[]).map(p=>sid.get(p.id)).filter(Boolean).map(p=>p.parentId||p.id)),w:1.6+Math.min(1,(c.uses||0)/8),src:'meta do site'})).filter(c=>c.ids.size>=2);
+      recCombosSig=''; if(currentView==='builder'){renderPicker();}
+    }).catch(()=>{});
+  }
+  /** Lista de combos competitivos como conjuntos de ids de peça (pai), com peso. */
+  function recCombos(){
+    const sig=`${metaDecks.length}|${recServerCombos?recServerCombos.length:0}|${Object.keys(PARTS).length}`;
+    if(recCombosCache&&recCombosSig===sig)return recCombosCache;
+    const out=[];
+    for(const d of metaDecks){
+      const place=String(d.place||''); const pw=/^1/.test(place)?1.5:/^2/.test(place)?1.25:/^3/.test(place)?1.1:1;
+      const w=pw*(d.ranked?1.15:1);
+      (d.combos||[]).forEach((combo,j)=>{
+        const names=d.parts?.[j]||comboPartsFromText(combo)||[];
+        const ids=new Set(names.map((n,idx)=>recPartByName(n,idx===0?'blade':idx===1?'ratchet':idx===2?'bit':'')).filter(Boolean).map(p=>p.id));
+        if(ids.size>=2)out.push({ids,w,src:d.event||'pódio'});
+      });
+    }
+    for(const c of (recServerCombos||[]))out.push(c);
+    recCombosCache=out; recCombosSig=sig; return out;
+  }
+  /** Popularidade 0..1 no BBX Weekly (por grupo). */
+  function recPopularity(p){
+    const g=REC_GROUP[p.kind]; const grp=(BBX_WEEKLY.groups||[]).find(x=>x.key===g); if(!grp)return {v:0,rank:0};
+    const idx=grp.items.findIndex(([n])=>recPartByName(n,g)?.id===p.id); if(idx<0)return {v:0,rank:0};
+    const max=grp.items[0]?.[1]||1; return {v:(grp.items[idx][1]||0)/max,rank:idx+1};
+  }
+  function recVec(p){
+    if(!p)return null;
+    if(['bit','rib'].includes(p.kind)){const b=getBitProfile(p);return [b.atk,b.def,b.sta];}
+    if(p.kind==='ratchet'){const r=ratchetInfo(p);return [5+r.atk*6,5+r.def*6,5+r.sta*6];}
+    if(['blade','main','integrated'].includes(p.kind)){const b=bladeProfile({mode:p.kind==='main'?'cx':'standard',blade:p.id,main:p.id});return [b.atk,b.def,b.sta];}
+    if(p.kind==='assist'){const m=componentMod(p);return m?[5+m.atk*4,5+m.def*4,5+m.sta*4]:null;}
+    return null;
+  }
+  const recCos=(a,b)=>{ if(!a||!b)return 0; const dot=a[0]*b[0]+a[1]*b[1]+a[2]*b[2], na=Math.hypot(...a), nb=Math.hypot(...b); return na&&nb?dot/(na*nb):0; };
+  const recRole=(v)=>{ if(!v)return ''; const [a,d,s]=v; const m=Math.max(a,d,s); if(m-Math.min(a,d,s)<1.2)return 'balance'; return m===a?'ataque':m===d?'defesa':'stamina'; };
+  /**
+   * Recomenda peças de um tipo para o Bey (índice). Retorna [{p, score, reason}] em ordem.
+   * Sinais: co-ocorrência em combos de pódio/meta com as peças já escolhidas, popularidade BBX Weekly e encaixe de perfil.
+   */
+  function recommendParts(kind,bey,{limit=4,candidates=null}={}){
+    const slot=deck[bey]; if(!slot)return [];
+    const field=slotDefs(slot).find(d=>d.kind===kind)?.field||null;
+    const chosen=slotParts(slot).filter(id=>id!==(field?slot[field]:null)).map(id=>PARTS[id]).filter(Boolean).map(p=>PARTS[p.parentId]||p);
+    const chosenIds=new Set(chosen.map(p=>p.id));
+    const core=chosen.find(p=>['blade','main','integrated'].includes(p.kind))||null;
+    const coreVec=core?recVec(core):null;
+    const combos=recCombos();
+    const pool=candidates||PARENTS().filter(p=>p.kind===kind&&(builderShowAll||(inventory[p.id]||0)>0));
+    const scored=[];
+    for(const c of pool){
+      if(field&&slot[field]===c.id)continue;
+      if(blockReason(c,bey))continue;
+      let meta=0,hits=0,bestOverlap=0,withName='';
+      for(const cb of combos){
+        if(!cb.ids.has(c.id))continue;
+        if(chosenIds.size){ let ov=0; let nm=''; for(const id of chosenIds)if(cb.ids.has(id)){ov++; nm=nm||PARTS[id]?.display||'';} if(!ov)continue; meta+=cb.w*ov/chosenIds.size; hits++; if(ov>bestOverlap){bestOverlap=ov;withName=nm;} }
+        else { meta+=cb.w*.35; hits++; }
+      }
+      const pop=recPopularity(c);
+      let fit=0; const cv=recVec(c);
+      if(coreVec&&cv&&!['blade','main','integrated'].includes(c.kind))fit=recCos(coreVec,cv);
+      else if(!core&&cv){ // escolhendo a Blade: encaixa com Ratchet/Bit já escolhidos
+        const others=chosen.map(recVec).filter(Boolean); if(others.length)fit=others.reduce((s,v)=>s+recCos(cv,v),0)/others.length;
+      }
+      const metaN=Math.min(1,meta/4);
+      const score=2.2*metaN+0.9*pop.v+1.1*Math.max(0,(fit-.75)/.25)+((inventory[c.id]||0)>0?.15:0)-(c.banned?5:0);
+      if(metaN<.05&&pop.v<.15&&fit<.88)continue;
+      let reason='';
+      if(hits&&chosenIds.size&&withName)reason=`Usada com ${withName} em ${hits} deck${hits>1?'s':''} competitivo${hits>1?'s':''}`;
+      else if(hits&&!chosenIds.size)reason=`Aparece em ${hits} deck${hits>1?'s':''} de pódio`;
+      else if(pop.v>=.15)reason=pop.rank<=5?`Top ${pop.rank} do BBX Weekly`:`#${pop.rank} no uso competitivo (BBX Weekly)`;
+      else if(fit>=.88)reason=`Perfil ${recRole(cv)} casa com ${core?.display||'o Bey'}`;
+      const tags=[]; if(pop.rank&&pop.rank<=10&&!reason.includes('BBX'))tags.push(`#${pop.rank} BBX`); if(fit>=.9&&!reason.startsWith('Perfil'))tags.push(recRole(cv));
+      scored.push({p:c,score,reason,tags,meta:metaN,pop:pop.v,fit});
+    }
+    scored.sort((a,b)=>b.score-a.score);
+    return scored.slice(0,limit);
+  }
+  function recCardHtml(r,{cls='',size='chip'}={}){
+    return `<button type="button" class="rec-card ${cls}" data-part="${escapeAttr(r.p.id)}" ${cls.includes('drag')?'draggable="true"':''} title="${escapeAttr(r.p.display)} — ${escapeAttr(r.reason)}">
+      ${partArt(r.p,size)}<span class="rec-txt"><b>${escapeHTML(r.p.display)}</b><small>${escapeHTML(r.reason)}${r.tags.length?` · ${escapeHTML(r.tags.join(' · '))}`:''}</small></span>${BX.ic('sparkle',12)}
+    </button>`;
+  }
+  /** Faixa de recomendadas no painel lateral (desktop). */
+  function renderPanelRecs(kindFilter){
+    const box=document.getElementById('pickerRecs'); if(!box)return;
+    const bey=panelTarget?panelTarget.bey:activeSlot;
+    let kind=panelTarget?.kind||kindFilter||'';
+    if(!kind){ const d=slotDefs(deck[bey]).find(x=>!deck[bey][x.field]); kind=d?d.kind:''; }
+    if(!kind){box.hidden=true;box.innerHTML='';return;}
+    recLoadServer();
+    const recs=recommendParts(kind,bey,{limit:4});
+    if(!recs.length){box.hidden=true;box.innerHTML='';return;}
+    box.hidden=false;
+    box.innerHTML=`<div class="rec-head">${BX.ic('sparkle',12)}<span>Recomendadas</span><small>${escapeHTML(SLOT_LABEL[kind]||kind)} · Bey ${bey+1}</small></div><div class="rec-row">${recs.map(r=>recCardHtml(r,{cls:'drag'})).join('')}</div>`;
+    hydrateImages(box);
+    box.querySelectorAll('.rec-card').forEach(b=>{
+      b.addEventListener('click',()=>{const p=PARTS[b.dataset.part];if(p)placeFromPanel(p);});
+      b.addEventListener('dragstart',e=>{const p=PARTS[b.dataset.part];if(!p){e.preventDefault();return;}e.dataTransfer.effectAllowed='copy';e.dataTransfer.setData('text/plain',p.id);hidePreview();dragStartPart(p);b.classList.add('dragging');});
+      b.addEventListener('dragend',()=>{b.classList.remove('dragging');dragEndPart();});
+    });
+    bindPreview(box,'.rec-card',el=>PARTS[el.dataset.part]);
+  }
+
   // ---------- Picker de peças (quadradinhos com foto) — builder e coleção ----------
   const PICKER_KINDS=[['','Tudo'],['blade','Blades'],['integrated','Integradas'],['lock','Lock Chips'],['over','Over'],['main','Main'],['assist','Assist'],['ratchet','Ratchets'],['bit','Bits'],['rib','RIB']];
   let activeSlot=0;
@@ -2493,6 +2627,7 @@
       });
       if(cfg.preview)bindPreview(grid,'.picker-tile',el=>PARTS[el.dataset.part]);
       hydrateImages(grid);
+      if(cfg.recs)try{cfg.recs(st.kind);}catch(e){console.error('[recs]',e);}
     }
     document.getElementById(cfg.search)?.addEventListener('input',render);
     render.setKind=(k)=>{ st.kind=k||''; const filters=document.getElementById(cfg.filters); filters?.querySelectorAll('[data-kind]').forEach(x=>x.classList.toggle('active',x.dataset.kind===st.kind)); };
@@ -2503,7 +2638,7 @@
   // Builder: clique coloca no Bey ativo
   const renderPicker=makePicker({
     search:'pickerSearch',filters:'pickerFilters',grid:'pickerGrid',hint:'pickerHint',
-    draggable:true,favorites:true,ownership:true,preview:true,
+    draggable:true,favorites:true,ownership:true,preview:true,recs:(k)=>renderPanelRecs(k),
     hintText:()=>panelTarget?`escolha um(a) <b>${escapeHTML(SLOT_LABEL[panelTarget.kind]||'')}</b> para o <b>Bey ${panelTarget.bey+1}</b> — ou arraste até o slot. <a href="#" data-cancel-target>cancelar</a>`:`clique para preencher o primeiro slot livre compatível (ou o <b>Bey ${activeSlot+1}</b>); arraste para escolher o slot.`,
     onPick:placeFromPanel,
   });

@@ -1059,7 +1059,7 @@ button.user-chip{cursor:pointer}
 /* Fix global: todo círculo de peça vira flex + max-w/h. Cobre .part-art (montador,
    picker, visual de Bey) e .ptag-thumb (PartTag em listas, meta, admin). */
 .part-art,.ptag-thumb{display:flex;align-items:center;justify-content:center;overflow:hidden}
-.part-art img{width:auto;height:auto;max-width:84%;max-height:84%;object-fit:contain}
+.part-art img{width:84%;height:84%;max-width:84%;max-height:84%;object-fit:contain;object-position:center}
 .ptag-thumb img{width:auto;height:auto;max-width:90%;max-height:90%;object-fit:contain}
 .part-art .fallback{display:grid;place-items:center}
 
@@ -2192,3 +2192,25 @@ body.sheet-open{position:fixed;left:0;right:0;width:100%;overflow:hidden}
 .sh-item{height:auto;min-height:62px;box-sizing:border-box}.sh-chip{height:auto;min-height:34px}.db-bey,.db-undo,.slot-actions button,.bey-head-actions button,.sheet-close,.bey-pager button{height:auto}.db-bey{min-height:44px}.db-undo{min-height:38px}.bey-head-actions button{min-height:30px}.sheet-close{min-height:34px}.bey-pager button{min-height:40px}.db-status{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:normal}
 @media (max-width:820px){body.view-builder .toast{bottom:calc(96px + env(safe-area-inset-bottom,0px))}}
 .sheet{overflow:hidden;overscroll-behavior:contain}.sheet-list{min-height:0;overscroll-behavior:contain;touch-action:pan-y}.sh-row>div{overscroll-behavior:contain;touch-action:pan-x}.sheet-backdrop{touch-action:none}.sheet-list,.sh-row>div{touch-action:auto}
+
+/* v33: recomendações de peças */
+.picker-recs{margin:8px 0 10px;border:1px solid rgba(80,231,255,.25);background:linear-gradient(160deg,rgba(80,231,255,.07),transparent 70%);border-radius:12px;padding:8px 10px 10px}
+.picker-recs[hidden]{display:none}
+.rec-head{display:flex;align-items:center;gap:6px;color:var(--cyan);font:800 9.5px var(--display);text-transform:uppercase;letter-spacing:.1em;margin-bottom:7px}
+.rec-head small{color:#7f889a;font:600 10px var(--body,inherit);text-transform:none;letter-spacing:0;margin-left:auto}
+.rec-row{display:grid;gap:5px}
+.rec-card{display:grid;grid-template-columns:34px minmax(0,1fr) auto;align-items:center;gap:8px;width:100%;border:1px solid rgba(80,231,255,.22);background:#0f141a;border-radius:10px;padding:5px 8px;color:inherit;text-align:left;min-height:0;height:auto;cursor:pointer}
+.rec-card:hover{border-color:var(--cyan);background:#12191f}
+.rec-card.drag{cursor:grab}.rec-card.dragging{opacity:.5}
+.rec-card .part-art.chip{width:34px;height:34px}
+.rec-card>.vicon{color:var(--cyan);flex:0 0 auto}
+.rec-txt{display:grid;min-width:0}
+.rec-txt b{font:800 12.5px var(--display);color:#eef1f5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rec-txt small{color:#8a93a1;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sh-row.rec small{color:var(--cyan)}
+.sh-row.rec>div{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(220px,78%);gap:6px;overflow-x:auto;padding-bottom:6px;scroll-snap-type:x proximity}
+.sh-row.rec .rec-card{scroll-snap-align:start;padding:6px 8px}
+.sh-item.rec{border-color:rgba(80,231,255,.3);background:linear-gradient(90deg,rgba(80,231,255,.06),#0f1218 60%)}
+.sh-why.rec{border-color:rgba(80,231,255,.4);color:var(--cyan);display:inline-flex;align-items:center;gap:3px}
+.part-art.dot img{width:88%;height:88%}
+.sh-row .rec-txt small{text-transform:none;letter-spacing:0;font:600 10px var(--body,inherit);display:block}.sh-row .rec-txt b{display:block}
