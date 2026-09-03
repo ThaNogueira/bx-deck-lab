@@ -124,7 +124,7 @@ function extractImages(text) {
 const HUB_TYPE = (raw) => /攻擊/.test(raw) ? 'Attack' : /防守/.test(raw) ? 'Defense' : /持久/.test(raw) ? 'Stamina' : /均衡/.test(raw) ? 'Balance' : '';
 function hubEnglishName(block) {
   for (const line of block.split(/\r?\n/).map(stripMd).map((x) => x.trim()).filter(Boolean)) {
-    const m = line.match(/^([A-Za-z][A-Za-z0-9 .&'’\-]{1,48}?)(?=[぀-ヿ])/);
+    const m = line.match(/^([A-Za-z][A-Za-z0-9 .&'’()\-]{1,48}?)(?=[぀-ヿ])/);
     if (m && !/^(Image|Right|Left|Attack|Defense|Stamina|Balance)$/i.test(m[1].trim())) return m[1].trim();
   }
   return '';

@@ -175,6 +175,7 @@
   const pKnight = reg(P('blade','KnightShield',{display:'Helm Knight', wiki:'Blade - KnightShield', aliases:['Helm Knight']}));
   const pShelter = reg(P('blade','ShelterDrake',{display:'Shelter Drake', wiki:'Blade - ShelterDrake'}));
   const pAether = reg(P('blade','HeavensRing',{display:'Ring Aether', wiki:'Blade - HeavensRing', aliases:['Ring Aether']}));
+  const pLDrago = reg(P('blade','Lightning L-Drago',{display:'Lightning L-Drago', aliases:['Lightning L-Drago (Upper)','Lightning L-Drago (Rapid)','Lightning L-Drago (Upper Type)','Lightning L-Drago (Rapid-Hit Type)','LightningL-Drago'], wiki:'Blade - Lightning L-Drago (Upper Type)', type:'Attack', spin:'Left', stats:{atk:55,def:25,sta:20}, weight:'34.0g', image:'https://img.beybladehub.app/blades-db/LtLdU.webp', behavior:'X-Over Project (Metal Fight), giro esquerdo; dois modos de montagem: Upper (55/25/20, golpes de baixo para cima) e Rapid-Hit (50/30/20, sequência de batidas).', source:'Beyblade X current catalog'}));
   const pValor = reg(P('integrated','Valor Bison',{display:'Valor Bison', aliases:['Bison Burrow','BisonBurrow'], wiki:'Ratchet-Integrated Blade - Valor Bison',type:'Stamina',stats:{atk:36,def:58,sta:36},weight:'41.0g',behavior:'Ratchet integrada (Unique Line / Expand); três lados com roletes livres entre os contatos, voltada a rotação estável.',source:'Beyblade X current catalog'}));
   const pGlory = reg(P('integrated','Glory Valkyrie',{display:'Glory Valkyrie', aliases:['Glory Valkyrie'], wiki:'Ratchet-Integrated Blade - Glory Valkyrie',type:'Attack',stats:{atk:85,def:35,sta:25},behavior:'Ratchet integrada e lâmina com mecanismo de rebote; perfil de ataque explosivo.',source:'Beyblade X current catalog'}));
   const pBullet = reg(P('integrated','Bullet Griffon',{display:'Bullet Griffon', aliases:['Rocket Griffon'], wiki:'Ratchet-Integrated Blade - Bullet Griffon',type:'Balance',stats:{atk:45,def:45,sta:40},behavior:'Ratchet integrada e gimmick de separação; perfil equilibrado com boa defesa e contato secundário.',source:'Beyblade X current catalog'}));
@@ -569,7 +570,7 @@
   function hubEnglishName(block){
     const lines=block.split(/\r?\n/).map(stripMd).map(x=>x.trim()).filter(Boolean);
     for(const line of lines){
-      const m=line.match(/^([A-Za-z][A-Za-z0-9 .&'’\-]{1,48}?)(?=[\u3040-\u30ff])/);
+      const m=line.match(/^([A-Za-z][A-Za-z0-9 .&'’()\-]{1,48}?)(?=[\u3040-\u30ff])/);
       if(m && !/^(Image|Right|Left|Attack|Defense|Stamina|Balance)$/i.test(m[1].trim())) return m[1].trim();
     }
     return '';
