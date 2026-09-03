@@ -2214,3 +2214,48 @@ body.sheet-open{position:fixed;left:0;right:0;width:100%;overflow:hidden}
 .sh-why.rec{border-color:rgba(80,231,255,.4);color:var(--cyan);display:inline-flex;align-items:center;gap:3px}
 .part-art.dot img{width:88%;height:88%}
 .sh-row .rec-txt small{text-transform:none;letter-spacing:0;font:600 10px var(--body,inherit);display:block}.sh-row .rec-txt b{display:block}
+
+/* v34: barra do builder — switch de modo + ações agrupadas */
+.builder-bar{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin:-8px 0 22px;padding:10px 12px;border:1px solid var(--line);border-radius:16px;background:linear-gradient(160deg,#13161d,#0e1015)}
+.mode-switch{position:relative;display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid #2c3340;border-radius:14px;background:#0b0d12;padding:4px;min-width:min(100%,420px);isolation:isolate}
+.mode-switch button{position:relative;z-index:2;display:flex;align-items:center;gap:10px;border:0;background:transparent;color:#8a93a1;padding:9px 14px;border-radius:11px;text-align:left;min-height:0;height:auto;cursor:pointer;transition:color .2s}
+.mode-switch button.active{color:#eef1f5}
+.mode-switch .ms-ic{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:#151a22;color:#6f7787;transition:color .2s,background .2s;flex:0 0 auto}
+.mode-switch button.active .ms-ic{color:var(--cyan);background:rgba(80,231,255,.12)}
+.mode-switch.mine button.active .ms-ic{color:var(--green);background:rgba(84,230,156,.12)}
+.mode-switch .ms-txt{display:grid;min-width:0;line-height:1.15}
+.mode-switch .ms-txt b{font:800 12.5px var(--display);text-transform:uppercase;letter-spacing:.04em;white-space:nowrap}
+.mode-switch .ms-txt small{color:#6f7787;font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mode-switch button.active .ms-txt small{color:#9aa4b2}
+.mode-switch .ms-thumb{position:absolute;z-index:1;top:4px;bottom:4px;left:4px;width:calc(50% - 4px);border-radius:11px;background:linear-gradient(160deg,#1c2230,#141821);border:1px solid rgba(80,231,255,.35);box-shadow:0 0 0 1px rgba(80,231,255,.08) inset,0 6px 18px rgba(0,0,0,.35);transition:transform .22s cubic-bezier(.2,.8,.2,1),border-color .2s}
+.mode-switch.mine .ms-thumb{transform:translateX(100%);border-color:rgba(84,230,156,.4)}
+.builder-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-left:auto}
+.ba-tools,.ba-main{display:flex;align-items:center;gap:8px}
+.ba-tools{padding-right:10px;border-right:1px solid #262c37}
+.builder-actions .btn{display:inline-flex;align-items:center;gap:7px;white-space:nowrap}
+.builder-actions .icon-btn{width:38px;height:38px}
+.menu-wrap{position:relative}
+.gen-menu{left:0;right:auto;min-width:290px}
+.gen-menu button{display:flex;align-items:flex-start;gap:10px}
+.gen-menu button span{display:grid;line-height:1.2}
+.gen-menu button b{font:800 12.5px var(--display);text-transform:uppercase;letter-spacing:.04em;color:#eef1f5}
+.gen-menu button small{color:#7f889a;font-size:11px}
+.gen-menu .vicon{margin-top:2px;color:var(--cyan)}
+#genDeckBtn[aria-expanded="true"] .vicon:last-child{transform:rotate(180deg)}
+.sh-noown{display:inline-grid;place-items:center;color:#4f5766}
+body.builder-mine .picker-noown{color:#7bd88f}
+@media (max-width:1180px){.builder-bar{align-items:stretch}.mode-switch{min-width:100%}.builder-actions{width:100%;justify-content:space-between;margin-left:0}}
+@media (max-width:640px){
+  .builder-bar{padding:10px;gap:10px}
+  .mode-switch button{padding:8px 10px;gap:8px}
+  .mode-switch .ms-ic{width:30px;height:30px}
+  .mode-switch .ms-txt small{display:none}
+  .builder-actions{display:grid;grid-template-columns:1fr;gap:8px}
+  .ba-tools{border-right:0;padding-right:0;justify-content:space-between}
+  .ba-tools .btn{flex:1;justify-content:center}
+  .ba-main{display:grid;grid-template-columns:1fr 1.25fr}
+  .ba-main .btn{justify-content:center}
+  .gen-menu{left:0;right:0;min-width:0}
+}
+@media (max-width:520px){.hero-actions{display:none}}
+.gen-menu{position:absolute;top:calc(100% + 6px);z-index:30;border:1px solid #333a47;border-radius:12px;background:#12151c;box-shadow:0 18px 40px rgba(0,0,0,.5);padding:6px}.gen-menu[hidden]{display:none}.gen-menu button{width:100%;border:0;background:transparent;color:#d5dae2;padding:10px 12px;border-radius:8px;font-size:13px;text-align:left;min-height:0;height:auto}.gen-menu button:hover{background:#1c2029}

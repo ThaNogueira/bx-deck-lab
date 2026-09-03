@@ -1171,7 +1171,9 @@
     if(isMobileBuilder()){ const card=grid.children[activeSlot]; if(card)grid.scrollLeft=card.offsetLeft-grid.offsetLeft; }
     if(lastPlaced){ const el=grid.querySelector(`.slot[data-bey="${lastPlaced.bey}"][data-field="${lastPlaced.field}"]`); if(el){el.classList.add('pop');setTimeout(()=>el.classList.remove('pop'),700);} lastPlaced=null; }
 
-    const v=validateDeck();
+    const v0=validateDeck();
+    // Modo catálogo: os avisos "você usa X mas possui 0" não aparecem (a pessoa escolheu montar com tudo)
+    const v={...v0,info:builderShowAll?v0.info.filter(x=>!/\(modo catálogo\)/.test(x)):v0.info};
     const legalEl=document.getElementById('deckLegality');
     legalEl.className='legality '+(v.legal?'good':v.errors.length?'bad':'neutral');
     legalEl.innerHTML=v.legal?`${BX.ic('check',13)} Deck legal`:v.errors.length?`${BX.ic('x',13)} Deck ilegal`:`${v.complete}/3 Beys prontos`;
@@ -1205,7 +1207,7 @@
   }
 
   function renderSlot(slot,i) {
-    const invalid = validateSlot(slot,i);
+    const invalid = slotIssues(slot,i);
     const isCX=slot.mode==='cx' || slot.mode==='cxrib';
     const tipPart=slot.mode==='cxrib' ? PARTS[slot.rib] : PARTS[slot.bit];
     const bitProfile=tipPart ? getBitProfile(tipPart) : null;
@@ -1230,6 +1232,8 @@
     </article>`;
   }
 
+  /** Problemas do Bey para exibição: no modo catálogo, não possuir a peça não é problema. */
+  function slotIssues(slot,i){ const e=validateSlot(slot,i); return builderShowAll?e.filter(x=>!/^sem cópia física/.test(x)):e; }
   function validateSlot(slot,i) {
     const errs=[];
     if (!isComplete(slot)) return errs;
@@ -2133,7 +2137,7 @@
     let bey;
     if(panelTarget&&panelTarget.kind===c.kind)bey=panelTarget.bey;
     else { const e=firstEmptyFor(c.kind); bey=e>=0?e:activeSlot; }
-    if(placePart(c,bey))toast(`${c.display}${c.colorLabel?` (${c.colorLabel})`:''} → Bey ${bey+1}${(inventory[c.id]||0)?'':' (fora da sua coleção)'}`);
+    if(placePart(c,bey))toast(`${c.display}${c.colorLabel?` (${c.colorLabel})`:''} → Bey ${bey+1}${(inventory[c.id]||0)||builderShowAll?'':' (fora da sua coleção)'}`);
   }
   /** Troca/move entre slots compatíveis de Beys diferentes. */
   function swapSlots(from,to){
@@ -2210,7 +2214,7 @@
   function sheetItemHtml({p,owned,disabled,why,current,rec}){
     return `<button type="button" class="sh-item ${disabled?'disabled':''} ${current?'current':''} ${rec?'rec':''}" data-part="${escapeAttr(p.id)}" ${disabled?'data-disabled="1"':''} title="${escapeAttr(p.display)}">
       ${partArt(p,'sh')}
-      <span class="sh-txt"><b>${escapeHTML(p.display)}</b><small>${p.abbrev&&p.abbrev!==p.display?escapeHTML(p.abbrev)+' · ':''}${builderShowAll?(owned?`${BX.ic('check',11)} na coleção${owned>1?` ×${owned}`:''}`:`${BX.ic('backpack',11)} não tenho`):`×${owned} na coleção`}${p.banned?' · <em>banida</em>':''}</small></span>
+      <span class="sh-txt"><b>${escapeHTML(p.display)}</b><small>${p.abbrev&&p.abbrev!==p.display?escapeHTML(p.abbrev)+' · ':''}${builderShowAll?(owned?`${BX.ic('check',11)} na coleção${owned>1?` ×${owned}`:''}`:`<i class="sh-noown" title="Não está na sua coleção">${BX.ic('backpack',11)}</i>`):`×${owned} na coleção`}${p.banned?' · <em>banida</em>':''}</small></span>
       ${why?`<span class="sh-why">${escapeHTML(why)}</span>`:current?`<span class="sh-why cur">${BX.ic('check',12)} atual</span>`:rec?`<span class="sh-why rec" title="${escapeAttr(rec.reason)}">${BX.ic('sparkle',11)} recomendada</span>`:''}
       <i class="sh-fav ${favParts.has(p.id)?'on':''}" data-fav="${escapeAttr(p.id)}" title="Favoritar">${BX.ic('star',14)}</i>
     </button>`;
@@ -2359,7 +2363,7 @@
     const bar=document.getElementById('deckBar'); if(!bar)return;
     const beys=deck.map((slot,i)=>{
       const parts=slotParts(slot).map(id=>PARTS[id]).filter(Boolean);
-      const inv=validateSlot(slot,i);
+      const inv=slotIssues(slot,i);
       const st=isComplete(slot)?(inv.length?'bad':'ok'):(parts.length?'part':'empty');
       const dots=parts.slice(0,4).map(p=>partArt(p,'dot')).join('')||`<span class="db-empty">${BX.ic('plus',12)}</span>`;
       return `<button type="button" class="db-bey ${st} ${i===activeSlot?'active':''}" data-bey="${i}" title="Ir para o Bey ${i+1}"><span class="db-parts">${dots}</span><small>Bey ${i+1}</small></button>`;
@@ -2742,13 +2746,32 @@
     builderModeBtn.innerHTML=builderShowAll?`${BX.ic('globe',14)} Catálogo inteiro`:`${BX.ic('backpack',14)} Só minha coleção`;
     builderModeBtn.title=builderShowAll?'Mostrando todas as peças do catálogo — clique para ver só a sua coleção':'Mostrando só peças que você possui — clique para liberar o catálogo inteiro';
   }
-  builderModeBtn?.addEventListener('click',()=>{
-    builderShowAll=!builderShowAll;
+  function setBuilderMode(all){
+    if(builderShowAll===all){syncModeSwitch();return;}
+    builderShowAll=all;
     localStorage.setItem('bx_builder_show_all',builderShowAll?'1':'0');
-    syncBuilderModeBtn(); renderAll();
+    syncBuilderModeBtn(); syncModeSwitch(); renderAll();
     toast(builderShowAll?'Modo catálogo: monte com qualquer peça, mesmo sem possuir.':'Modo coleção: só peças que você tem.');
-  });
-  syncBuilderModeBtn();
+  }
+  function syncModeSwitch(){
+    const sw=document.getElementById('modeSwitch'); if(!sw)return;
+    sw.querySelectorAll('[data-mode]').forEach(b=>{const on=(b.dataset.mode==='all')===builderShowAll; b.classList.toggle('active',on); b.setAttribute('aria-checked',String(on));});
+    sw.classList.toggle('mine',!builderShowAll);
+    document.body.classList.toggle('builder-mine',!builderShowAll);
+  }
+  builderModeBtn?.addEventListener('click',()=>setBuilderMode(!builderShowAll));
+  document.getElementById('modeSwitch')?.addEventListener('click',e=>{ const b=e.target.closest('[data-mode]'); if(b)setBuilderMode(b.dataset.mode==='all'); });
+  document.getElementById('modeSwitch')?.addEventListener('keydown',e=>{ if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();setBuilderMode(!builderShowAll);} });
+  // menu "Gerar"
+  (function(){
+    const btn=document.getElementById('genDeckBtn'), menu=document.getElementById('genMenu'); if(!btn||!menu)return;
+    const close=()=>{menu.hidden=true;btn.setAttribute('aria-expanded','false');};
+    btn.addEventListener('click',()=>{menu.hidden=!menu.hidden;btn.setAttribute('aria-expanded',String(!menu.hidden));});
+    menu.addEventListener('click',()=>close());
+    document.addEventListener('click',e=>{ if(!e.target.closest('.menu-wrap'))close(); });
+    document.addEventListener('keydown',e=>{ if(e.key==='Escape')close(); });
+  })();
+  syncBuilderModeBtn(); syncModeSwitch();
   setActiveSlot(0);
 
   document.getElementById('importBtn').addEventListener('click',()=>smartImportInventory(document.getElementById('inventoryText').value));
