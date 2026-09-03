@@ -368,7 +368,7 @@ export async function autoLinkProducts() {
  * de coleção (somando), referências em decks/combos e favoritos, preserva
  * os nomes como apelidos e apaga a duplicata. (Mesma regra do merge do admin.)
  */
-async function mergeParts(fromId, toId) {
+export async function mergeParts(fromId, toId) {
   const [from, to] = await Promise.all([
     prisma.part.findUnique({ where: { id: fromId } }),
     prisma.part.findUnique({ where: { id: toId } }),

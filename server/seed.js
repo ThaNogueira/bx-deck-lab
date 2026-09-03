@@ -2,6 +2,9 @@ import { prisma } from './db.js';
 import { slugify } from './util.js';
 import { extractEmbeddedCatalog, mapKind } from './catalog-data.js';
 import { DEFAULTS, setSetting } from './settings.js';
+import { mergeParts } from './sync.js';
+
+const normKey = (s) => slugify(s).replace(/-/g, '');
 
 /**
  * Seed idempotente: peças e produtos do snapshot embutido no app.js,
@@ -74,6 +77,44 @@ async function seedParts() {
     products++;
   }
   console.log(`Peças novas: ${created} • Produtos novos: ${products}`);
+}
+
+/**
+ * Peças do snapshot que já existem no banco: completa apelidos, tipo, stats e
+ * imagem que faltam, e funde na canônica qualquer outra peça do mesmo tipo cujo
+ * nome bata com um apelido declarado (ex.: "Bison Burrow" criada pela
+ * sincronização do BeybladeHub é a mesma "Valor Bison" do snapshot). Idempotente.
+ */
+async function refreshSnapshotParts() {
+  const { PARTS } = extractEmbeddedCatalog();
+  let enriched = 0, merged = 0;
+  for (const p of Object.values(PARTS)) {
+    if (p.parentId) continue;
+    const { kind, subKind } = mapKind(p.kind);
+    const canon = await prisma.part.findFirst({ where: { kind, name: p.name, parentId: null } });
+    if (!canon) continue;
+    let aliases = [];
+    try { aliases = JSON.parse(canon.aliasesJson); } catch {}
+    const known = new Set([canon.name, canon.displayName, ...aliases].map(normKey));
+    const fresh = [p.display, ...(p.aliases || [])].filter((n) => n && !known.has(normKey(n)));
+    const data = {};
+    if (fresh.length) data.aliasesJson = JSON.stringify([...aliases, ...fresh].slice(0, 12));
+    if (!canon.type && p.type) data.type = p.type;
+    if (!canon.statsJson && p.stats) data.statsJson = JSON.stringify(p.stats);
+    if (!canon.imageUrl && p.image) data.imageUrl = p.image;
+    if (!canon.behavior && p.behavior) data.behavior = p.behavior;
+    if (Object.keys(data).length) { await prisma.part.update({ where: { id: canon.id }, data }); enriched++; }
+    // duplicatas: outra peça-pai do mesmo tipo com nome/apelido igual a um apelido da canônica
+    const keys = new Set([canon.name, canon.displayName, p.display, ...aliases, ...(p.aliases || [])].map(normKey).filter(Boolean));
+    const siblings = await prisma.part.findMany({ where: { kind, subKind: subKind ?? null, parentId: null, NOT: { id: canon.id } } });
+    for (const s of siblings) {
+      let sa = [];
+      try { sa = JSON.parse(s.aliasesJson); } catch {}
+      if (![s.name, s.displayName, ...sa].some((n) => keys.has(normKey(n)))) continue;
+      if (await mergeParts(s.id, canon.id)) { merged++; console.log(`Peça duplicada fundida: ${s.displayName} → ${canon.displayName}`); }
+    }
+  }
+  console.log(`Peças do snapshot completadas: ${enriched} • duplicatas fundidas: ${merged}`);
 }
 
 /** Blades de meta citadas nos decks populares, mas fora do snapshot embutido. */
@@ -162,6 +203,7 @@ async function seedSettings() {
 }
 
 await seedParts();
+await refreshSnapshotParts();
 await seedMetaBlades();
 await seedCosmetics();
 await seedSettings();
