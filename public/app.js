@@ -2109,7 +2109,9 @@
   let lastPlaced=null; // {bey, field} para a micro-animação
   let panelTarget=null; // slot esperando peça do painel lateral (desktop)
   function placePart(p,bey){
-    const reason=blockReason(p,bey); if(reason){toast(reason);return false;}
+    // Só a regra de repetição bloqueia o encaixe (como sempre foi). Falta de cópia na coleção continua sendo
+    // apenas aviso da validação: a cor escolhida é um item separado do estoque e não pode travar a peça.
+    const j=usedInOtherBey(p.id,bey); if(j>=0){toast(`${p.display} já está no Bey ${j+1}.`);return false;}
     const field=fieldForKind(deck[bey],p.kind);
     lastPlaced={bey,field}; panelTarget=null;
     applyPartToSlot(p,bey); pushRecent(p.parentId||p.id); sfx('place');
