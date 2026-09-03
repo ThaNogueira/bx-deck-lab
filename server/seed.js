@@ -132,7 +132,6 @@ const META_BLADES = [
   ['HellsChain', 'Chain Incendio', 'Balance'],
   ['KnightMail', 'Mail Knight', 'Defense'],
   ['KnightLance', 'Lance Knight', 'Defense'],
-  ['SolEclipse', 'Sol Eclipse', 'Balance'],
   ['TyrannoBeat', 'Beat Tyranno', 'Attack'],
   ['GhostCircle', 'Ghost Circle', 'Stamina'],
   ['ImpactDrake', 'Impact Drake', 'Attack'],
@@ -162,6 +161,32 @@ async function seedMetaBlades() {
     created++;
   }
   console.log(`Blades de meta novas: ${created}`);
+}
+
+/** Entradas que viraram "peça" por citação em decks mas não são: um bey CX inteiro (Lock Chip + Main Blade). Ficam ocultas. */
+const NOT_PARTS = [['BLADE', 'SolEclipse']];
+async function hideBogusParts() {
+  for (const [kind, name] of NOT_PARTS) {
+    const r = await prisma.part.updateMany({ where: { kind, name, parentId: null, hidden: false }, data: { hidden: true } });
+    if (r.count) console.log(`Ocultada entrada que não é peça: ${name}`);
+  }
+}
+
+/** Peças CX que a sincronização antiga do BeybladeHub gravou como Blade: a URL da foto diz o tipo certo. Funde se a peça certa já existir. */
+const CX_BY_IMAGE = { chip: 'LOCK_CHIP', main: 'MAIN_BLADE', assist: 'ASSIST_BLADE', over: 'OVER_BLADE', metal: 'MAIN_BLADE' };
+async function fixMisfiledCxParts() {
+  const rows = await prisma.part.findMany({ where: { kind: 'BLADE', parentId: null, imageUrl: { contains: 'blades-cx/' } } });
+  let fixed = 0, merged = 0;
+  for (const r of rows) {
+    const m = r.imageUrl.match(/blades-cx\/(chip|main|assist|over|metal)-/);
+    const kind = m && CX_BY_IMAGE[m[1]];
+    if (!kind) continue;
+    const keys = new Set([r.name, r.displayName, ...JSON.parse(r.aliasesJson || '[]')].map(normKey));
+    const proper = (await prisma.part.findMany({ where: { kind, parentId: null } })).find((p) => [p.name, p.displayName, ...JSON.parse(p.aliasesJson || '[]')].some((n) => keys.has(normKey(n))));
+    if (proper) { if (await mergeParts(r.id, proper.id)) merged++; }
+    else { await prisma.part.update({ where: { id: r.id }, data: { kind, subKind: null } }); fixed++; }
+  }
+  if (fixed || merged) console.log(`Peças CX reclassificadas: ${fixed} • fundidas na peça certa: ${merged}`);
 }
 
 async function seedCosmetics() {
@@ -205,6 +230,8 @@ async function seedSettings() {
 await seedParts();
 await refreshSnapshotParts();
 await seedMetaBlades();
+await hideBogusParts();
+await fixMisfiledCxParts();
 await seedCosmetics();
 await seedSettings();
 await prisma.$disconnect();

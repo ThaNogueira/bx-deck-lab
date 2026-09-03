@@ -583,6 +583,7 @@
     const imgs=extractImages(text);let added=0;
     for(let i=0;i<imgs.length;i++){
       const im=imgs[i];if(!/(上蓋|blade|fused|重量)/i.test(im.alt||''))continue;
+      if(/blades-cx\//.test(im.url))continue; // lock chips e main/assist/over blades (CX) não são Blades
       const end=imgs[i+1]?.pos||Math.min(text.length,im.pos+1400);const block=text.slice(im.pos,Math.min(end,im.pos+1400));
       const name=hubEnglishName(block);if(!name)continue;
       const integrated=/Fused|Ratchet[- ]Integrated|一體型|一体型/i.test(block);

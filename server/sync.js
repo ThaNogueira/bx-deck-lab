@@ -188,6 +188,7 @@ function parseHubCatalog(text, which) {
     const block = text.slice(im.pos, Math.min(end, im.pos + 1400));
     if (which === 'blades') {
       if (!/(上蓋|blade|fused|重量)/i.test(im.alt || '')) continue;
+      if (/blades-cx\//.test(im.url)) continue; // peças CX: tratadas em parseHubCX
       const name = hubEnglishName(block);
       if (!name) continue;
       const integrated = /Fused|Ratchet[- ]Integrated|一體型|一体型/i.test(block);
@@ -311,6 +312,153 @@ export async function syncParts() {
     data: { source: 'peças (Byyblade HQ + BeybladeHub)', ok: true, message: `${records.length} registros de ${sourcesOk}/4 fontes — ${created} peças novas, ${updated} enriquecidas (stats/imagens/apelidos)` },
   });
   return { created, updated };
+}
+
+// ---------------------------------------------------------------------------
+// Imagens: peças CX do BeybladeHub (lock chips, main/assist/over/metal blades)
+// e, para o que ainda ficou sem foto, a página da peça na wiki (Fandom).
+// ---------------------------------------------------------------------------
+
+/** Nomes Hasbro ↔ Takara Tomy que as fontes escrevem diferente (chave normalizada → outros nomes da mesma peça). */
+const NAME_EQUIV = {
+  bucks: ['Stag'], stag: ['Bucks'],
+  antlers: ['Antler'], antler: ['Antlers'],
+  tuskmammoth: ['MammothTusk'], mammothtusk: ['Tusk Mammoth'],
+  stormpegasus: ['StormPegasis'], stormpegasis: ['Storm Pegasus'],
+  stunmedusa: ['MedusaStun'], medusastun: ['Stun Medusa'],
+  hackviking: ['VikingHack'], vikinghack: ['Hack Viking'],
+  gustbat: ['BatGust'], batgust: ['Gust Bat'],
+  shatterhorus: ['HorusShatter'], horusshatter: ['Shatter Horus'],
+};
+const CX_KIND = { chip: 'LOCK_CHIP', main: 'MAIN_BLADE', assist: 'ASSIST_BLADE', over: 'OVER_BLADE', metal: 'MAIN_BLADE' };
+const WIKI_PREFIX = { BLADE: ['Blade'], LOCK_CHIP: ['Lock Chip'], MAIN_BLADE: ['Main Blade', 'Metal Blade'], ASSIST_BLADE: ['Assist Blade'], OVER_BLADE: ['Over Blade'], RATCHET: ['Ratchet'], BIT: ['Bit'] };
+
+/** Cards CX da página de blades do hub: imagem → linhas → nome em inglês (última linha ASCII antes de "右旋/左旋"). */
+function parseHubCX(text) {
+  const imgs = extractImages(text);
+  const out = [];
+  for (let i = 0; i < imgs.length; i++) {
+    const im = imgs[i];
+    const m = im.url.match(/blades-cx\/(chip|main|assist|over|metal)-/);
+    if (!m) continue;
+    const end = imgs[i + 1]?.pos || Math.min(text.length, im.pos + 1400);
+    const lines = text.slice(im.pos, end).split(/\r?\n/).map(stripMd).filter(Boolean).slice(1);
+    let name = '';
+    for (const line of lines) {
+      if (/^(右旋|左旋)/.test(line)) break;
+      const em = line.match(/^([A-Za-z][A-Za-z0-9 .'\-]{0,40}?)(?:\s+[぀-ヿ].*)?$/);
+      if (em) name = em[1].trim();
+    }
+    if (name) out.push({ kind: CX_KIND[m[1]], name, image: im.url });
+  }
+  return out;
+}
+
+/** Miniaturas da wiki para uma lista de títulos (lotes de 50, seguindo redirects). Map título pedido → {url, title}. */
+async function wikiThumbs(titles) {
+  const out = new Map();
+  for (let i = 0; i < titles.length; i += 50) {
+    const chunk = titles.slice(i, i + 50);
+    try {
+      const url = 'https://beyblade.fandom.com/api.php?action=query&format=json&redirects=1&prop=pageimages&piprop=thumbnail&pithumbsize=512&titles=' + encodeURIComponent(chunk.join('|'));
+      const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (BXDeckLab catalog sync)' }, signal: AbortSignal.timeout(20_000) });
+      if (!r.ok) continue;
+      const j = await r.json();
+      const back = new Map(); // título final → título pedido
+      for (const x of j.query?.normalized || []) back.set(x.to, x.from);
+      for (const x of j.query?.redirects || []) back.set(x.to, back.get(x.from) || x.from);
+      for (const pg of Object.values(j.query?.pages || {})) {
+        if (!pg.pageid || !pg.thumbnail?.source) continue;
+        const asked = back.get(pg.title) || pg.title;
+        out.set(asked, { url: pg.thumbnail.source, title: pg.title });
+      }
+    } catch { /* lote indisponível: segue */ }
+  }
+  return out;
+}
+
+/**
+ * Completa a foto das peças-pai sem imagem: primeiro os cards CX do BeybladeHub
+ * (só enriquece peças já existentes — nunca cria), depois a página da peça na
+ * wiki pelo padrão "<Tipo> - <Nome>" (nome, nome exibido, apelidos e grafias
+ * Hasbro/Takara). O nome da página vira apelido quando for outro.
+ */
+export async function syncPartImages() {
+  const idx = await loadPartIndex();
+  const keysOf = (p) => { let a = []; try { a = JSON.parse(p.aliasesJson); } catch {} return [p.name, p.displayName, ...a].filter(Boolean); };
+  const addAliases = async (p, names) => {
+    const known = new Set(keysOf(p).map(normKey));
+    const fresh = names.filter((n) => n && !known.has(normKey(n)));
+    if (!fresh.length) return false;
+    let a = []; try { a = JSON.parse(p.aliasesJson); } catch {}
+    const updated = await prisma.part.update({ where: { id: p.id }, data: { aliasesJson: JSON.stringify([...a, ...fresh].slice(0, 12)) } });
+    Object.assign(p, updated); idx.register(p);
+    return true;
+  };
+  const findByName = (kind, name) => { const k = normKey(name); return idx.parts.find((p) => p.kind === kind && keysOf(p).some((n) => normKey(n) === k)) || null; };
+  let fromHub = 0, fromWiki = 0, aliased = 0;
+  const unmatched = [], created = [], refiled = [];
+  const APP_KIND = { LOCK_CHIP: 'lock', MAIN_BLADE: 'main', ASSIST_BLADE: 'assist', OVER_BLADE: 'over' };
+
+  // 0) grafias Hasbro ↔ Takara Tomy como apelidos (faz hub, wiki e BeyCommunity casarem)
+  for (const p of idx.parts) {
+    const extra = [...new Set(keysOf(p).flatMap((n) => NAME_EQUIV[normKey(n)] || []))];
+    if (extra.length && await addAliases(p, extra)) aliased++;
+  }
+  // 1) BeybladeHub: peças CX
+  try {
+    const text = await fetchRemoteText(PART_SOURCES.hubBlades);
+    for (const rec of parseHubCX(text)) {
+      const p = findByName(rec.kind, rec.name);
+      if (!p) {
+        // mesma peça cadastrada como Blade por engano (card CX lido pelo parser de blades): só corrige o tipo
+        const k = normKey(rec.name);
+        const wrong = idx.parts.find((q) => q.kind === 'BLADE' && !q.statsJson && keysOf(q).some((n) => normKey(n) === k));
+        if (wrong) {
+          const u = await prisma.part.update({ where: { id: wrong.id }, data: { kind: rec.kind, subKind: null, imageUrl: wrong.imageUrl || rec.image } });
+          Object.assign(wrong, u); refiled.push(`${rec.kind}:${rec.name}`);
+          continue;
+        }
+        // peça CX ainda fora do banco (lançamento recente): entra com o nome Takara Tomy do hub e a foto
+        try {
+          const r = await upsertPartRecord(idx, { kind: APP_KIND[rec.kind], name: rec.name, image: rec.image });
+          if (r === 'created') created.push(`${rec.kind}:${rec.name}`); else unmatched.push(`${rec.kind}:${rec.name}`);
+        } catch { unmatched.push(`${rec.kind}:${rec.name}`); }
+        continue;
+      }
+      if (p.imageUrl) continue;
+      await prisma.part.update({ where: { id: p.id }, data: { imageUrl: rec.image } });
+      p.imageUrl = rec.image; fromHub++;
+    }
+  } catch (e) {
+    await prisma.syncLog.create({ data: { source: 'imagens CX (BeybladeHub)', ok: false, message: String(e?.message || e).slice(0, 300) } });
+  }
+  // 2) wiki para o que ficou sem foto
+  const missing = idx.parts.filter((p) => !p.imageUrl && !p.hidden);
+  const wants = [];
+  for (const p of missing) {
+    const prefixes = p.subKind === 'INTEGRATED' ? ['Ratchet-Integrated Blade'] : p.subKind === 'RIB' ? ['Ratchet Integrated Bit', 'Bit'] : (WIKI_PREFIX[p.kind] || []);
+    const names = [...new Set(keysOf(p).flatMap((n) => [n, n.replace(/\s+/g, '')]))];
+    for (const pre of prefixes) for (const n of names) wants.push({ p, title: `${pre} - ${n}` });
+  }
+  const thumbs = await wikiThumbs([...new Set(wants.map((w) => w.title))]);
+  for (const p of missing) {
+    const hit = wants.find((w) => w.p === p && thumbs.has(w.title));
+    if (!hit) continue;
+    const t = thumbs.get(hit.title);
+    await prisma.part.update({ where: { id: p.id }, data: { imageUrl: t.url } });
+    p.imageUrl = t.url; fromWiki++;
+    const pageName = t.title.replace(/^.*? - /, '').trim();
+    if (pageName && await addAliases(p, [pageName])) aliased++;
+  }
+  const still = missing.filter((p) => !p.imageUrl).map((p) => p.displayName);
+  await prisma.syncLog.create({
+    data: {
+      source: 'imagens (BeybladeHub CX + wiki)', ok: true,
+      message: `${fromHub} do BeybladeHub, ${fromWiki} da wiki, ${aliased} apelidos, ${created.length} peças CX novas, ${refiled.length} reclassificadas • sem foto: ${still.length}${still.length ? ' (' + still.slice(0, 10).join(', ') + ')' : ''}${unmatched.length ? ' • hub sem correspondência: ' + unmatched.slice(0, 8).join(', ') : ''}`.slice(0, 900),
+    },
+  });
+  return { fromHub, fromWiki, aliased, created, refiled, still, unmatched };
 }
 
 /**
@@ -534,6 +682,8 @@ export async function syncAll(actor = null) {
   // 2) Enriquecimento: stats do Byyblade HQ + imagens do BeybladeHub para o
   //    que ficou sem, e apelidos Hasbro
   const parts = await syncParts();
+  let images = { fromHub: 0, fromWiki: 0 };
+  try { images = await syncPartImages(); } catch (e) { await prisma.syncLog.create({ data: { source: 'imagens (BeybladeHub CX + wiki)', ok: false, message: String(e?.message || e).slice(0, 300) } }); }
   // 3) Vínculo heurístico para produtos que ainda ficaram órfãos
   const links = await autoLinkProducts();
   const dedupe = await dedupeParts();
@@ -544,6 +694,7 @@ export async function syncAll(actor = null) {
     dedupe,
     variants,
     combos,
+    images,
     products: bc.products,
     parts: {
       created: bc.parts.created + parts.created,
