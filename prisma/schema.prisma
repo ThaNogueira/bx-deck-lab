@@ -254,6 +254,8 @@ model TournamentPlayer {
   dropped      Boolean  @default(false)
   lateLosses   Int      @default(0) // derrotas administrativas antes da entrada tardia
   deckId       String? // deck que o jogador declarou usar neste torneio (entra no cálculo do meta)
+  manualDeckJson String? // composição privada definida pelo gestor, exclusiva deste torneio
+  manualDeckTitle String?
   deck         CommunityDeck? @relation(fields: [deckId], references: [id], onDelete: SetNull)
   tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
   user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)

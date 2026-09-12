@@ -69,7 +69,9 @@ router.get('/api/home/highlights', ah(async (_req, res) => {
       const st = full && standingsOf(full)[0];
       if (!st) return null;
       const player = full.players.find((p) => p.id === st.player.id);
-      const deck = player?.deck;
+      const deck = player?.manualDeckJson
+        ? { slug: null, title: player.manualDeckTitle || 'Deck definido pelo gestor', beysJson: player.manualDeckJson }
+        : player?.deck;
       return {
         tournament: { slug: event.slug, name: full.name, startsAt: full.startsAt, storeName: full.storeName },
         user: st.player.user, wins: st.wins, points: st.points,

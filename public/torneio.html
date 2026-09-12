@@ -183,7 +183,7 @@
           ${(() => { const mine = ME && data.players.find((p) => p.user.id === ME.id); return mine ? `<div class="panel-card my-deck-box" style="margin-bottom:16px">
             <div class="section-title-row"><div><p class="eyebrow">MEU DECK NESTE TORNEIO</p><h2 style="font-size:20px">${mine.deck?.title ? BX.esc(mine.deck.title) : 'Nenhum deck declarado'}</h2></div>${BX.icon('decks', 22)}</div>
             <p class="muted" style="font-size:12px;margin:6px 0 10px">Declare o deck que vai usar: ele entra no ranking do meta da home e aparece no card do campeão. Só você e o organizador veem qual é até o torneio encerrar.</p>
-            <div class="composer-row"><select id="myTourDeck" aria-label="Meu deck" style="flex:1;min-width:200px"><option value="">Carregando seus decks…</option></select><button class="btn secondary" id="myTourDeckSave">${BX.icon('check', 14)} Salvar</button>${mine.deck ? `<a class="btn ghost" href="/deck/${BX.esc(mine.deck.slug)}" style="text-decoration:none">Ver deck</a>` : ''}</div>
+            <div class="composer-row"><select id="myTourDeck" aria-label="Meu deck" style="flex:1;min-width:200px"><option value="">Carregando seus decks…</option></select><button class="btn secondary" id="myTourDeckSave">${BX.icon('check', 14)} Salvar</button>${mine.deck?.slug ? `<a class="btn ghost" href="/deck/${BX.esc(mine.deck.slug)}" style="text-decoration:none">Ver deck</a>` : ''}</div>
           </div>` : ''; })()}
           <div class="section-title-row" style="margin-bottom:10px">
             <div><p class="eyebrow">INSCRITOS</p><h2>${data.players.length} jogador(es)</h2></div>
@@ -293,8 +293,8 @@
                 <div style="margin-top:10px">${data.players.map((p) => `
                   <div class="org-match-row">
                     ${BX.avatarHtml(p.user, { size: 34 })}
-                    <div style="font-size:12px"><b>${BX.esc(p.user.name)}</b>${p.dropped ? ' <small style="color:var(--muted)">(removido/drop)</small>' : ''}<small style="display:block;color:var(--muted)">${p.deck?.title ? `Deck: ${BX.esc(p.deck.title)}` : 'Sem deck declarado'}</small></div>
-                    <select class="manage-player-deck" data-player-deck="${p.id}" aria-label="Deck de ${BX.esc(p.user.name)}"><option value="">Carregando decks…</option></select>
+                    <div style="font-size:12px"><b>${BX.esc(p.user.name)}</b>${p.dropped ? ' <small style="color:var(--muted)">(removido/drop)</small>' : ''}<small style="display:block;color:var(--muted)">${p.deck?.title ? `Deck: ${BX.esc(p.deck.title)}${p.deck.managed ? ' (gestão)' : ''}` : p.deckDeclared ? 'Deck do jogador (privado)' : 'Sem deck declarado'}</small></div>
+                    <button class="btn secondary" data-build-deck="${p.id}">${BX.icon('decks', 14)} Montar deck</button>
                     ${!p.dropped ? `<button class="btn danger-outline" data-kick="${p.id}">${t.status === 'OPEN' ? 'Remover' : 'Drop'}</button>` : '<span></span>'}
                   </div>`).join('')}</div>
               </div>
@@ -322,9 +322,38 @@
                 <div class="inline-actions"><button class="btn primary" id="saveT">Salvar</button></div>
               </div>
             </div>
-          </div>`;
+          </div>
+          <div class="modal-backdrop" id="manageDeckModal" hidden><div class="modal"></div></div>`;
 
         const act = (fn) => async () => { try { await fn(); load(); } catch (e) { BX.toast(e.message); } };
+        let deckEditor = null;
+        const renderDeckEditor = () => {
+          const modal = box.querySelector('#manageDeckModal');
+          if (!modal || !deckEditor) return;
+          const current = deckEditor.beys[deckEditor.slot] || [];
+          const query = BX.norm(deckEditor.query || '');
+          const parts = deckEditor.index.list.filter((p) => !p.parentId && (!query || [p.name, p.display, p.abbrev, ...(p.aliases || [])].some((v) => BX.norm(v).includes(query)))).slice(0, 42);
+          modal.hidden = false;
+          modal.querySelector('.modal').innerHTML = `
+            <button class="modal-close" data-mini-close>×</button>
+            <p class="eyebrow">DECK DO TORNEIO</p><h2>${BX.esc(deckEditor.player.user.name)}</h2>
+            <p class="muted" style="margin-top:-8px">Esta composição fica só neste torneio; ela não mostra nem altera os decks privados do jogador.</p>
+            <label style="display:block;margin-top:14px">Nome do deck<input id="miniDeckTitle" value="${BX.esc(deckEditor.title)}" maxlength="80"></label>
+            <div class="mini-builder-slots">${[0, 1, 2].map((n) => `<button class="${deckEditor.slot === n ? 'active' : ''}" data-mini-slot="${n}"><small>BEY ${n + 1}</small>${BX.beyMini(deckEditor.beys[n], { u: 46 })}</button>`).join('')}</div>
+            <div class="mini-builder-current"><b>Bey ${deckEditor.slot + 1}</b><div>${current.length ? current.map((id) => { const p = deckEditor.index.byId.get(id); return `<button class="mini-part-chip" data-mini-remove="${BX.esc(id)}">${BX.partThumb(p, 24)}<span>${BX.esc(p?.display || p?.name || '?')}</span> ×</button>`; }).join('') : '<small>Selecione peças abaixo.</small>'}</div></div>
+            <label style="display:block;margin-top:14px">Buscar peça<input id="miniDeckSearch" value="${BX.esc(deckEditor.query || '')}" placeholder="Blade, Ratchet, Bit…"></label>
+            <div class="mini-builder-parts">${parts.map((p) => `<button data-mini-add="${p.id}" ${current.includes(p.id) || current.length >= 7 ? 'disabled' : ''}>${BX.partThumb(p, 28)}<span>${BX.esc(p.display || p.name)}</span><small>${BX.esc(BX.KIND_PT[p.kind] || p.kind)}</small></button>`).join('') || '<small>Nenhuma peça encontrada.</small>'}</div>
+            <div class="inline-actions" style="margin-top:16px"><button class="btn primary" data-mini-save>Salvar deck do torneio</button><button class="btn ghost" data-mini-close>Cancelar</button></div>`;
+          modal.querySelectorAll('[data-mini-close]').forEach((b) => b.addEventListener('click', () => { deckEditor = null; modal.hidden = true; }));
+          modal.querySelectorAll('[data-mini-slot]').forEach((b) => b.addEventListener('click', () => { deckEditor.slot = +b.dataset.miniSlot; renderDeckEditor(); }));
+          modal.querySelectorAll('[data-mini-add]').forEach((b) => b.addEventListener('click', () => { const list = deckEditor.beys[deckEditor.slot]; if (!list.includes(b.dataset.miniAdd) && list.length < 7) list.push(b.dataset.miniAdd); renderDeckEditor(); }));
+          modal.querySelectorAll('[data-mini-remove]').forEach((b) => b.addEventListener('click', () => { const list = deckEditor.beys[deckEditor.slot]; deckEditor.beys[deckEditor.slot] = list.filter((id) => id !== b.dataset.miniRemove); renderDeckEditor(); }));
+          modal.querySelector('#miniDeckSearch').addEventListener('input', (e) => { deckEditor.query = e.target.value; renderDeckEditor(); });
+          modal.querySelector('#miniDeckTitle').addEventListener('input', (e) => { deckEditor.title = e.target.value; });
+          modal.querySelector('[data-mini-save]').addEventListener('click', async () => {
+            try { await BX.api(`/api/tournaments/${slug}/players/${deckEditor.player.id}/manual-deck`, { method: 'POST', body: { title: deckEditor.title, beys: deckEditor.beys } }); BX.toast('Deck do torneio salvo.'); deckEditor = null; modal.hidden = true; load(); } catch (e) { BX.toast(e.message); }
+          });
+        };
         document.getElementById('startBtn')?.addEventListener('click', act(() => BX.api(`/api/tournaments/${slug}/start`, { method: 'POST' })));
         document.getElementById('nextBtn')?.addEventListener('click', act(() => BX.api(`/api/tournaments/${slug}/next-round`, { method: 'POST' })));
         document.getElementById('lateInviteBtn')?.addEventListener('click', async () => {
@@ -349,15 +378,14 @@
           } catch (e) { BX.toast(e.message); }
         }));
         box.querySelectorAll('[data-kick]').forEach((b) => b.addEventListener('click', act(() => confirm(t.status === 'OPEN' ? 'Remover este jogador?' : 'Dar drop neste jogador? Se ele tiver partida pendente nesta rodada, o oponente vence por forfeit.') && BX.api(`/api/tournaments/${slug}/players/${b.dataset.kick}`, { method: 'DELETE' }))));
-        BX.api(`/api/tournaments/${slug}/player-decks`).then(({ decksByPlayer }) => {
-          box.querySelectorAll('[data-player-deck]').forEach((sel) => {
-            const player = data.players.find((p) => p.id === sel.dataset.playerDeck);
-            const decks = decksByPlayer[sel.dataset.playerDeck] || [];
-            sel.innerHTML = '<option value="">— sem deck —</option>' + decks.map((d) => `<option value="${d.id}" ${player?.deck?.id === d.id ? 'selected' : ''}>${BX.esc(d.title)}${d.isPublic ? '' : ' (privado)'}</option>`).join('');
-            if (!decks.length) sel.innerHTML = '<option value="">Este jogador não tem decks no builder</option>';
-            sel.addEventListener('change', act(() => BX.api(`/api/tournaments/${slug}/players/${sel.dataset.playerDeck}/deck`, { method: 'POST', body: { deckId: sel.value || null } })));
-          });
-        }).catch((e) => BX.toast(e.message));
+        box.querySelectorAll('[data-build-deck]').forEach((b) => b.addEventListener('click', async () => {
+          try {
+            const player = data.players.find((p) => p.id === b.dataset.buildDeck);
+            const idx = await BX.partTagReady();
+            deckEditor = { player, index: idx, slot: 0, query: '', title: player.deck?.managed ? player.deck.title : `Deck de ${player.user.name}`, beys: Array.from({ length: 3 }, (_, n) => [...(player.deck?.beys?.[n] || [])]) };
+            renderDeckEditor();
+          } catch (e) { BX.toast(e.message); }
+        }));
         document.getElementById('copyLink')?.addEventListener('click', async () => {
           await navigator.clipboard.writeText(t.joinUrl);
           BX.toast('Link copiado!');

@@ -39,15 +39,25 @@ function tournamentDto(t, user) {
   };
 }
 
-const playerDto = (p) => ({
-  id: p.id,
-  dropped: p.dropped,
-  lateLosses: p.lateLosses ?? 0,
-  user: publicUser(p.user),
-  deck: p.deck ? { id: p.deck.id, slug: p.deck.slug, title: p.deck.title, beys: (() => { try { return JSON.parse(p.deck.beysJson || '[]'); } catch { return []; } })() } : (p.deckId ? { id: p.deckId } : null),
-});
+const parseDeck = (value) => { try { return JSON.parse(value || '[]'); } catch { return []; } };
 
-function matchDto(m) {
+const playerDto = (p, { showDeclaredDeck = true } = {}) => {
+  const show = typeof showDeclaredDeck === 'function' ? showDeclaredDeck(p) : showDeclaredDeck;
+  return {
+    id: p.id,
+    dropped: p.dropped,
+    lateLosses: p.lateLosses ?? 0,
+    user: publicUser(p.user),
+    // A composição manual pertence ao evento. Um deck declarado pelo jogador só
+    // volta para o próprio jogador (ou após o torneio), jamais para a gestão.
+    deckDeclared: !!p.deckId,
+    deck: p.manualDeckJson
+      ? { id: null, slug: null, managed: true, title: p.manualDeckTitle || 'Deck definido pelo gestor', beys: parseDeck(p.manualDeckJson) }
+      : show && p.deck ? { id: p.deck.id, slug: p.deck.slug, title: p.deck.title, beys: parseDeck(p.deck.beysJson) } : null,
+  };
+};
+
+function matchDto(m, options) {
   return {
     id: m.id,
     round: m.round,
@@ -55,8 +65,8 @@ function matchDto(m) {
     status: m.status,
     resolvedBy: m.resolvedBy,
     winnerId: m.winnerId,
-    p1: m.p1 ? playerDto(m.p1) : null,
-    p2: m.p2 ? playerDto(m.p2) : null,
+    p1: m.p1 ? playerDto(m.p1, options) : null,
+    p2: m.p2 ? playerDto(m.p2, options) : null,
     p1Reported: m.p1Report != null,
     p2Reported: m.p2Report != null,
     p1Score: m.p1Score ?? 0,
@@ -76,7 +86,7 @@ export async function loadTournament(slug) {
   });
 }
 
-export function standingsOf(t) {
+export function standingsOf(t, options) {
   const stats = new Map(t.players.map((p) => [p.id, { wins: 0, nonByeWins: 0, losses: p.lateLosses ?? 0, points: 0, opponents: [] }]));
   for (const m of t.matches) {
     if (m.status !== 'DONE') continue;
@@ -105,7 +115,7 @@ export function standingsOf(t) {
     return opponents.length ? opponents.reduce((sum, oid) => sum + omw(oid), 0) / opponents.length : 0;
   };
   return t.players
-    .map((p) => { const { nonByeWins, opponents, ...row } = stats.get(p.id); return { player: playerDto(p), ...row, omw: omw(p.id), oomw: oomw(p.id) }; })
+    .map((p) => { const { nonByeWins, opponents, ...row } = stats.get(p.id); return { player: playerDto(p, options), ...row, omw: omw(p.id), oomw: oomw(p.id) }; })
     .sort((a, b) => b.points - a.points || b.omw - a.omw || b.oomw - a.oomw || a.player.user.name.localeCompare(b.player.user.name));
 }
 
@@ -228,7 +238,7 @@ router.post('/api/tournaments/:slug/my-deck', requireUser, ah(async (req, res) =
     const deck = await prisma.communityDeck.findUnique({ where: { id: deckId } });
     if (!deck || deck.authorId !== req.user.id) return res.status(403).json({ error: 'Escolha um deck seu.' });
   }
-  const p = await prisma.tournamentPlayer.update({ where: { id: me.id }, data: { deckId }, include: { user: true, deck: true } });
+  const p = await prisma.tournamentPlayer.update({ where: { id: me.id }, data: { deckId, manualDeckJson: null, manualDeckTitle: null }, include: { user: true, deck: true } });
   res.json({ player: playerDto(p) });
 }));
 
@@ -236,11 +246,12 @@ router.get('/api/tournaments/:slug', ah(async (req, res) => {
   const t = await loadTournament(req.params.slug);
   if (!t) return res.status(404).json({ error: 'Torneio não encontrado.' });
   const me = req.user ? t.players.find((p) => p.userId === req.user.id) : null;
+  const deckOptions = { showDeclaredDeck: (p) => t.status === 'FINISHED' || p.userId === req.user?.id };
   res.json({
     tournament: tournamentDto(t, req.user),
-    players: t.players.map(playerDto),
-    matches: t.matches.map(matchDto),
-    standings: t.status === 'OPEN' ? [] : standingsOf(t),
+    players: t.players.map((p) => playerDto(p, deckOptions)),
+    matches: t.matches.map((m) => matchDto(m, deckOptions)),
+    standings: t.status === 'OPEN' ? [] : standingsOf(t, deckOptions),
     me: me ? { playerId: me.id, dropped: me.dropped } : null,
   });
 }));
@@ -440,11 +451,11 @@ router.get('/api/tournaments/:slug/standings-image.png', requireManage(bySlug), 
   res.type('png').set('Content-Disposition', `attachment; filename="${t.slug}-classificacao.png"`).send(png);
 }));
 
-/** O gestor pode selecionar, para cada inscrito, um deck que realmente pertença àquele jogador. */
+/** Só decks públicos: esta rota não expõe a coleção privada de ninguém ao gestor. */
 router.get('/api/tournaments/:slug/player-decks', requireManage(bySlug), ah(async (req, res) => {
   const players = req.tournament.players;
   const decks = await prisma.communityDeck.findMany({
-    where: { authorId: { in: players.map((p) => p.userId) } },
+    where: { authorId: { in: players.map((p) => p.userId) }, isPublic: true, status: 'VISIBLE' },
     select: { id: true, title: true, authorId: true, isPublic: true, beysJson: true, updatedAt: true },
     orderBy: { updatedAt: 'desc' },
   });
@@ -460,8 +471,28 @@ router.post('/api/tournaments/:slug/players/:playerId/deck', requireManage(bySlu
     const deck = await prisma.communityDeck.findUnique({ where: { id: deckId } });
     if (!deck || deck.authorId !== player.userId) return res.status(422).json({ error: 'Escolha um deck que pertença a este jogador.' });
   }
-  const updated = await prisma.tournamentPlayer.update({ where: { id: player.id }, data: { deckId }, include: { user: true, deck: true } });
+  const updated = await prisma.tournamentPlayer.update({ where: { id: player.id }, data: { deckId, manualDeckJson: null, manualDeckTitle: null }, include: { user: true, deck: true } });
   await audit(req.user, 'tournament.player.deck.set', 'TOURNAMENT', req.tournament.id, { playerId: player.id, deckId });
+  res.json({ player: playerDto(updated) });
+}));
+
+/** O gestor monta uma composição efêmera para o evento sem acessar os decks privados do jogador. */
+router.post('/api/tournaments/:slug/players/:playerId/manual-deck', requireManage(bySlug), ah(async (req, res) => {
+  const player = req.tournament.players.find((p) => p.id === req.params.playerId);
+  if (!player) return res.status(404).json({ error: 'Jogador não encontrado.' });
+  const raw = Array.isArray(req.body?.beys) ? req.body.beys : [];
+  const beys = raw.slice(0, 3).map((b) => Array.isArray(b) ? [...new Set(b.map(String))].slice(0, 7) : []).filter((b) => b.length);
+  if (!beys.length) return res.status(422).json({ error: 'Monte pelo menos uma Bey antes de salvar.' });
+  const ids = [...new Set(beys.flat())];
+  const count = await prisma.part.count({ where: { id: { in: ids } } });
+  if (count !== ids.length) return res.status(422).json({ error: 'Uma ou mais peças não existem mais no catálogo.' });
+  const title = String(req.body?.title || `Deck de ${player.user.name}`).trim().slice(0, 80) || `Deck de ${player.user.name}`;
+  const updated = await prisma.tournamentPlayer.update({
+    where: { id: player.id },
+    data: { deckId: null, manualDeckJson: JSON.stringify(beys), manualDeckTitle: title },
+    include: { user: true, deck: true },
+  });
+  await audit(req.user, 'tournament.player.manual_deck.set', 'TOURNAMENT', req.tournament.id, { playerId: player.id, parts: ids.length });
   res.json({ player: playerDto(updated) });
 }));
 

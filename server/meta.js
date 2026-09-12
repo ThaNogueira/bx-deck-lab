@@ -54,16 +54,18 @@ export async function computeMeta() {
   for (const t of tours) {
     const full = await loadTournament(t.slug);
     if (!full) continue;
-    const withDeck = full.players.filter((p) => p.deckId);
+    const withDeck = full.players.filter((p) => p.deckId || p.manualDeckJson);
     if (!withDeck.length) continue;
     const decks = await prisma.communityDeck.findMany({ where: { id: { in: withDeck.map((p) => p.deckId) } } });
     const byId = new Map(decks.map((d) => [d.id, d]));
     const standings = full.status === 'FINISHED' ? standingsOf(full) : [];
     for (const p of withDeck) {
-      const d = byId.get(p.deckId); if (!d) continue;
+      const d = p.deckId ? byId.get(p.deckId) : null;
+      const beys = p.manualDeckJson ? json(p.manualDeckJson, []) : d ? json(d.beysJson, []) : null;
+      if (!beys) continue;
       const pos = standings.findIndex((s) => s.player.id === p.id);
       const w = full.status !== 'FINISHED' ? 1 : pos === 0 ? 4 : pos >= 0 && pos < 4 ? 2.5 : 1.2;
-      addDeck(json(d.beysJson, []), w, d.id);
+      addDeck(beys, w, d?.id ?? null);
       sources.tournamentDecks++;
     }
   }
