@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { prisma } from '../db.js';
 import { publicUser } from '../auth.js';
 import { json } from '../util.js';
+import { partDto } from './catalog.js';
 import { getMetaState } from '../meta.js';
 import { standingsOf, loadTournament } from './tournaments.js';
 import { HOME_TAGS, listPosts } from './community.js';
@@ -61,23 +62,30 @@ router.get('/api/home/highlights', ah(async (_req, res) => {
     const next = await prisma.tournament.findFirst({ where: { status: 'OPEN', startsAt: { gte: now } }, orderBy: { startsAt: 'asc' }, include: { players: true } })
       || await prisma.tournament.findFirst({ where: { status: { in: ['OPEN', 'RUNNING'] } }, orderBy: { startsAt: 'asc' }, include: { players: true } });
 
-    // Último campeão (com deck)
-    const lastFinished = await prisma.tournament.findFirst({ where: { status: 'FINISHED' }, orderBy: { startsAt: 'desc' } });
-    let champion = null;
-    if (lastFinished) {
-      const full = await loadTournament(lastFinished.slug);
-      const st = standingsOf(full)[0];
-      if (st) {
-        const player = full.players.find((p) => p.id === st.player.id);
-        const deck = player?.deckId ? await prisma.communityDeck.findUnique({ where: { id: player.deckId } }) : null;
-        champion = { tournament: { slug: lastFinished.slug, name: full.name, startsAt: full.startsAt }, user: st.player.user, wins: st.wins, deck: deck ? { slug: deck.slug, title: deck.title, beys: json(deck.beysJson, []) } : null };
-      }
-    }
+    // Campeões recentes e os decks declarados: material para a vitrine da home.
+    const finished = await prisma.tournament.findMany({ where: { status: 'FINISHED' }, orderBy: { startsAt: 'desc' }, take: 4 });
+    const recentChampions = (await Promise.all(finished.map(async (event) => {
+      const full = await loadTournament(event.slug);
+      const st = full && standingsOf(full)[0];
+      if (!st) return null;
+      const player = full.players.find((p) => p.id === st.player.id);
+      const deck = player?.deck;
+      return {
+        tournament: { slug: event.slug, name: full.name, startsAt: full.startsAt, storeName: full.storeName },
+        user: st.player.user, wins: st.wins, points: st.points,
+        deck: deck ? { slug: deck.slug, title: deck.title, beys: json(deck.beysJson, []) } : null,
+      };
+    }))).filter(Boolean);
+    const championPartIds = [...new Set(recentChampions.flatMap((c) => c.deck?.beys.flat() || []))];
+    const championParts = championPartIds.length ? await prisma.part.findMany({ where: { id: { in: championPartIds } } }) : [];
+    const champion = recentChampions[0] || null;
     return {
       topDeck: deckOut,
       topClip: clip ? { id: clip.id, title: clip.title, reactions: clip.reactionCount, comments: clip.commentCount, author: publicUser(clip.author), thumb: clipThumb, url: `/comunidade/p/${clip.id}` } : null,
       nextTournament: next ? { slug: next.slug, name: next.name, storeName: next.storeName, startsAt: next.startsAt, format: next.format, players: next.players.length, status: next.status } : null,
       champion,
+      recentChampions,
+      championParts: Object.fromEntries(championParts.map((p) => [p.id, partDto(p)])),
     };
   });
   res.json(data);

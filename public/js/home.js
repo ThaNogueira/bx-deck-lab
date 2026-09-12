@@ -215,6 +215,7 @@
 
   async function renderHighlights() {
     const el = document.getElementById('homeHighlights');
+    const recentEl = document.getElementById('homeRecentChampions');
     if (!el) return;
     try {
       const h = await BX.api('/api/home/highlights');
@@ -225,7 +226,13 @@
       if (h.champion) cards.push(`<a class="hl-card champ" href="/torneio/${esc(h.champion.tournament.slug)}"><span class="hl-kind">${BX.icon('trophy', 13)} Último campeão</span><span class="hl-user">${BX.avatarHtml(h.champion.user, { size: 34 })}<b>${esc(h.champion.user.name)}</b></span><small>${esc(h.champion.tournament.name)}${h.champion.deck ? ` · deck ${esc(h.champion.deck.title)}` : ''}</small></a>`);
       if (!cards.length) cards.push(`<a class="hl-card" href="/torneios"><span class="hl-kind">${BX.icon('trophy', 13)} Torneios</span><b>Crie o primeiro torneio</b><small>Os destaques da semana nascem dos torneios e dos decks compartilhados.</small></a>`);
       el.innerHTML = cards.join('');
-    } catch { el.innerHTML = ''; }
+      if (recentEl) recentEl.innerHTML = h.recentChampions?.length ? h.recentChampions.map((c, i) => `<a class="recent-champion-card" href="/torneio/${esc(c.tournament.slug)}">
+        <div class="rc-top"><span class="rc-medal">${i === 0 ? BX.icon('trophy', 17) : `${i + 1}º`}</span><span>${BX.dateFmt(c.tournament.startsAt, { day: '2-digit', month: 'short', year: 'numeric' })}</span></div>
+        <p class="eyebrow">${esc(c.tournament.name)}</p>
+        <div class="rc-winner">${BX.avatarHtml(c.user, { size: 42 })}<span><b>${esc(c.user.name)}</b><small>Campeão · ${c.points} pts · ${c.wins} V</small></span></div>
+        <div class="rc-deck">${c.deck ? `${BX.deckPreview(c.deck.beys, { u: 42, parts: h.championParts })}<span><small>DECK VENCEDOR</small><b>${esc(c.deck.title)}</b></span>` : '<span class="muted">Deck não declarado</span>'}</div>
+      </a>`).join('') : '<div class="empty-state">Os campeões aparecerão aqui quando o primeiro torneio encerrar.</div>';
+    } catch { el.innerHTML = ''; if (recentEl) recentEl.innerHTML = ''; }
   }
 
   async function renderHomeSide() {
