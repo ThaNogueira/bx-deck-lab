@@ -648,15 +648,15 @@
         </div>
         <div class="panel-card" style="margin-bottom:14px">
           <div class="section-title-row">
-            <div><p class="eyebrow">SINCRONIZAÇÃO DO CATÁLOGO</p><h2 style="font-size:20px">Produtos + peças + imagens</h2></div>
-            <button class="btn primary" id="syncNow">${BX.ic('refresh', 14)} Sincronizar agora</button>
+            <div><p class="eyebrow">SINCRONIZAÇÃO DO CATÁLOGO</p><h2 style="font-size:20px">Atualização geral: produtos, peças e imagens</h2></div>
+            <button class="btn primary" id="syncNow">${BX.ic('refresh', 14)} Atualizar agora</button>
           </div>
           <div style="margin-top:10px">${logs.map((l) => `
             <div class="org-match-row ${l.ok ? '' : 'conflict'}">
               <b style="font:800 10px var(--display);color:${l.ok ? 'var(--green)' : 'var(--red)'}">${l.ok ? 'OK' : 'ERRO'}</b>
               <div style="font-size:11px"><b class="mono">${esc(l.source.replace('https://', ''))}</b><small style="display:block;color:var(--muted)">${esc(l.message || '')} • ${BX.dateFmt(l.createdAt)}</small></div>
             </div>`).join('') || '<div class="empty-state">Nenhuma sincronização ainda — rode a primeira!</div>'}</div>
-          <small style="display:block;color:var(--muted);margin-top:8px;font-size:10px">O meta da home usa os dados que o montador já puxa dos sites de meta; produtos novos entram por aqui.</small>
+          <small style="display:block;color:var(--muted);margin-top:8px;font-size:10px">Roda automaticamente a cada 5 horas e também pode ser acionada aqui. Procura produtos e peças novas, variantes e imagens mais recentes das fontes automáticas; uploads feitos no painel nunca são sobrescritos.</small>
         </div>
         <div class="panel-card">
           <div class="section-title-row"><div><p class="eyebrow">AVISOS DO SITE</p><h2 style="font-size:20px">Banner da home</h2></div></div>
@@ -682,9 +682,9 @@
       on('[data-feat]', 'click', act((el) => BX.api(`/api/admin/decks/${el.dataset.feat}/feature`, { method: 'POST', body: { order: Date.now() % 100000 } })));
       on('[data-unfeat]', 'click', act((el) => BX.api(`/api/admin/decks/${el.dataset.unfeat}/feature`, { method: 'POST', body: { order: null } })));
       box.querySelector('#syncNow').onclick = act(async () => {
-        BX.toast('Sincronizando produtos + peças + imagens — pode levar ~1 min…');
+        BX.toast('Atualizando catálogo e imagens — pode levar ~1 min…');
         const r = await BX.api('/api/admin/sync/products', { method: 'POST' });
-        BX.toast(`Sync: produtos +${r.products.created} • peças +${r.parts.created} novas / ${r.parts.updated} enriquecidas • ${r.links.linked} produtos vinculados.`);
+        BX.toast(`Atualização: produtos +${r.products.created} • peças +${r.parts.created} novas / ${r.parts.updated} atualizadas • ${r.images.fromHub + r.images.fromWiki} imagens • ${r.links.linked} vínculos.`);
       });
       box.querySelector('#aCreate').onclick = act(() => BX.api('/api/admin/announcements', {
         method: 'POST',

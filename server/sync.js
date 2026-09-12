@@ -224,6 +224,9 @@ async function loadPartIndex() {
   return { parts, byKey, register };
 }
 
+const AUTO_IMAGE_URL = /(?:img\.beybladehub\.app|beyblade\.fandom\.com|static\.wikia\.nocookie\.net)/i;
+const FULL_SYNC_SOURCE = 'catálogo geral automático';
+
 async function upsertPartRecord(idx, rec) {
   const { kind, subKind } = mapKind(rec.kind);
   const keys = [rec.name, ...(rec.aliases || [])].map(normKey).filter(Boolean);
@@ -243,7 +246,13 @@ async function upsertPartRecord(idx, rec) {
     if (fresh.length) data.aliasesJson = JSON.stringify([...aliases, ...fresh].slice(0, 12));
     if (!existing.statsJson && rec.stats) data.statsJson = JSON.stringify(rec.stats);
     if (!existing.type && rec.type) data.type = rec.type;
-    if (!existing.imageUrl && rec.image) data.imageUrl = rec.image;
+    // Upload feito no Admin é uma escolha humana e nunca pode ser trocado.
+    // Imagens que já vieram de fontes automáticas podem ser atualizadas quando
+    // o fornecedor publica uma versão/caminho novo para a mesma peça.
+    const manualImage = existing.imageUrl?.startsWith('/uploads/');
+    if (rec.image && !manualImage && (!existing.imageUrl || AUTO_IMAGE_URL.test(existing.imageUrl)) && existing.imageUrl !== rec.image) {
+      data.imageUrl = rec.image;
+    }
     if (!existing.abbrev && rec.abbrev) data.abbrev = rec.abbrev;
     if (!existing.note && rec.note) data.note = rec.note;
     if (!existing.behavior && rec.behavior) data.behavior = rec.behavior;
@@ -383,7 +392,7 @@ async function wikiThumbs(titles) {
  * wiki pelo padrão "<Tipo> - <Nome>" (nome, nome exibido, apelidos e grafias
  * Hasbro/Takara). O nome da página vira apelido quando for outro.
  */
-export async function syncPartImages() {
+export async function syncPartImages({ refresh = false } = {}) {
   const idx = await loadPartIndex();
   const keysOf = (p) => { let a = []; try { a = JSON.parse(p.aliasesJson); } catch {} return [p.name, p.displayName, ...a].filter(Boolean); };
   const addAliases = async (p, names) => {
@@ -426,7 +435,9 @@ export async function syncPartImages() {
         } catch { unmatched.push(`${rec.kind}:${rec.name}`); }
         continue;
       }
-      if (p.imageUrl) continue;
+      const manualImage = p.imageUrl?.startsWith('/uploads/');
+      const refreshableImage = AUTO_IMAGE_URL.test(p.imageUrl || '');
+      if (manualImage || (p.imageUrl && (!refresh || !refreshableImage)) || p.imageUrl === rec.image) continue;
       await prisma.part.update({ where: { id: p.id }, data: { imageUrl: rec.image } });
       p.imageUrl = rec.image; fromHub++;
     }
@@ -669,7 +680,7 @@ export async function syncVariants() {
 }
 
 /** Sincronização completa: BeyCommunity (banco inteiro) + enriquecimento. */
-export async function syncAll(actor = null) {
+export async function syncAll(actor = null, { refreshImages = false } = {}) {
   // 1) BeyCommunity: produtos com código + peças com stats/peso/variantes e
   //    a relação peça↔produto oficial deles
   let bc = { products: { created: 0, updated: 0 }, parts: { created: 0, updated: 0, linked: 0 } };
@@ -683,14 +694,14 @@ export async function syncAll(actor = null) {
   //    que ficou sem, e apelidos Hasbro
   const parts = await syncParts();
   let images = { fromHub: 0, fromWiki: 0 };
-  try { images = await syncPartImages(); } catch (e) { await prisma.syncLog.create({ data: { source: 'imagens (BeybladeHub CX + wiki)', ok: false, message: String(e?.message || e).slice(0, 300) } }); }
+  try { images = await syncPartImages({ refresh: refreshImages }); } catch (e) { await prisma.syncLog.create({ data: { source: 'imagens (BeybladeHub CX + wiki)', ok: false, message: String(e?.message || e).slice(0, 300) } }); }
   // 3) Vínculo heurístico para produtos que ainda ficaram órfãos
   const links = await autoLinkProducts();
   const dedupe = await dedupeParts();
   const variants = await syncVariants();
   let combos = { scanned: 0, linked: 0, failed: 0 };
   try { combos = await syncProductCombos(); } catch (e) { await prisma.syncLog.create({ data: { source: 'cores por produto', ok: false, message: String(e.message || e) } }); }
-  return {
+  const result = {
     dedupe,
     variants,
     combos,
@@ -704,26 +715,34 @@ export async function syncAll(actor = null) {
     created: bc.products.created + bc.parts.created + parts.created,
     updated: bc.products.updated + bc.parts.updated + parts.updated,
   };
+  await prisma.syncLog.create({
+    data: {
+      source: FULL_SYNC_SOURCE,
+      ok: true,
+      message: `+${result.created} item(ns) novos • ${result.updated} atualizados • ${result.images.fromHub + result.images.fromWiki} imagens atualizadas • ${result.links.linked} vínculos${refreshImages ? ' • refresh de imagens' : ''}${actor ? ` • por ${actor.name}` : ''}`,
+    },
+  });
+  return result;
 }
 
-/** Auto-sync: no boot (se o último sync ok tiver mais de 24h) e a cada 24h. */
+/** Atualização geral a cada 5h: novos produtos/peças, variantes e imagens automáticas. */
 export function scheduleAutoSync() {
   const run = async () => {
     try {
       // recolors (peças-filhas) são derivadas do que já está no banco: garante sempre, é barato
       const v = await syncVariants();
       if (v.created) console.log('[sync] recolors: +' + v.created + ' cor(es) como peças-filhas');
-      const last = await prisma.syncLog.findFirst({ where: { ok: true }, orderBy: { createdAt: 'desc' } });
-      if (last && Date.now() - last.createdAt.getTime() < 24 * 3600e3) return;
-      console.log('[sync] catálogo com mais de 24h — sincronizando…');
-      const r = await syncAll();
+      const last = await prisma.syncLog.findFirst({ where: { source: FULL_SYNC_SOURCE, ok: true }, orderBy: { createdAt: 'desc' } });
+      if (last && Date.now() - last.createdAt.getTime() < 5 * 3600e3) return;
+      console.log('[sync] atualização geral do catálogo e imagens…');
+      const r = await syncAll(null, { refreshImages: true });
       console.log(`[sync] ok: +${r.created} novos, ${r.updated} atualizados, ${r.links.linked} produtos vinculados`);
     } catch (e) {
       console.error('[sync]', e);
     }
   };
   setTimeout(run, 5000).unref();
-  setInterval(run, 6 * 3600e3).unref();
+  setInterval(run, 5 * 3600e3).unref();
 }
 
 export async function syncProducts(actor = null) {

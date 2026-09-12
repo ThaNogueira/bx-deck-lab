@@ -521,7 +521,8 @@ router.post('/api/admin/decks/:id/feature', ADMIN, ah(async (req, res) => {
 }));
 
 router.post('/api/admin/sync/products', ADMIN, ah(async (req, res) => {
-  const result = await syncAll(req.user);
+  const result = await syncAll(req.user, { refreshImages: true });
+  invalidatePartsIndex();
   await audit(req.user, 'admin.sync.catalog', null, null, result);
   res.json(result);
 }));
