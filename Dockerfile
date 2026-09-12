@@ -1,6 +1,9 @@
 FROM node:22-alpine
 WORKDIR /app
 
+# O Sharp usa as fontes instaladas no sistema para renderizar as artes PNG.
+RUN apk add --no-cache fontconfig ttf-dejavu
+
 COPY package.json package-lock.json ./
 COPY prisma ./prisma
 RUN npm ci --omit=dev && npx prisma generate
