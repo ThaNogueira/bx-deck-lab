@@ -32,6 +32,7 @@
       let pendingRender = false;
       const editing = () => { const el = document.activeElement; return !!el && app.contains(el) && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName); };
       let roundsMode = localStorage.getItem('bx_tmode') || (matchMedia('(max-width:700px)').matches ? 'list' : 'tree');
+      BX.partTagReady().then(() => { if (last) render(last.data, last.me, last.myData); }).catch(() => {});
 
       const STATUS_PT = { OPEN: 'inscrições abertas', RUNNING: 'em andamento', FINISHED: 'encerrado', CANCELED: 'cancelado' };
 
@@ -293,7 +294,7 @@
                 <div style="margin-top:10px">${data.players.map((p) => `
                   <div class="org-match-row">
                     ${BX.avatarHtml(p.user, { size: 34 })}
-                    <div style="font-size:12px"><b>${BX.esc(p.user.name)}</b>${p.dropped ? ' <small style="color:var(--muted)">(removido/drop)</small>' : ''}<small style="display:block;color:var(--muted)">${p.deck?.title ? `Deck: ${BX.esc(p.deck.title)}${p.deck.managed ? ' (gestão)' : ''}` : p.deckDeclared ? 'Deck do jogador (privado)' : 'Sem deck declarado'}</small></div>
+                    <div style="font-size:12px"><b>${BX.esc(p.user.name)}</b>${p.dropped ? ' <small style="color:var(--muted)">(removido/drop)</small>' : ''}<small style="display:block;color:var(--muted)">${p.deck?.title ? `Deck: ${BX.esc(p.deck.title)}${p.deck.managed ? ' (gestão)' : ''}` : p.deckDeclared ? 'Deck do jogador (privado)' : 'Sem deck declarado'}</small>${p.deck?.beys?.length ? `<div class="manage-deck-preview">${BX.deckPreview(p.deck.beys, { u: 27 })}</div>` : ''}</div>
                     <button class="btn secondary" data-build-deck="${p.id}">${BX.icon('decks', 14)} Montar deck</button>
                     ${!p.dropped ? `<button class="btn danger-outline" data-kick="${p.id}">${t.status === 'OPEN' ? 'Remover' : 'Drop'}</button>` : '<span></span>'}
                   </div>`).join('')}</div>
@@ -327,32 +328,63 @@
 
         const act = (fn) => async () => { try { await fn(); load(); } catch (e) { BX.toast(e.message); } };
         let deckEditor = null;
-        const renderDeckEditor = () => {
+        const miniRole = (p) => {
+          if (p.kind === 'BLADE') return p.subKind === 'INTEGRATED' ? 'integrated' : 'blade';
+          if (p.kind === 'BIT') return p.subKind === 'RIB' ? 'rib' : 'bit';
+          return ({ LOCK_CHIP: 'lock', MAIN_BLADE: 'main', ASSIST_BLADE: 'assist', OVER_BLADE: 'over', RATCHET: 'ratchet' })[p.kind] || null;
+        };
+        const miniStatus = (ids) => {
+          const roles = ids.map((id) => miniRole(deckEditor.index.byId.get(id))).filter(Boolean);
+          const set = new Set(roles); const exactly = (...want) => set.size === want.length && want.every((r) => set.has(r));
+          if (exactly('blade', 'ratchet', 'bit')) return 'Padrão completo';
+          if (exactly('integrated', 'bit')) return 'Integrada completa';
+          if (exactly('lock', 'main', 'assist', 'ratchet', 'bit') || exactly('lock', 'main', 'assist', 'ratchet', 'bit', 'over') || exactly('lock', 'main', 'assist', 'rib') || exactly('lock', 'main', 'assist', 'rib', 'over')) return 'CX completa';
+          return roles.length ? `Faltam peças (${roles.join(' + ')})` : 'Vazia';
+        };
+        const addMiniPart = (part) => {
+          const role = miniRole(part); if (!role) return;
+          const old = deckEditor.beys[deckEditor.slot].map((id) => deckEditor.index.byId.get(id)).filter(Boolean);
+          const without = (roles) => old.filter((p) => !roles.includes(miniRole(p)));
+          let next;
+          if (role === 'blade') next = [part, ...old.filter((p) => ['ratchet', 'bit'].includes(miniRole(p)))];
+          else if (role === 'integrated') next = [part, ...old.filter((p) => miniRole(p) === 'bit')];
+          else if (['lock', 'main', 'assist', 'over'].includes(role)) next = [...without(['blade', 'integrated', role]), part];
+          else if (role === 'rib') next = [...without(['blade', 'integrated', 'ratchet', 'bit', 'rib']), part];
+          else if (role === 'ratchet') next = [...without(['integrated', 'rib', 'ratchet']), part];
+          else next = [...without(['rib', 'bit']), part];
+          deckEditor.beys[deckEditor.slot] = next.map((p) => p.id);
+        };
+        const renderDeckEditor = (focusSearch = false) => {
           const modal = box.querySelector('#manageDeckModal');
           if (!modal || !deckEditor) return;
           const current = deckEditor.beys[deckEditor.slot] || [];
           const query = BX.norm(deckEditor.query || '');
-          const parts = deckEditor.index.list.filter((p) => !p.parentId && (!query || [p.name, p.display, p.abbrev, ...(p.aliases || [])].some((v) => BX.norm(v).includes(query)))).slice(0, 42);
+          const filter = deckEditor.filter || '';
+          const partInFilter = (p) => !filter || filter === 'CX' ? (!filter || ['LOCK_CHIP', 'MAIN_BLADE', 'ASSIST_BLADE', 'OVER_BLADE'].includes(p.kind)) : p.kind === filter;
+          const parts = deckEditor.index.list.filter((p) => !p.parentId && partInFilter(p) && (!query || [p.name, p.display, p.abbrev, ...(p.aliases || [])].some((v) => BX.norm(v).includes(query)))).slice(0, 80);
           modal.hidden = false;
           modal.querySelector('.modal').innerHTML = `
             <button class="modal-close" data-mini-close>×</button>
             <p class="eyebrow">DECK DO TORNEIO</p><h2>${BX.esc(deckEditor.player.user.name)}</h2>
             <p class="muted" style="margin-top:-8px">Esta composição fica só neste torneio; ela não mostra nem altera os decks privados do jogador.</p>
             <label style="display:block;margin-top:14px">Nome do deck<input id="miniDeckTitle" value="${BX.esc(deckEditor.title)}" maxlength="80"></label>
-            <div class="mini-builder-slots">${[0, 1, 2].map((n) => `<button class="${deckEditor.slot === n ? 'active' : ''}" data-mini-slot="${n}"><small>BEY ${n + 1}</small>${BX.beyMini(deckEditor.beys[n], { u: 46 })}</button>`).join('')}</div>
-            <div class="mini-builder-current"><b>Bey ${deckEditor.slot + 1}</b><div>${current.length ? current.map((id) => { const p = deckEditor.index.byId.get(id); return `<button class="mini-part-chip" data-mini-remove="${BX.esc(id)}">${BX.partThumb(p, 24)}<span>${BX.esc(p?.display || p?.name || '?')}</span> ×</button>`; }).join('') : '<small>Selecione peças abaixo.</small>'}</div></div>
+            <div class="mini-builder-slots">${[0, 1, 2].map((n) => `<button class="${deckEditor.slot === n ? 'active' : ''}" data-mini-slot="${n}"><small>BEY ${n + 1} · ${miniStatus(deckEditor.beys[n])}</small>${BX.beyMini(deckEditor.beys[n], { u: 46 })}</button>`).join('')}</div>
+            <div class="mini-builder-current"><b>Bey ${deckEditor.slot + 1}</b><small>${miniStatus(current)} · o montador troca automaticamente só a peça do mesmo encaixe.</small><div>${current.length ? current.map((id) => { const p = deckEditor.index.byId.get(id); return `<button class="mini-part-chip" data-mini-remove="${BX.esc(id)}">${BX.partThumb(p, 24)}<span>${BX.esc(p?.display || p?.name || '?')}</span> ×</button>`; }).join('') : '<small>Escolha uma Blade, uma peça CX ou uma peça de base.</small>'}</div></div>
             <label style="display:block;margin-top:14px">Buscar peça<input id="miniDeckSearch" value="${BX.esc(deckEditor.query || '')}" placeholder="Blade, Ratchet, Bit…"></label>
+            <div class="picker-filters mini-builder-filters">${[['','Tudo'],['BLADE','Blades'],['RATCHET','Ratchets'],['BIT','Bits'],['CX','Peças CX']].map(([key,label]) => `<button class="picker-chip ${filter === key ? 'active' : ''}" data-mini-filter="${key}">${label}</button>`).join('')}</div>
             <div class="mini-builder-parts">${parts.map((p) => `<button data-mini-add="${p.id}" ${current.includes(p.id) || current.length >= 7 ? 'disabled' : ''}>${BX.partThumb(p, 28)}<span>${BX.esc(p.display || p.name)}</span><small>${BX.esc(BX.KIND_PT[p.kind] || p.kind)}</small></button>`).join('') || '<small>Nenhuma peça encontrada.</small>'}</div>
             <div class="inline-actions" style="margin-top:16px"><button class="btn primary" data-mini-save>Salvar deck do torneio</button><button class="btn ghost" data-mini-close>Cancelar</button></div>`;
           modal.querySelectorAll('[data-mini-close]').forEach((b) => b.addEventListener('click', () => { deckEditor = null; modal.hidden = true; }));
           modal.querySelectorAll('[data-mini-slot]').forEach((b) => b.addEventListener('click', () => { deckEditor.slot = +b.dataset.miniSlot; renderDeckEditor(); }));
-          modal.querySelectorAll('[data-mini-add]').forEach((b) => b.addEventListener('click', () => { const list = deckEditor.beys[deckEditor.slot]; if (!list.includes(b.dataset.miniAdd) && list.length < 7) list.push(b.dataset.miniAdd); renderDeckEditor(); }));
+          modal.querySelectorAll('[data-mini-filter]').forEach((b) => b.addEventListener('click', () => { deckEditor.filter = b.dataset.miniFilter; renderDeckEditor(true); }));
+          modal.querySelectorAll('[data-mini-add]').forEach((b) => b.addEventListener('click', () => { addMiniPart(deckEditor.index.byId.get(b.dataset.miniAdd)); renderDeckEditor(); }));
           modal.querySelectorAll('[data-mini-remove]').forEach((b) => b.addEventListener('click', () => { const list = deckEditor.beys[deckEditor.slot]; deckEditor.beys[deckEditor.slot] = list.filter((id) => id !== b.dataset.miniRemove); renderDeckEditor(); }));
-          modal.querySelector('#miniDeckSearch').addEventListener('input', (e) => { deckEditor.query = e.target.value; renderDeckEditor(); });
+          modal.querySelector('#miniDeckSearch').addEventListener('input', (e) => { deckEditor.query = e.target.value; renderDeckEditor(true); });
           modal.querySelector('#miniDeckTitle').addEventListener('input', (e) => { deckEditor.title = e.target.value; });
           modal.querySelector('[data-mini-save]').addEventListener('click', async () => {
             try { await BX.api(`/api/tournaments/${slug}/players/${deckEditor.player.id}/manual-deck`, { method: 'POST', body: { title: deckEditor.title, beys: deckEditor.beys } }); BX.toast('Deck do torneio salvo.'); deckEditor = null; modal.hidden = true; load(); } catch (e) { BX.toast(e.message); }
           });
+          if (focusSearch) requestAnimationFrame(() => { const input = modal.querySelector('#miniDeckSearch'); input?.focus(); input?.setSelectionRange(input.value.length, input.value.length); });
         };
         document.getElementById('startBtn')?.addEventListener('click', act(() => BX.api(`/api/tournaments/${slug}/start`, { method: 'POST' })));
         document.getElementById('nextBtn')?.addEventListener('click', act(() => BX.api(`/api/tournaments/${slug}/next-round`, { method: 'POST' })));
@@ -382,7 +414,7 @@
           try {
             const player = data.players.find((p) => p.id === b.dataset.buildDeck);
             const idx = await BX.partTagReady();
-            deckEditor = { player, index: idx, slot: 0, query: '', title: player.deck?.managed ? player.deck.title : `Deck de ${player.user.name}`, beys: Array.from({ length: 3 }, (_, n) => [...(player.deck?.beys?.[n] || [])]) };
+            deckEditor = { player, index: idx, slot: 0, query: '', filter: '', title: player.deck?.managed ? player.deck.title : `Deck de ${player.user.name}`, beys: Array.from({ length: 3 }, (_, n) => [...(player.deck?.managed ? player.deck?.beys?.[n] || [] : [])]) };
             renderDeckEditor();
           } catch (e) { BX.toast(e.message); }
         }));

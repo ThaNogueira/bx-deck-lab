@@ -40,6 +40,22 @@ function tournamentDto(t, user) {
 }
 
 const parseDeck = (value) => { try { return JSON.parse(value || '[]'); } catch { return []; } };
+const manualRole = (p) => {
+  if (p.kind === 'BLADE') return p.subKind === 'INTEGRATED' ? 'integrated' : 'blade';
+  if (p.kind === 'BIT') return p.subKind === 'RIB' ? 'rib' : 'bit';
+  return ({ LOCK_CHIP: 'lock', MAIN_BLADE: 'main', ASSIST_BLADE: 'assist', OVER_BLADE: 'over', RATCHET: 'ratchet' })[p.kind] || null;
+};
+const validManualBey = (parts) => {
+  const roles = parts.map(manualRole);
+  if (roles.some((r) => !r) || new Set(roles).size !== roles.length) return 'há peças repetidas ou incompatíveis';
+  const set = new Set(roles);
+  const exactly = (...expected) => set.size === expected.length && expected.every((r) => set.has(r));
+  if (exactly('blade', 'ratchet', 'bit')) return null;
+  if (exactly('integrated', 'bit')) return null;
+  const cxBase = set.has('lock') && set.has('main') && set.has('assist');
+  if (cxBase && (exactly('lock', 'main', 'assist', 'ratchet', 'bit') || exactly('lock', 'main', 'assist', 'ratchet', 'bit', 'over') || exactly('lock', 'main', 'assist', 'rib') || exactly('lock', 'main', 'assist', 'rib', 'over'))) return null;
+  return 'a estrutura precisa ser Blade + Ratchet + Bit, Blade integrada + Bit, ou uma montagem CX completa';
+};
 
 const playerDto = (p, { showDeclaredDeck = true } = {}) => {
   const show = typeof showDeclaredDeck === 'function' ? showDeclaredDeck(p) : showDeclaredDeck;
@@ -481,11 +497,14 @@ router.post('/api/tournaments/:slug/players/:playerId/manual-deck', requireManag
   const player = req.tournament.players.find((p) => p.id === req.params.playerId);
   if (!player) return res.status(404).json({ error: 'Jogador não encontrado.' });
   const raw = Array.isArray(req.body?.beys) ? req.body.beys : [];
-  const beys = raw.slice(0, 3).map((b) => Array.isArray(b) ? [...new Set(b.map(String))].slice(0, 7) : []).filter((b) => b.length);
+  const beys = raw.slice(0, 3).map((b) => Array.isArray(b) ? [...new Set(b.map(String))].slice(0, 6) : []).filter((b) => b.length);
   if (!beys.length) return res.status(422).json({ error: 'Monte pelo menos uma Bey antes de salvar.' });
   const ids = [...new Set(beys.flat())];
-  const count = await prisma.part.count({ where: { id: { in: ids } } });
-  if (count !== ids.length) return res.status(422).json({ error: 'Uma ou mais peças não existem mais no catálogo.' });
+  const parts = await prisma.part.findMany({ where: { id: { in: ids }, hidden: false }, select: { id: true, kind: true, subKind: true } });
+  if (parts.length !== ids.length) return res.status(422).json({ error: 'Uma ou mais peças não existem mais no catálogo.' });
+  const byId = new Map(parts.map((p) => [p.id, p]));
+  const invalid = beys.map((b) => validManualBey(b.map((id) => byId.get(id)))).find(Boolean);
+  if (invalid) return res.status(422).json({ error: `Deck inválido: ${invalid}.` });
   const title = String(req.body?.title || `Deck de ${player.user.name}`).trim().slice(0, 80) || `Deck de ${player.user.name}`;
   const updated = await prisma.tournamentPlayer.update({
     where: { id: player.id },
