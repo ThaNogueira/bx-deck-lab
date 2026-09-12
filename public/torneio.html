@@ -178,7 +178,7 @@
             <p class="eyebrow">CLASSIFICAÇÃO</p>
             <div class="standings-wrap" style="margin-top:10px"><table class="standings">
               <tr><th>#</th><th>Jogador</th><th>Deck</th><th>Pts</th><th>V</th><th>D</th><th title="Opponent Win %">OPP%</th><th title="Opponents' Opponent Win %">OPP OPP%</th></tr>
-              ${data.standings.map((s, i) => `<tr><td>${i + 1}</td><td><span class="standing-player">${BX.avatarHtml(s.player.user, { size: 24 })}${BX.esc(s.player.user.name)}${s.player.dropped ? ' <small style="color:var(--muted)">(drop)</small>' : ''}</span></td><td class="standing-deck">${s.player.deck?.beys?.length ? `${BX.deckPreview(s.player.deck.beys, { u: 31 })}<small>${BX.esc(s.player.deck.title || '')}</small>` : '<small>—</small>'}</td><td>${s.points}</td><td>${s.wins}</td><td>${s.losses}</td><td>${Math.round(s.omw * 100)}%</td><td>${Math.round(s.oomw * 100)}%</td></tr>`).join('')}
+              ${data.standings.map((s, i) => `<tr><td>${i + 1}</td><td><span class="standing-player">${BX.avatarHtml(s.player.user, { size: 24 })}${BX.esc(s.player.user.name)}${s.player.dropped ? ' <small style="color:var(--muted)">(drop)</small>' : ''}</span></td><td class="standing-deck">${s.player.deck?.beys?.length ? `<button class="standing-deck-trigger" data-deck-popup="${s.player.id}" title="Abrir deck de ${BX.esc(s.player.user.name)}">${BX.deckPreview(s.player.deck.beys, { u: 24 })}</button><small>${BX.esc(s.player.deck.title || '')}</small>` : '<small>—</small>'}</td><td>${s.points}</td><td>${s.wins}</td><td>${s.losses}</td><td>${Math.round(s.omw * 100)}%</td><td>${Math.round(s.oomw * 100)}%</td></tr>`).join('')}
             </table></div>
           </div>` : '';
         box.innerHTML = `
@@ -198,7 +198,23 @@
                 ${BX.avatarHtml(p.user, { size: 44 })}
                 <div><h3>${BX.esc(p.user.name)}</h3><small>@${BX.esc(p.user.slug)}${p.dropped ? ' • DROP' : ''}${t.status === 'FINISHED' && p.deck?.title ? ` • ${BX.icon('decks', 11)} ${BX.esc(p.deck.title)}` : ''}</small></div>
               </a>`).join('') || '<div class="empty-state">Ninguém inscrito ainda.</div>'}
-          </div>`;
+          </div>
+          <div class="modal-backdrop" id="publicDeckModal" hidden><div class="modal"></div></div>`;
+        const deckByPlayer = new Map(data.standings.filter((s) => s.player.deck?.beys?.length).map((s) => [s.player.id, s]));
+        const deckModal = box.querySelector('#publicDeckModal');
+        box.querySelectorAll('[data-deck-popup]').forEach((b) => b.addEventListener('click', () => {
+          const row = deckByPlayer.get(b.dataset.deckPopup); if (!row || !deckModal) return;
+          const deck = row.player.deck;
+          deckModal.hidden = false;
+          deckModal.querySelector('.modal').innerHTML = `
+            <button class="modal-close" data-public-deck-close>×</button>
+            <p class="eyebrow">DECK DO TORNEIO</p><h2>${BX.esc(row.player.user.name)}</h2>
+            <p class="muted" style="margin-top:-8px">${BX.esc(deck.title || 'Deck declarado')}</p>
+            <div class="public-deck-slots">${deck.beys.map((bey, i) => `<section><b>BEY ${i + 1}</b>${BX.beyMini(bey, { u: 106, link: true })}<div>${bey.map((id) => BX.partTag(id, { size: 24 })).join('')}</div></section>`).join('')}</div>
+            <p class="muted" style="font-size:11px;margin-bottom:0">Clique numa peça para abrir a página dela.</p>`;
+          deckModal.querySelector('[data-public-deck-close]').addEventListener('click', () => { deckModal.hidden = true; });
+          deckModal.addEventListener('click', (e) => { if (e.target === deckModal) deckModal.hidden = true; }, { once: true });
+        }));
         const sel = box.querySelector('#myTourDeck');
         if (sel) {
           const mine = data.players.find((p) => p.user.id === ME.id);
