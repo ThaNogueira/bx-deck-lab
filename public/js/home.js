@@ -215,7 +215,6 @@
 
   async function renderHighlights() {
     const el = document.getElementById('homeHighlights');
-    const recentEl = document.getElementById('homeRecentChampions');
     if (!el) return;
     try {
       const h = await BX.api('/api/home/highlights');
@@ -223,16 +222,10 @@
       if (h.topDeck) cards.push(`<a class="hl-card deck" href="/deck/${esc(h.topDeck.slug)}"><span class="hl-kind">${BX.icon('decks', 13)} Deck mais copiado</span>${BX.deckPreview(h.topDeck.beys, { u: 40, parts: h.topDeck.parts })}<b>${esc(h.topDeck.title)}</b><small>${h.topDeck.copies7d || h.topDeck.copyCount} cópia(s) · ${esc(h.topDeck.author?.name || '')}</small></a>`);
       if (h.topClip) cards.push(`<a class="hl-card clip" href="${esc(h.topClip.url)}" ${h.topClip.thumb ? `style="--bg:url('${esc(h.topClip.thumb)}')"` : ''}><span class="hl-kind">${BX.icon('clip', 13)} Clipe mais curtido</span><span class="hl-play">${BX.icon('play', 22)}</span><b>${esc(h.topClip.title)}</b><small>${h.topClip.reactions} reação(ões) · ${esc(h.topClip.author?.name || '')}</small></a>`);
       if (h.nextTournament) cards.push(`<a class="hl-card tour" href="/torneio/${esc(h.nextTournament.slug)}"><span class="hl-kind">${BX.icon('calendar', 13)} ${h.nextTournament.status === 'RUNNING' ? 'Torneio rolando' : 'Próximo torneio'}</span><b>${esc(h.nextTournament.name)}</b><small>${BX.dateFmt(h.nextTournament.startsAt, { weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}${h.nextTournament.storeName ? ` · ${esc(h.nextTournament.storeName)}` : ''} · ${h.nextTournament.players} inscrito(s)</small></a>`);
-      if (h.champion) cards.push(`<a class="hl-card champ" href="/torneio/${esc(h.champion.tournament.slug)}"><span class="hl-kind">${BX.icon('trophy', 13)} Último campeão</span><span class="hl-user">${BX.avatarHtml(h.champion.user, { size: 34 })}<b>${esc(h.champion.user.name)}</b></span><small>${esc(h.champion.tournament.name)}${h.champion.deck ? ` · deck ${esc(h.champion.deck.title)}` : ''}</small></a>`);
+      (h.recentChampions || []).forEach((c, i) => cards.push(`<a class="hl-card champ" href="/torneio/${esc(c.tournament.slug)}"><span class="hl-kind">${BX.icon('trophy', 13)} ${i === 0 ? 'Campeão mais recente' : 'Campeão recente'}</span><span class="hl-user">${BX.avatarHtml(c.user, { size: 32 })}<b>${esc(c.user.name)}</b></span>${c.deck ? `${BX.deckPreview(c.deck.beys, { u: 30, parts: h.championParts })}<small>${esc(c.tournament.name)} · ${esc(c.deck.title)}</small>` : `<small>${esc(c.tournament.name)} · deck não declarado</small>`}</a>`));
       if (!cards.length) cards.push(`<a class="hl-card" href="/torneios"><span class="hl-kind">${BX.icon('trophy', 13)} Torneios</span><b>Crie o primeiro torneio</b><small>Os destaques da semana nascem dos torneios e dos decks compartilhados.</small></a>`);
       el.innerHTML = cards.join('');
-      if (recentEl) recentEl.innerHTML = h.recentChampions?.length ? h.recentChampions.map((c, i) => `<a class="recent-champion-card" href="/torneio/${esc(c.tournament.slug)}">
-        <div class="rc-top"><span class="rc-medal">${i === 0 ? BX.icon('trophy', 17) : `${i + 1}º`}</span><span>${BX.dateFmt(c.tournament.startsAt, { day: '2-digit', month: 'short', year: 'numeric' })}</span></div>
-        <p class="eyebrow">${esc(c.tournament.name)}</p>
-        <div class="rc-winner">${BX.avatarHtml(c.user, { size: 42 })}<span><b>${esc(c.user.name)}</b><small>Campeão · ${c.points} pts · ${c.wins} V</small></span></div>
-        <div class="rc-deck">${c.deck ? `${BX.deckPreview(c.deck.beys, { u: 42, parts: h.championParts })}<span><small>DECK VENCEDOR</small><b>${esc(c.deck.title)}</b></span>` : '<span class="muted">Deck não declarado</span>'}</div>
-      </a>`).join('') : '<div class="empty-state">Os campeões aparecerão aqui quando o primeiro torneio encerrar.</div>';
-    } catch { el.innerHTML = ''; if (recentEl) recentEl.innerHTML = ''; }
+    } catch { el.innerHTML = ''; }
   }
 
   async function renderHomeSide() {
