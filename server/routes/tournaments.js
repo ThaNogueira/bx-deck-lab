@@ -371,6 +371,31 @@ function requireManage(loader) {
 }
 const bySlug = (req) => loadTournament(req.params.slug);
 
+/** O gestor pode selecionar, para cada inscrito, um deck que realmente pertença àquele jogador. */
+router.get('/api/tournaments/:slug/player-decks', requireManage(bySlug), ah(async (req, res) => {
+  const players = req.tournament.players;
+  const decks = await prisma.communityDeck.findMany({
+    where: { authorId: { in: players.map((p) => p.userId) } },
+    select: { id: true, title: true, authorId: true, isPublic: true, beysJson: true, updatedAt: true },
+    orderBy: { updatedAt: 'desc' },
+  });
+  const byPlayer = Object.fromEntries(players.map((p) => [p.id, decks.filter((d) => d.authorId === p.userId).map((d) => ({ ...d, beys: (() => { try { return JSON.parse(d.beysJson || '[]'); } catch { return []; } })() }))]));
+  res.json({ decksByPlayer: byPlayer });
+}));
+
+router.post('/api/tournaments/:slug/players/:playerId/deck', requireManage(bySlug), ah(async (req, res) => {
+  const player = req.tournament.players.find((p) => p.id === req.params.playerId);
+  if (!player) return res.status(404).json({ error: 'Jogador não encontrado.' });
+  const deckId = req.body?.deckId ? String(req.body.deckId) : null;
+  if (deckId) {
+    const deck = await prisma.communityDeck.findUnique({ where: { id: deckId } });
+    if (!deck || deck.authorId !== player.userId) return res.status(422).json({ error: 'Escolha um deck que pertença a este jogador.' });
+  }
+  const updated = await prisma.tournamentPlayer.update({ where: { id: player.id }, data: { deckId }, include: { user: true, deck: true } });
+  await audit(req.user, 'tournament.player.deck.set', 'TOURNAMENT', req.tournament.id, { playerId: player.id, deckId });
+  res.json({ player: playerDto(updated) });
+}));
+
 router.patch('/api/tournaments/:slug', requireManage(bySlug), moderateFields('name', 'description'), ah(async (req, res) => {
   const b = req.body || {};
   const data = {};
