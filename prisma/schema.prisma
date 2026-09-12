@@ -43,6 +43,7 @@ model User {
   combos         Combo[]
   tournaments    Tournament[]      @relation("organizer")
   entries        TournamentPlayer[]
+  lateEntryInvites TournamentLateEntryInvite[]
   cosmetics      CosmeticGrant[]
   favoritePart   Part?             @relation(fields: [favoritePartId], references: [id], onDelete: SetNull)
   posts          Post[]
@@ -242,6 +243,7 @@ model Tournament {
 
   players       TournamentPlayer[]
   matches       TMatch[]
+  lateInvites   TournamentLateEntryInvite[]
 }
 
 model TournamentPlayer {
@@ -250,6 +252,7 @@ model TournamentPlayer {
   userId       String
   joinedAt     DateTime @default(now())
   dropped      Boolean  @default(false)
+  lateLosses   Int      @default(0) // derrotas administrativas antes da entrada tardia
   deckId       String? // deck que o jogador declarou usar neste torneio (entra no cálculo do meta)
   deck         CommunityDeck? @relation(fields: [deckId], references: [id], onDelete: SetNull)
   tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
@@ -258,6 +261,21 @@ model TournamentPlayer {
   asP2         TMatch[]   @relation("p2")
 
   @@unique([tournamentId, userId])
+}
+
+/// Convite privado, de uso único, para incluir alguém após o torneio começar.
+model TournamentLateEntryInvite {
+  id           String   @id @default(cuid())
+  tournamentId String
+  token        String   @unique
+  createdAt    DateTime @default(now())
+  expiresAt    DateTime?
+  usedAt       DateTime?
+  usedByUserId String?
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  usedBy       User?      @relation(fields: [usedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([tournamentId])
 }
 
 model TMatch {

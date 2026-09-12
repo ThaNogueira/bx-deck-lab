@@ -33,6 +33,8 @@
         return;
       }
       const t = data.tournament;
+      const lateToken = new URLSearchParams(location.search).get('late');
+      const lateJoin = t.status === 'RUNNING' && !!lateToken;
       document.title = `Inscrição: ${t.name} — BX Deck Lab`;
       const me = await BX.me().catch(() => null);
       const joined = !!data.me;
@@ -46,7 +48,7 @@
         </div></div>`;
       }
 
-      if (t.status !== 'OPEN') {
+      if (t.status !== 'OPEN' && !lateJoin) {
         screen(`<p style="color:var(--muted);margin-top:14px">As inscrições deste torneio estão fechadas.</p>
           <a class="btn secondary" style="margin-top:14px;display:inline-block;text-decoration:none" href="/torneio/${t.slug}">Ver o torneio</a>`);
         return;
@@ -59,14 +61,14 @@
       if (!me) {
         screen(`<p style="color:var(--muted);margin-top:10px">Para se inscrever, entre com sua conta (leva 10 segundos):</p>
           <button class="btn-huge btn" id="loginBtn" style="margin-top:22px">ENTRAR PARA SE INSCREVER</button>`);
-        document.getElementById('loginBtn').addEventListener('click', () => BX.requireLogin(`/t/${t.slug}`));
+        document.getElementById('loginBtn').addEventListener('click', () => BX.requireLogin(`/t/${t.slug}${lateToken ? `?late=${encodeURIComponent(lateToken)}` : ''}`));
         return;
       }
-      screen(`<button class="btn-huge" id="joinBtn">ENTRAR NO TORNEIO</button>
-        <p style="color:var(--muted);margin-top:16px;font-size:12px">${t.playersCount} jogador(es) já inscritos • ${t.format === 'MD3' ? 'melhor de 3' : 'até 4 pontos'}</p>`);
+      screen(`<button class="btn-huge" id="joinBtn">${lateJoin ? 'ENTRAR NA PRÓXIMA RODADA' : 'ENTRAR NO TORNEIO'}</button>
+        <p style="color:var(--muted);margin-top:16px;font-size:12px">${lateJoin ? `Convite de entrada tardia: você entra na próxima rodada com ${t.currentRound} derrota(s) administrativa(s).` : `${t.playersCount} jogador(es) já inscritos • ${t.format === 'MD3' ? 'melhor de 3' : 'até 4 pontos'}`}</p>`);
       document.getElementById('joinBtn').addEventListener('click', async () => {
         try {
-          await BX.api(`/api/tournaments/${t.slug}/join`, { method: 'POST' });
+          await BX.api(`/api/tournaments/${t.slug}/join`, { method: 'POST', body: lateToken ? { lateToken } : {} });
           screen(`<p style="color:var(--green);font:800 30px var(--display);text-transform:uppercase;margin-top:18px">${BX.ic('check', 14)} Inscrição confirmada!</p>
             <a class="btn primary" style="margin-top:14px;display:inline-block;text-decoration:none" href="/torneio/${t.slug}">Ir para o torneio</a>`);
         } catch (e) { BX.toast(e.message); }

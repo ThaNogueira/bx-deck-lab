@@ -174,8 +174,8 @@
           <div class="panel-card" style="margin-top:16px">
             <p class="eyebrow">CLASSIFICAÇÃO</p>
             <div class="standings-wrap" style="margin-top:10px"><table class="standings">
-              <tr><th>#</th><th>Jogador</th><th>V</th><th>D</th><th>Buchholz</th></tr>
-              ${data.standings.map((s, i) => `<tr><td>${i + 1}</td><td><span class="standing-player">${BX.avatarHtml(s.player.user, { size: 24 })}${BX.esc(s.player.user.name)}${s.player.dropped ? ' <small style="color:var(--muted)">(drop)</small>' : ''}</span></td><td>${s.wins}</td><td>${s.losses}</td><td>${s.sos}</td></tr>`).join('')}
+              <tr><th>#</th><th>Jogador</th><th>Pts</th><th>V</th><th>D</th><th title="Opponent Win %">OPP%</th><th title="Opponents' Opponent Win %">OPP OPP%</th></tr>
+              ${data.standings.map((s, i) => `<tr><td>${i + 1}</td><td><span class="standing-player">${BX.avatarHtml(s.player.user, { size: 24 })}${BX.esc(s.player.user.name)}${s.player.dropped ? ' <small style="color:var(--muted)">(drop)</small>' : ''}</span></td><td>${s.points}</td><td>${s.wins}</td><td>${s.losses}</td><td>${Math.round(s.omw * 100)}%</td><td>${Math.round(s.oomw * 100)}%</td></tr>`).join('')}
             </table></div>
           </div>` : '';
         box.innerHTML = `
@@ -258,6 +258,7 @@
                 <div class="inline-actions" style="justify-content:flex-start;margin-top:12px">
                   ${t.status === 'OPEN' ? `<button class="btn primary" id="startBtn">${BX.ic('play', 14)} Começar (rodada 1)</button>` : ''}
                   ${t.status === 'RUNNING' && t.currentRound < t.roundsPlanned ? `<button class="btn primary" id="nextBtn">Fechar rodada e parear a próxima</button>` : ''}
+                  ${t.status === 'RUNNING' ? `<button class="btn secondary" id="lateInviteBtn">${BX.ic('link', 14)} Gerar convite de entrada tardia</button>` : ''}
                   ${t.status === 'RUNNING' ? `<button class="btn secondary" id="finishBtn">${BX.ic('finish', 14)} Encerrar torneio</button>` : ''}
                   ${t.status !== 'CANCELED' && t.status !== 'FINISHED' ? `<button class="btn danger-outline" id="cancelBtn">Cancelar torneio</button>` : ''}
                 </div>
@@ -293,7 +294,7 @@
                   <div class="org-match-row">
                     ${BX.avatarHtml(p.user, { size: 34 })}
                     <div style="font-size:12px"><b>${BX.esc(p.user.name)}</b>${p.dropped ? ' <small style="color:var(--muted)">(removido/drop)</small>' : ''}</div>
-                    ${!p.dropped ? `<button class="btn danger-outline" data-kick="${p.id}">Remover</button>` : '<span></span>'}
+                    ${!p.dropped ? `<button class="btn danger-outline" data-kick="${p.id}">${t.status === 'OPEN' ? 'Remover' : 'Drop'}</button>` : '<span></span>'}
                   </div>`).join('')}</div>
               </div>
             </div>
@@ -303,6 +304,8 @@
                 <div class="qr-box" style="margin:12px 0"><img src="/api/tournaments/${t.slug}/qr.svg" alt="QR Code de inscrição"></div>
                 <div class="share-grid">
                   <button class="btn secondary" id="copyLink">${BX.ic('link', 14)} Copiar link de inscrição</button>
+                  <button class="btn secondary" id="downloadStandings">${BX.ic('download', 14)} Baixar classificação (PNG)</button>
+                  <button class="btn secondary" id="downloadResults">${BX.ic('download', 14)} Baixar pareamentos e resultados (JSON)</button>
                   <a class="btn secondary" style="text-decoration:none;text-align:center" href="/torneio/${t.slug}/cartaz" target="_blank">${BX.ic('print', 14)} Cartaz para impressão</a>
                   <a class="btn secondary" style="text-decoration:none;text-align:center;background:#173a24;border-color:#1faa53" href="${BX.esc(t.whatsappShareUrl)}" target="_blank" rel="noopener">${BX.ic('whatsapp', 14)} Compartilhar no WhatsApp</a>
                   <a class="btn secondary" style="text-decoration:none;text-align:center" href="/api/tournaments/${t.slug}/qr.svg" download="qr-${t.slug}.svg">${BX.ic('download', 14)} Baixar QR Code</a>
@@ -323,6 +326,13 @@
         const act = (fn) => async () => { try { await fn(); load(); } catch (e) { BX.toast(e.message); } };
         document.getElementById('startBtn')?.addEventListener('click', act(() => BX.api(`/api/tournaments/${slug}/start`, { method: 'POST' })));
         document.getElementById('nextBtn')?.addEventListener('click', act(() => BX.api(`/api/tournaments/${slug}/next-round`, { method: 'POST' })));
+        document.getElementById('lateInviteBtn')?.addEventListener('click', async () => {
+          try {
+            const invite = await BX.api(`/api/tournaments/${slug}/late-entry-invites`, { method: 'POST' });
+            await navigator.clipboard.writeText(invite.url);
+            BX.toast(`Convite copiado — entrada na próxima rodada com ${invite.lateLosses} derrota(s). Válido por 1 hora.`);
+          } catch (e) { BX.toast(e.message); }
+        });
         document.getElementById('finishBtn')?.addEventListener('click', act(() => confirm('Encerrar o torneio?') && BX.api(`/api/tournaments/${slug}/finish`, { method: 'POST' })));
         document.getElementById('cancelBtn')?.addEventListener('click', act(() => confirm('Cancelar o torneio? Os jogadores serão avisados pelo status.') && BX.api(`/api/tournaments/${slug}/cancel`, { method: 'POST' })));
         box.querySelectorAll('[data-accept]').forEach((b) => b.addEventListener('click', act(() => BX.api(`/api/tournaments/${slug}/matches/${b.dataset.accept}/resolve`, { method: 'POST', body: {} }))));
@@ -337,10 +347,23 @@
             const w = window.open(url, '_blank'); if (!w) location.href = url;
           } catch (e) { BX.toast(e.message); }
         }));
-        box.querySelectorAll('[data-kick]').forEach((b) => b.addEventListener('click', act(() => confirm('Remover este jogador?') && BX.api(`/api/tournaments/${slug}/players/${b.dataset.kick}`, { method: 'DELETE' }))));
+        box.querySelectorAll('[data-kick]').forEach((b) => b.addEventListener('click', act(() => confirm(t.status === 'OPEN' ? 'Remover este jogador?' : 'Dar drop neste jogador? Se ele tiver partida pendente nesta rodada, o oponente vence por forfeit.') && BX.api(`/api/tournaments/${slug}/players/${b.dataset.kick}`, { method: 'DELETE' }))));
         document.getElementById('copyLink')?.addEventListener('click', async () => {
           await navigator.clipboard.writeText(t.joinUrl);
           BX.toast('Link copiado!');
+        });
+        document.getElementById('downloadResults')?.addEventListener('click', () => {
+          const out = { exportedAt: new Date().toISOString(), tournament: t, standings: data.standings, players: data.players, matches: data.matches };
+          const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' })); a.download = `${t.slug}-pareamentos-resultados.json`; a.click(); URL.revokeObjectURL(a.href);
+        });
+        document.getElementById('downloadStandings')?.addEventListener('click', () => {
+          const rows = data.standings; const canvas = document.createElement('canvas'); const width = 1300; const height = 190 + Math.max(1, rows.length) * 62;
+          canvas.width = width; canvas.height = height; const ctx = canvas.getContext('2d');
+          ctx.fillStyle = '#090a0f'; ctx.fillRect(0, 0, width, height); ctx.fillStyle = '#12d9ff'; ctx.fillRect(0, 0, width, 10);
+          ctx.fillStyle = '#f3f6fb'; ctx.font = 'bold 42px sans-serif'; ctx.fillText(t.name, 44, 70); ctx.fillStyle = '#aab4c5'; ctx.font = '22px sans-serif'; ctx.fillText(`Classificação • ${t.status === 'FINISHED' ? 'final' : `rodada ${t.currentRound}`}`, 44, 108);
+          const cols = [44, 110, 520, 630, 740, 850, 1030]; ctx.fillStyle = '#12d9ff'; ctx.font = 'bold 19px sans-serif'; ['#', 'JOGADOR', 'PTS', 'V', 'D', 'OPP%', 'OPP OPP%'].forEach((h, i) => ctx.fillText(h, cols[i], 152));
+          rows.forEach((s, i) => { const y = 195 + i * 62; ctx.fillStyle = i % 2 ? '#111722' : '#0d1119'; ctx.fillRect(30, y - 32, width - 60, 50); ctx.fillStyle = '#f3f6fb'; ctx.font = '22px sans-serif'; [String(i + 1), s.player.user.name, String(s.points), String(s.wins), String(s.losses), `${Math.round(s.omw * 100)}%`, `${Math.round(s.oomw * 100)}%`].forEach((v, j) => ctx.fillText(v, cols[j], y)); });
+          const a = document.createElement('a'); a.href = canvas.toDataURL('image/png'); a.download = `${t.slug}-classificacao.png`; a.click();
         });
         document.getElementById('saveT')?.addEventListener('click', act(() => BX.api(`/api/tournaments/${slug}`, {
           method: 'PATCH',

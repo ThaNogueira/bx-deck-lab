@@ -38,6 +38,7 @@ function tournamentDto(t, user) {
 const playerDto = (p) => ({
   id: p.id,
   dropped: p.dropped,
+  lateLosses: p.lateLosses ?? 0,
   user: publicUser(p.user),
   deck: p.deck ? { id: p.deck.id, slug: p.deck.slug, title: p.deck.title, beys: (() => { try { return JSON.parse(p.deck.beysJson || '[]'); } catch { return []; } })() } : (p.deckId ? { id: p.deckId } : null),
 });
@@ -71,39 +72,42 @@ export async function loadTournament(slug) {
   });
 }
 
-/** Vitórias por jogador (BYE conta como vitória). */
-function winsMap(t) {
-  const wins = new Map(t.players.map((p) => [p.id, 0]));
-  for (const m of t.matches) {
-    if (m.status === 'DONE' && m.winnerId) wins.set(m.winnerId, (wins.get(m.winnerId) ?? 0) + 1);
-  }
-  return wins;
-}
-
 export function standingsOf(t) {
-  const wins = winsMap(t);
-  const losses = new Map(t.players.map((p) => [p.id, 0]));
-  const oppIds = new Map(t.players.map((p) => [p.id, []]));
+  const stats = new Map(t.players.map((p) => [p.id, { wins: 0, nonByeWins: 0, losses: p.lateLosses ?? 0, points: 0, opponents: [] }]));
   for (const m of t.matches) {
     if (m.status !== 'DONE') continue;
-    if (m.p2Id) {
-      oppIds.get(m.p1Id)?.push(m.p2Id);
-      oppIds.get(m.p2Id)?.push(m.p1Id);
-      const loser = m.winnerId === m.p1Id ? m.p2Id : m.p1Id;
-      losses.set(loser, (losses.get(loser) ?? 0) + 1);
-    }
+    const winner = stats.get(m.winnerId);
+    if (winner) { winner.wins += 1; winner.points += 3; if (m.p2Id) winner.nonByeWins += 1; }
+    if (!m.p2Id) continue; // BYE dá pontos, mas não entra em OPP%.
+    stats.get(m.p1Id)?.opponents.push(m.p2Id);
+    stats.get(m.p2Id)?.opponents.push(m.p1Id);
+    const loserId = m.winnerId === m.p1Id ? m.p2Id : m.p1Id;
+    const loser = stats.get(loserId);
+    if (loser) loser.losses += 1;
   }
-  // Desempate: força dos oponentes (soma de vitórias dos adversários enfrentados)
-  const sos = (pid) => (oppIds.get(pid) ?? []).reduce((acc, o) => acc + (wins.get(o) ?? 0), 0);
+  // Pokémon TCG: pontos de partida, OMW% (mínimo 25%) e OOMW%.
+  const rate = (id) => {
+    const s = stats.get(id);
+    // Derrotas tardias contam no percentual próprio, sem inventar um oponente.
+    const denominator = s.opponents.length + (t.players.find((p) => p.id === id)?.lateLosses ?? 0);
+    return denominator ? s.nonByeWins / denominator : 0;
+  };
+  const omw = (id) => {
+    const opponents = stats.get(id)?.opponents ?? [];
+    return opponents.length ? opponents.reduce((sum, oid) => sum + Math.max(.25, rate(oid)), 0) / opponents.length : 0;
+  };
+  const oomw = (id) => {
+    const opponents = stats.get(id)?.opponents ?? [];
+    return opponents.length ? opponents.reduce((sum, oid) => sum + omw(oid), 0) / opponents.length : 0;
+  };
   return t.players
-    .map((p) => ({ player: playerDto(p), wins: wins.get(p.id) ?? 0, losses: losses.get(p.id) ?? 0, sos: sos(p.id) }))
-    .sort((a, b) => b.wins - a.wins || b.sos - a.sos || a.player.user.name.localeCompare(b.player.user.name));
+    .map((p) => { const { nonByeWins, opponents, ...row } = stats.get(p.id); return { player: playerDto(p), ...row, omw: omw(p.id), oomw: oomw(p.id) }; })
+    .sort((a, b) => b.points - a.points || b.omw - a.omw || b.oomw - a.oomw || a.player.user.name.localeCompare(b.player.user.name));
 }
 
-/** Pareia a próxima rodada (suíço simples, evitando rematches; BYE p/ quem nunca teve). */
+/** Pareamento suíço: procura uma combinação inteira sem revanche antes de aceitá-la. */
 async function pairRound(t, round) {
   const active = t.players.filter((p) => !p.dropped);
-  const wins = winsMap(t);
   const played = new Set();
   const hadBye = new Set();
   for (const m of t.matches) {
@@ -113,22 +117,37 @@ async function pairRound(t, round) {
     } else hadBye.add(m.p1Id);
   }
 
-  let pool = [...active].sort((a, b) => (wins.get(b.id) ?? 0) - (wins.get(a.id) ?? 0) || Math.random() - 0.5);
+  const standing = standingsOf(t);
+  const rank = new Map(standing.map((s, i) => [s.player.id, i]));
+  let pool = [...active].sort((a, b) => (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0));
 
+  const pairKey = (a, b) => `${a.id}|${b.id}`;
+  const solve = (rest) => {
+    if (!rest.length) return [];
+    const a = rest[0];
+    const candidates = rest.slice(1).filter((b) => !played.has(pairKey(a, b)))
+      .sort((x, y) => Math.abs((rank.get(a.id) ?? 0) - (rank.get(x.id) ?? 0)) - Math.abs((rank.get(a.id) ?? 0) - (rank.get(y.id) ?? 0)));
+    for (const b of candidates) {
+      const tail = solve(rest.filter((p) => p.id !== a.id && p.id !== b.id));
+      if (tail) return [[a, b], ...tail];
+    }
+    return null;
+  };
   let bye = null;
+  let pairs = null;
   if (pool.length % 2 === 1) {
-    // BYE vai para o pior colocado que ainda não teve BYE
-    bye = [...pool].reverse().find((p) => !hadBye.has(p.id)) ?? pool[pool.length - 1];
-    pool = pool.filter((p) => p.id !== bye.id);
-  }
-
-  const pairs = [];
-  while (pool.length) {
-    const a = pool.shift();
-    let idx = pool.findIndex((b) => !played.has(`${a.id}|${b.id}`));
-    if (idx < 0) idx = 0;
-    const b = pool.splice(idx, 1)[0];
-    pairs.push([a, b]);
+    // Testa cada candidato a BYE: assim uma escolha ruim não cria revanche desnecessária.
+    const byeOptions = [...pool].reverse().sort((a, b) => Number(hadBye.has(a.id)) - Number(hadBye.has(b.id)));
+    for (const candidate of byeOptions) {
+      const candidatePairs = solve(pool.filter((p) => p.id !== candidate.id));
+      if (candidatePairs) { bye = candidate; pairs = candidatePairs; pool = pool.filter((p) => p.id !== bye.id); break; }
+    }
+    if (!bye) { bye = byeOptions[0]; pool = pool.filter((p) => p.id !== bye.id); }
+  } else pairs = solve(pool);
+  if (!pairs) {
+    // Depois de esgotar todas as combinações inéditas, revanche é inevitável.
+    pairs = [];
+    while (pool.length) { const a = pool.shift(); pairs.push([a, pool.shift()]); }
   }
 
   let tableNo = 1;
@@ -225,8 +244,23 @@ router.get('/api/tournaments/:slug', ah(async (req, res) => {
 router.post('/api/tournaments/:slug/join', requireUser, ah(async (req, res) => {
   const t = await loadTournament(req.params.slug);
   if (!t) return res.status(404).json({ error: 'Torneio não encontrado.' });
-  if (t.status !== 'OPEN') return res.status(403).json({ error: 'As inscrições deste torneio estão fechadas.' });
   if (t.players.length >= 64) return res.status(403).json({ error: 'Torneio lotado (64 jogadores).' });
+  const lateToken = String(req.body?.lateToken || '');
+  if (t.status === 'RUNNING' && lateToken) {
+    if (t.players.some((p) => p.userId === req.user.id)) return res.status(422).json({ error: 'Você já tem uma inscrição neste torneio.' });
+    const result = await prisma.$transaction(async (tx) => {
+      const invite = await tx.tournamentLateEntryInvite.findUnique({ where: { token: lateToken } });
+      if (!invite || invite.tournamentId !== t.id || invite.usedAt || (invite.expiresAt && invite.expiresAt <= new Date())) return null;
+      const claimed = await tx.tournamentLateEntryInvite.updateMany({ where: { id: invite.id, usedAt: null }, data: { usedAt: new Date(), usedByUserId: req.user.id } });
+      if (!claimed.count) return null;
+      await tx.tournamentPlayer.create({ data: { tournamentId: t.id, userId: req.user.id, lateLosses: t.currentRound } });
+      return { lateLosses: t.currentRound };
+    });
+    if (!result) return res.status(403).json({ error: 'Este convite de entrada tardia expirou ou já foi usado.' });
+    await audit(req.user, 'tournament.player.late_join', 'TOURNAMENT', t.id, result);
+    return res.json({ ok: true, ...result });
+  }
+  if (t.status !== 'OPEN') return res.status(403).json({ error: 'As inscrições deste torneio estão fechadas.' });
   await prisma.tournamentPlayer.upsert({
     where: { tournamentId_userId: { tournamentId: t.id, userId: req.user.id } },
     update: { dropped: false },
@@ -377,6 +411,17 @@ router.post('/api/tournaments/:slug/next-round', requireManage(bySlug), ah(async
   res.json({ ok: true, round });
 }));
 
+router.post('/api/tournaments/:slug/late-entry-invites', requireManage(bySlug), ah(async (req, res) => {
+  const t = req.tournament;
+  if (t.status !== 'RUNNING') return res.status(422).json({ error: 'A entrada tardia só pode ser liberada durante o torneio.' });
+  const invite = await prisma.tournamentLateEntryInvite.create({
+    data: { tournamentId: t.id, token: randomBytes(24).toString('base64url'), expiresAt: new Date(Date.now() + 60 * 60 * 1000) },
+  });
+  const url = `${siteUrl()}/t/${t.slug}?late=${encodeURIComponent(invite.token)}`;
+  await audit(req.user, 'tournament.late_invite.create', 'TOURNAMENT', t.id, { expiresAt: invite.expiresAt, lateLosses: t.currentRound });
+  res.json({ url, expiresAt: invite.expiresAt, lateLosses: t.currentRound });
+}));
+
 router.post('/api/tournaments/:slug/finish', requireManage(bySlug), ah(async (req, res) => {
   await prisma.tournament.update({ where: { id: req.tournament.id }, data: { status: 'FINISHED' } });
   await audit(req.user, 'tournament.finish', 'TOURNAMENT', req.tournament.id);
@@ -434,7 +479,15 @@ router.delete('/api/tournaments/:slug/players/:playerId', requireManage(bySlug),
   const player = t.players.find((p) => p.id === req.params.playerId);
   if (!player) return res.status(404).json({ error: 'Jogador não encontrado.' });
   if (t.status === 'OPEN') await prisma.tournamentPlayer.delete({ where: { id: player.id } });
-  else await prisma.tournamentPlayer.update({ where: { id: player.id }, data: { dropped: true } });
+  else {
+    // Um drop no meio da rodada encerra a partida pendente por forfeit, sem travar a próxima rodada.
+    const current = t.matches.find((m) => m.round === t.currentRound && m.status !== 'DONE' && (m.p1Id === player.id || m.p2Id === player.id));
+    if (current?.p2Id) {
+      const opponentId = current.p1Id === player.id ? current.p2Id : current.p1Id;
+      await prisma.tMatch.update({ where: { id: current.id }, data: { winnerId: opponentId, status: 'DONE', resolvedBy: 'ORGANIZER' } });
+    }
+    await prisma.tournamentPlayer.update({ where: { id: player.id }, data: { dropped: true } });
+  }
   await audit(req.user, 'tournament.player.remove', 'TOURNAMENT', t.id, { player: player.user.name });
   res.json({ ok: true });
 }));
