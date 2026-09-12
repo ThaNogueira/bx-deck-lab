@@ -1,11 +1,15 @@
 import { Router } from 'express';
 import { randomBytes } from 'node:crypto';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import QRCode from 'qrcode';
+import sharp from 'sharp';
 import { prisma } from '../db.js';
 import { requireUser, publicUser, isStaff } from '../auth.js';
 import { moderateFields, getSetting } from '../settings.js';
 import { audit } from '../audit.js';
 import { siteUrl, uniqueSlug } from '../util.js';
+import { UPLOADS_DIR } from '../uploads.js';
 
 const router = Router();
 const ah = (fn) => (req, res, next) => fn(req, res, next).catch(next);
@@ -370,6 +374,56 @@ function requireManage(loader) {
   });
 }
 const bySlug = (req) => loadTournament(req.params.slug);
+
+const xml = (value = '') => String(value).replace(/[&<>'"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&apos;', '"': '&quot;' }[ch]));
+const imageDataUri = async (url, size = 72) => {
+  try {
+    let source;
+    if (String(url || '').startsWith('/uploads/')) source = await fs.readFile(path.join(UPLOADS_DIR, path.basename(url)));
+    else if (/^https?:\/\//i.test(String(url || ''))) {
+      const response = await fetch(url, { signal: AbortSignal.timeout(5000), headers: { 'User-Agent': 'BX-Deck-Lab/1.0' } });
+      if (!response.ok) return null;
+      source = Buffer.from(await response.arrayBuffer());
+    } else return null;
+    return `data:image/png;base64,${(await sharp(source, { animated: false }).resize(size, size, { fit: 'cover' }).png().toBuffer()).toString('base64')}`;
+  } catch { return null; }
+};
+
+/** Arte de classificação: é renderizada sob demanda, portanto sempre reflete os decks atuais. */
+router.get('/api/tournaments/:slug/standings-image.png', requireManage(bySlug), ah(async (req, res) => {
+  const t = req.tournament;
+  const standings = standingsOf(t);
+  const ids = [...new Set(standings.flatMap((s) => s.player.deck?.beys?.flat?.() || []))];
+  const parts = ids.length ? await prisma.part.findMany({ where: { id: { in: ids } } }) : [];
+  const byId = new Map(parts.map((p) => [p.id, p]));
+  const combo = (deck, pos) => {
+    const pieces = (deck?.beys?.[pos] || []).map((id) => byId.get(id)).filter(Boolean);
+    const main = pieces.find((p) => ['BLADE', 'MAIN_BLADE'].includes(p.kind)) || pieces[0];
+    const small = [pieces.find((p) => p.kind === 'RATCHET'), pieces.find((p) => p.kind === 'BIT')].filter(Boolean);
+    return { main, small };
+  };
+  const urls = new Set(standings.flatMap((s) => [s.player.user.avatarUrl, ...[0, 1, 2].flatMap((n) => { const c = combo(s.player.deck, n); return [c.main?.imageUrl, ...c.small.map((p) => p.imageUrl)]; })]).filter(Boolean));
+  const assets = new Map(await Promise.all([...urls].map(async (url) => [url, await imageDataUri(url, 72)])));
+  const asset = (p) => assets.get(p?.imageUrl) || null;
+  const rows = standings.map((s, i) => {
+    const avatar = assets.get(s.player.user.avatarUrl) || null;
+    const y = 196 + i * 98; const rankColor = i === 0 ? '#ffd452' : i === 1 ? '#c3d2df' : i === 2 ? '#e59765' : '#263349';
+    const initials = xml((s.player.user.name || '?').slice(0, 1).toUpperCase());
+    const avatarArt = avatar ? `<image href="${avatar}" x="92" y="${y + 12}" width="62" height="62" preserveAspectRatio="xMidYMid slice" clip-path="url(#avatarClip${i})"/>` : `<text x="123" y="${y + 51}" text-anchor="middle" class="initial">${initials}</text>`;
+    const deckArt = [0, 1, 2].map((n) => {
+      const c = combo(s.player.deck, n); const x = 393 + n * 64; const fallback = xml((c.main?.abbrev || c.main?.name || '?').slice(0, 4).toUpperCase());
+      const primary = `<circle cx="${x}" cy="${y + 43}" r="22" class="blade-ring"/>${asset(c.main) ? `<image href="${asset(c.main)}" x="${x - 22}" y="${y + 21}" width="44" height="44" preserveAspectRatio="xMidYMid meet" clip-path="url(#bladeClip${i}-${n})"/>` : `<text x="${x}" y="${y + 47}" text-anchor="middle" class="blade-fallback">${fallback}</text>`}`;
+      const extras = c.small.slice(0, 2).map((p, k) => { const sx = x + 23; const sy = y + 30 + k * 25; const label = xml((p.abbrev || p.name || '?').slice(0, 2).toUpperCase()); return `<circle cx="${sx}" cy="${sy}" r="11" class="piece-ring"/>${asset(p) ? `<image href="${asset(p)}" x="${sx - 11}" y="${sy - 11}" width="22" height="22" preserveAspectRatio="xMidYMid meet" clip-path="url(#pieceClip${i}-${n}-${k})"/>` : `<text x="${sx}" y="${sy + 4}" text-anchor="middle" class="piece-fallback">${label}</text>`}`; }).join('');
+      return primary + extras;
+    }).join('');
+    return `<g><rect x="24" y="${y}" width="832" height="86" rx="14" class="row ${i % 2 ? 'row-alt' : ''}"/><circle cx="54" cy="${y + 43}" r="18" fill="${rankColor}"/><text x="54" y="${y + 49}" text-anchor="middle" class="rank">${i + 1}</text><circle cx="123" cy="${y + 43}" r="31" class="avatar-ring"/>${avatarArt}<text x="174" y="${y + 35}" class="name">${xml(s.player.user.name)}</text><text x="174" y="${y + 58}" class="handle">@${xml(s.player.user.slug)}</text>${deckArt}<text x="601" y="${y + 49}" text-anchor="middle" class="stat-main">${s.points}</text><text x="665" y="${y + 49}" text-anchor="middle" class="stat">${s.wins}</text><text x="718" y="${y + 49}" text-anchor="middle" class="stat">${s.losses}</text><text x="782" y="${y + 49}" text-anchor="middle" class="stat">${Math.round(s.omw * 100)}%</text><text x="838" y="${y + 49}" text-anchor="middle" class="stat">${Math.round(s.oomw * 100)}%</text></g>`;
+  }).join('');
+  const height = 310 + standings.length * 98;
+  const defs = standings.map((_, i) => `<clipPath id="avatarClip${i}"><circle cx="123" cy="${208 + i * 98}" r="31"/></clipPath>${[0, 1, 2].map((n) => `<clipPath id="bladeClip${i}-${n}"><circle cx="${393 + n * 64}" cy="${239 + i * 98}" r="22"/></clipPath>${[0, 1].map((k) => `<clipPath id="pieceClip${i}-${n}-${k}"><circle cx="${416 + n * 64}" cy="${226 + i * 98 + k * 25}" r="11"/></clipPath>`).join('')}`).join('')}`).join('');
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="880" height="${height}" viewBox="0 0 880 ${height}"><defs>${defs}<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#111b2d"/><stop offset=".55" stop-color="#090d15"/><stop offset="1" stop-color="#15101d"/></linearGradient><style>.title{font:800 37px sans-serif;fill:#f4f8ff}.subtitle{font:600 17px sans-serif;fill:#8fa1ba}.head{font:800 13px sans-serif;letter-spacing:1px;fill:#13d9ff}.row{fill:#121b2a;stroke:#273852;stroke-width:1}.row-alt{fill:#0d1522}.rank{font:800 17px sans-serif;fill:#08101a}.avatar-ring{fill:#22314a;stroke:#13d9ff;stroke-width:2}.initial{font:800 24px sans-serif;fill:#fff}.name{font:800 21px sans-serif;fill:#f4f8ff}.handle{font:500 13px sans-serif;fill:#91a0b5}.blade-ring{fill:#1d2b42;stroke:#3a5377;stroke-width:1}.piece-ring{fill:#16233a;stroke:#557195;stroke-width:1}.blade-fallback{font:800 10px sans-serif;fill:#e7f2ff}.piece-fallback{font:800 7px sans-serif;fill:#e7f2ff}.stat-main{font:800 24px sans-serif;fill:#ffd452}.stat{font:700 18px sans-serif;fill:#e9f1fc}</style></defs><rect width="880" height="${height}" fill="url(#bg)"/><rect width="880" height="8" fill="#13d9ff"/><path d="M0 110H880" stroke="#263852"/><text x="34" y="57" class="title">${xml(t.name)}</text><text x="34" y="85" class="subtitle">CLASSIFICAÇÃO ${t.status === 'FINISHED' ? 'FINAL' : `• RODADA ${t.currentRound}`}</text><text x="42" y="164" class="head">#</text><text x="174" y="164" class="head">JOGADOR</text><text x="382" y="164" class="head">DECKS</text><text x="580" y="164" class="head">PTS</text><text x="654" y="164" class="head">V</text><text x="710" y="164" class="head">D</text><text x="757" y="164" class="head">OPP%</text><text x="811" y="164" class="head">OPP OPP%</text>${rows}<text x="34" y="${height - 24}" class="subtitle">BX DECK LAB • torneio suíço • 3 pontos por vitória</text></svg>`;
+  const png = await sharp(Buffer.from(svg)).png().toBuffer();
+  res.type('png').set('Content-Disposition', `attachment; filename="${t.slug}-classificacao.png"`).send(png);
+}));
 
 /** O gestor pode selecionar, para cada inscrito, um deck que realmente pertença àquele jogador. */
 router.get('/api/tournaments/:slug/player-decks', requireManage(bySlug), ah(async (req, res) => {

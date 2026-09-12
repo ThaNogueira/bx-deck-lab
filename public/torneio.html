@@ -366,22 +366,7 @@
           const out = { exportedAt: new Date().toISOString(), tournament: t, standings: data.standings, players: data.players, matches: data.matches };
           const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' })); a.download = `${t.slug}-pareamentos-resultados.json`; a.click(); URL.revokeObjectURL(a.href);
         });
-        document.getElementById('downloadStandings')?.addEventListener('click', async () => {
-          const rows = data.standings; const canvas = document.createElement('canvas'); const width = 1500; const height = 190 + Math.max(1, rows.length) * 70;
-          canvas.width = width; canvas.height = height; const ctx = canvas.getContext('2d');
-          ctx.fillStyle = '#090a0f'; ctx.fillRect(0, 0, width, height); ctx.fillStyle = '#12d9ff'; ctx.fillRect(0, 0, width, 10);
-          ctx.fillStyle = '#f3f6fb'; ctx.font = 'bold 42px sans-serif'; ctx.fillText(t.name, 44, 70); ctx.fillStyle = '#aab4c5'; ctx.font = '22px sans-serif'; ctx.fillText(`Classificação • ${t.status === 'FINISHED' ? 'final' : `rodada ${t.currentRound}`}`, 44, 108);
-          const cols = [44, 110, 530, 960, 1050, 1140, 1240, 1370]; ctx.fillStyle = '#12d9ff'; ctx.font = 'bold 19px sans-serif'; ['#', 'JOGADOR', 'BLADES', 'PTS', 'V', 'D', 'OPP%', 'OPP OPP%'].forEach((h, i) => ctx.fillText(h, cols[i], 152));
-          const index = await BX.partsIndex();
-          const bladeOf = (deck, n) => (deck?.beys?.[n] || []).map((id) => index.byId.get(id)).find((p) => p && ['BLADE', 'MAIN_BLADE'].includes(p.kind));
-          const loadImage = (src) => new Promise((resolve) => { if (!src) return resolve(null); const img = new Image(); img.crossOrigin = 'anonymous'; img.onload = () => resolve(img); img.onerror = () => resolve(null); img.src = src; });
-          for (let i = 0; i < rows.length; i++) {
-            const s = rows[i]; const y = 202 + i * 70; ctx.fillStyle = i % 2 ? '#111722' : '#0d1119'; ctx.fillRect(30, y - 37, width - 60, 58);
-            ctx.fillStyle = '#f3f6fb'; ctx.font = '22px sans-serif'; [String(i + 1), s.player.user.name, String(s.points), String(s.wins), String(s.losses), `${Math.round(s.omw * 100)}%`, `${Math.round(s.oomw * 100)}%`].forEach((v, j) => ctx.fillText(v, j < 2 ? cols[j] : cols[j + 1], y));
-            for (let n = 0; n < 3; n++) { const blade = bladeOf(s.player.deck, n); const x = cols[2] + n * 110; ctx.save(); ctx.beginPath(); ctx.arc(x + 27, y - 10, 25, 0, Math.PI * 2); ctx.clip(); const img = await loadImage(blade?.img); if (img) ctx.drawImage(img, x + 2, y - 35, 50, 50); else { ctx.fillStyle = '#243044'; ctx.fillRect(x + 2, y - 35, 50, 50); ctx.fillStyle = '#f3f6fb'; ctx.font = 'bold 12px sans-serif'; ctx.fillText((blade?.abbrev || blade?.name || '?').slice(0, 4), x + 8, y - 6); } ctx.restore(); }
-          }
-          const a = document.createElement('a'); a.href = canvas.toDataURL('image/png'); a.download = `${t.slug}-classificacao.png`; a.click();
-        });
+        document.getElementById('downloadStandings')?.addEventListener('click', () => { location.href = `/api/tournaments/${slug}/standings-image.png`; });
         document.getElementById('saveT')?.addEventListener('click', act(() => BX.api(`/api/tournaments/${slug}`, {
           method: 'PATCH',
           body: {
