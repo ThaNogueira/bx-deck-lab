@@ -381,7 +381,9 @@
     phstudy:'https://beyblade.phstudy.org/', bbxdb:'https://bbxdatabase.com/record', beycrate:'https://beycrate.com/', bbxhub:'https://bbxhub.net/', beybaseG2:'https://beybase.com/how-i-became-a-beyblade-x-g2-tournament-champion/',
     productsTT:'https://beycommunity.com/en/x/products/', productsHasbro:'https://beycommunity.com/en/x/hasbro/'
   };
-  const LIVE_CACHE_KEY='bx_live_catalog_v8';
+  // v9 descarta o catálogo local gerado pelo sincronismo legado. Ele podia
+  // guardar uma foto errada e reaplicá-la antes da resposta canônica da API.
+  const LIVE_CACHE_KEY='bx_live_catalog_v9';
   const ONLINE_STOCK_KEY='bx_online_stock_v8';
   const PRODUCT_CACHE_KEY='bx_product_catalog_v8';
   const META_CACHE_KEY='bx_meta_decks_v6';
@@ -594,8 +596,12 @@
       const kind=integrated?'integrated':(existing?.kind||'blade');
       // BeybladeHub is used here as a deterministic image/name index. We deliberately do not
       // import its nearby type text into Blades because page context can bleed between cards.
-      const canonical=existing?.name||name;const p=P(kind,canonical,{display:existing?.display||name,aliases:existing?[name]:[],type:existing?.type||'',stats:existing?.stats||null,spin:spin||existing?.spin||'',weight:wm?`${wm[1]}g`:(existing?.weight||''),remoteCode:cm?.[1]||existing?.remoteCode||'',image:im.url,source:REMOTE.hubBlades});
-      const id=reg(p);hubImageIndex[id]=im.url;added++;
+      const canonical=existing?.name||name;
+      // A API do site é a fonte canônica para peças já persistidas. O parser
+      // do Hub trabalha por contexto textual e pode casar a foto do card vizinho.
+      const image=existing?.serverId ? existing.image : im.url;
+      const p=P(kind,canonical,{display:existing?.display||name,aliases:existing?[name]:[],type:existing?.type||'',stats:existing?.stats||null,spin:spin||existing?.spin||'',weight:wm?`${wm[1]}g`:(existing?.weight||''),remoteCode:cm?.[1]||existing?.remoteCode||'',image,source:REMOTE.hubBlades});
+      const id=reg(p);hubImageIndex[id]=image;added++;
     }
     return added;
   }
@@ -604,7 +610,7 @@
     for(let i=0;i<imgs.length;i++){
       const im=imgs[i];if(!/ratchet/i.test(im.alt||''))continue;
       const end=imgs[i+1]?.pos||Math.min(text.length,im.pos+700);const block=text.slice(im.pos,Math.min(end,im.pos+700));const m=block.match(/\b([0-9M]+-\d{2})\b/i);if(!m)continue;
-      const code=m[1].toUpperCase();const p=P('ratchet',code,{display:code,abbrev:code,image:im.url,source:REMOTE.hubRatchets});const id=reg(p);hubImageIndex[id]=im.url;added++;
+      const code=m[1].toUpperCase();const existing=PARTS[partId('ratchet',code)];const image=existing?.serverId ? existing.image : im.url;const p=P('ratchet',code,{display:existing?.display||code,abbrev:code,image,source:REMOTE.hubRatchets});const id=reg(p);hubImageIndex[id]=image;added++;
     }
     return added;
   }
@@ -615,7 +621,7 @@
       const abbr=am[1],end=imgs[i+1]?.pos||Math.min(text.length,im.pos+850);const block=text.slice(im.pos,Math.min(end,im.pos+850));
       const hubName=hubEnglishName(block)||BIT_NAMES[abbr.toUpperCase()]||abbr;const type=HUB_TYPE(block);const integrated=/Fused|Ratchet[- ]Integrated|一體型|一体型/i.test(block);const kind=integrated?'rib':'bit';
       const existing=Object.values(PARTS).find(p=>p.kind===kind&&String(p.abbrev||'').toUpperCase()===abbr.toUpperCase());const canonical=existing?.name||BIT_NAMES[abbr.toUpperCase()]||hubName;
-      if(!BIT_NAMES[abbr.toUpperCase()])BIT_NAMES[abbr.toUpperCase()]=canonical;const p=P(kind,canonical,{display:existing?.display||canonical,aliases:hubName!==canonical?[hubName]:[],abbrev:abbr,type:type||existing?.type,image:im.url,banned:abbr.toUpperCase()==='MN',source:REMOTE.hubBits});const id=reg(p);hubImageIndex[id]=im.url;added++;
+      if(!BIT_NAMES[abbr.toUpperCase()])BIT_NAMES[abbr.toUpperCase()]=canonical;const image=existing?.serverId ? existing.image : im.url;const p=P(kind,canonical,{display:existing?.display||canonical,aliases:hubName!==canonical?[hubName]:[],abbrev:abbr,type:type||existing?.type,image,banned:abbr.toUpperCase()==='MN',source:REMOTE.hubBits});const id=reg(p);hubImageIndex[id]=image;added++;
     }
     return added;
   }
@@ -627,7 +633,7 @@
       const keys=normalizedAliases(part).filter(x=>x.length>1); if(!keys.length)continue;
       let best=null,bestScore=0;
       for(const im of imgs){const ctx=equivalentKey(text.slice(Math.max(0,im.pos-180),Math.min(text.length,im.pos+650))+' '+im.alt);let score=0;for(const k of keys){if(ctx.includes(k))score=Math.max(score,k.length);}if(score>bestScore){bestScore=score;best=im;}}
-      if(best && bestScore>=Math.min(3,keys[0].length)){part.image=best.url;hubImageIndex[part.id]=best.url;n++;}
+      if(!part.serverId && best && bestScore>=Math.min(3,keys[0].length)){part.image=best.url;hubImageIndex[part.id]=best.url;n++;}
     }
     return n;
   }
@@ -2847,7 +2853,9 @@
         const abbr=(sp.abbrev||'').toUpperCase();
         let exists=PARENTS().find(p=>p.kind===kind&&([p.name,p.display,p.abbrev,...(p.aliases||[])].some(x=>x&&keys.includes(equivalentKey(x)))||(abbr&&['bit','ratchet','rib'].includes(kind)&&(p.abbrev||'').toUpperCase()===abbr)));
         if(exists){
-          if(!exists.image&&sp.img){exists.image=sp.img;enriched++;}
+          // A imagem persistida pelo servidor é canônica. Substituir sempre
+          // também repara caches antigos criados pelo parser no navegador.
+          if(sp.img&&exists.image!==sp.img){exists.image=sp.img;enriched++;}
           if(!exists.type&&sp.type)exists.type=sp.type;
           if(!exists.serverId){exists.serverId=sp.id;enriched++;}
           if(sp.display&&exists.display!==sp.display){exists.aliases=[...new Set([...(exists.aliases||[]),exists.display])];exists.display=sp.display;enriched++;}

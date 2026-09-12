@@ -1,6 +1,8 @@
 /* BX Deck Lab — service worker: cache de imagens de peças (cache-first), dados do catálogo
  * (stale-while-revalidate) e aquecimento em segundo plano na primeira visita. */
-const VERSION = 'v1';
+// v2 elimina a resposta antiga de /api/parts-index que ainda podia trazer os
+// vínculos de foto anteriores à correção do montador.
+const VERSION = 'v2';
 const IMG_CACHE = 'bx-img-' + VERSION;
 const API_CACHE = 'bx-api-' + VERSION;
 const IMG_HOSTS = ['cdn.shopify.com', 'img.beybladehub.app', 'static.wikia.nocookie.net', 'beybladehub.app'];
