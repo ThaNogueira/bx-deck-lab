@@ -23,7 +23,7 @@
       BX.renderTopbar('/torneios');
       const slug = BX.pathPart(1);
       const app = document.getElementById('app');
-      const VIEWS = ['geral', 'partida', 'gestao'];
+      const VIEWS = ['geral', 'pairings', 'partida', 'gestao'];
       const hashView = () => { const v = location.hash.slice(1); return VIEWS.includes(v) ? v : 'geral'; };
       let view = hashView(); // geral | partida | gestao — fica no hash: recarregar/voltar não perde a aba
       let pollTimer = null;
@@ -67,6 +67,7 @@
         const joined = !!data.me;
         const tabs = [
           ['geral', 'Torneio'],
+          ...(data.matches?.length ? [['pairings', 'Pairings']] : []),
           ...(joined && t.status === 'RUNNING' ? [['partida', `${BX.ic('target', 14)} Minha partida`]] : []),
           ...(t.canManage ? [['gestao', `${BX.ic('settings', 14)} Gestão`]] : []),
         ];
@@ -101,7 +102,8 @@
         document.getElementById('reportBtn')?.addEventListener('click', () => BX.report('TOURNAMENT', t.id, 'este torneio'));
 
         const box = document.getElementById('viewBox');
-        if (view === 'partida' && myData?.match) renderMatch(box, t, myData);
+        if (view === 'pairings') renderPairings(box, t, data);
+        else if (view === 'partida' && myData?.match) renderMatch(box, t, myData);
         else if (view === 'gestao' && t.canManage) renderManage(box, t, data);
         else renderGeneral(box, t, data);
       }
@@ -172,15 +174,16 @@
 
       function renderGeneral(box, t, data) {
         const standings = data.standings.length ? `
-          <div class="panel-card" style="margin-top:16px">
+          <div class="panel-card" style="margin-bottom:16px">
             <p class="eyebrow">CLASSIFICAÇÃO</p>
             <div class="standings-wrap" style="margin-top:10px"><table class="standings">
-              <tr><th>#</th><th>Jogador</th><th>Pts</th><th>V</th><th>D</th><th title="Opponent Win %">OPP%</th><th title="Opponents' Opponent Win %">OPP OPP%</th></tr>
-              ${data.standings.map((s, i) => `<tr><td>${i + 1}</td><td><span class="standing-player">${BX.avatarHtml(s.player.user, { size: 24 })}${BX.esc(s.player.user.name)}${s.player.dropped ? ' <small style="color:var(--muted)">(drop)</small>' : ''}</span></td><td>${s.points}</td><td>${s.wins}</td><td>${s.losses}</td><td>${Math.round(s.omw * 100)}%</td><td>${Math.round(s.oomw * 100)}%</td></tr>`).join('')}
+              <tr><th>#</th><th>Jogador</th><th>Deck</th><th>Pts</th><th>V</th><th>D</th><th title="Opponent Win %">OPP%</th><th title="Opponents' Opponent Win %">OPP OPP%</th></tr>
+              ${data.standings.map((s, i) => `<tr><td>${i + 1}</td><td><span class="standing-player">${BX.avatarHtml(s.player.user, { size: 24 })}${BX.esc(s.player.user.name)}${s.player.dropped ? ' <small style="color:var(--muted)">(drop)</small>' : ''}</span></td><td class="standing-deck">${s.player.deck?.beys?.length ? `${BX.deckPreview(s.player.deck.beys, { u: 31 })}<small>${BX.esc(s.player.deck.title || '')}</small>` : '<small>—</small>'}</td><td>${s.points}</td><td>${s.wins}</td><td>${s.losses}</td><td>${Math.round(s.omw * 100)}%</td><td>${Math.round(s.oomw * 100)}%</td></tr>`).join('')}
             </table></div>
           </div>` : '';
         box.innerHTML = `
           ${t.description ? `<div class="panel-card" style="margin-bottom:16px"><p class="prose" style="margin:0">${BX.esc(t.description)}</p></div>` : ''}
+          ${standings}
           ${(() => { const mine = ME && data.players.find((p) => p.user.id === ME.id); return mine ? `<div class="panel-card my-deck-box" style="margin-bottom:16px">
             <div class="section-title-row"><div><p class="eyebrow">MEU DECK NESTE TORNEIO</p><h2 style="font-size:20px">${mine.deck?.title ? BX.esc(mine.deck.title) : 'Nenhum deck declarado'}</h2></div>${BX.icon('decks', 22)}</div>
             <p class="muted" style="font-size:12px;margin:6px 0 10px">Declare o deck que vai usar: ele entra no ranking do meta da home e aparece no card do campeão. Só você e o organizador veem qual é até o torneio encerrar.</p>
@@ -195,10 +198,7 @@
                 ${BX.avatarHtml(p.user, { size: 44 })}
                 <div><h3>${BX.esc(p.user.name)}</h3><small>@${BX.esc(p.user.slug)}${p.dropped ? ' • DROP' : ''}${t.status === 'FINISHED' && p.deck?.title ? ` • ${BX.icon('decks', 11)} ${BX.esc(p.deck.title)}` : ''}</small></div>
               </a>`).join('') || '<div class="empty-state">Ninguém inscrito ainda.</div>'}
-          </div>
-          ${renderRounds(t, data)}
-          ${standings}`;
-        wireRounds(box);
+          </div>`;
         const sel = box.querySelector('#myTourDeck');
         if (sel) {
           const mine = data.players.find((p) => p.user.id === ME.id);
@@ -210,6 +210,11 @@
             try { await BX.api(`/api/tournaments/${t.slug}/my-deck`, { method: 'POST', body: { deckId: sel.value || null } }); BX.toast(sel.value ? 'Deck declarado!' : 'Deck removido.'); load(); } catch (e) { BX.toast(e.message); }
           });
         }
+      }
+
+      function renderPairings(box, t, data) {
+        box.innerHTML = renderRounds(t, data) || '<div class="empty-state">Os pairings aparecem aqui quando a primeira rodada for gerada.</div>';
+        wireRounds(box);
       }
 
       function renderMatch(box, t, myData) {
@@ -296,7 +301,7 @@
                     ${BX.avatarHtml(p.user, { size: 34 })}
                     <div style="font-size:12px"><b>${BX.esc(p.user.name)}</b>${p.dropped ? ' <small style="color:var(--muted)">(removido/drop)</small>' : ''}<small style="display:block;color:var(--muted)">${p.deck?.title ? `Deck: ${BX.esc(p.deck.title)}${p.deck.managed ? ' (gestão)' : ''}` : p.deckDeclared ? 'Deck do jogador (privado)' : 'Sem deck declarado'}</small>${p.deck?.beys?.length ? `<div class="manage-deck-preview">${BX.deckPreview(p.deck.beys, { u: 27 })}</div>` : ''}</div>
                     <button class="btn secondary" data-build-deck="${p.id}">${BX.icon('decks', 14)} Montar deck</button>
-                    ${!p.dropped ? `<button class="btn danger-outline" data-kick="${p.id}">${t.status === 'OPEN' ? 'Remover' : 'Drop'}</button>` : '<span></span>'}
+                    ${!p.dropped && !['FINISHED', 'CANCELED'].includes(t.status) ? `<button class="btn danger-outline" data-kick="${p.id}">${t.status === 'OPEN' ? 'Remover' : 'Drop'}</button>` : '<span></span>'}
                   </div>`).join('')}</div>
               </div>
             </div>
