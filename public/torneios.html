@@ -27,14 +27,8 @@
     </div>
     <div class="page-toolbar">
       <input id="q" placeholder="Buscar por nome, loja ou cidade…" />
-      <select id="status" aria-label="Filtrar por status">
-        <option value="OPEN" selected>Inscrições abertas</option>
-        <option value="">Abertos e em andamento</option>
-        <option value="RUNNING">Em andamento</option>
-        <option value="FINISHED">Encerrados</option>
-      </select>
     </div>
-    <div id="list" class="card-grid"><div class="empty-state">Carregando torneios…</div></div>
+    <div id="list"><div class="empty-state">Carregando torneios…</div></div>
 
     <div class="modal-backdrop" id="newModal" hidden>
       <div class="modal">
@@ -64,10 +58,8 @@
       let timer;
       async function load() {
         const q = document.getElementById('q').value;
-        const status = document.getElementById('status').value;
-        const { tournaments } = await BX.api(`/api/tournaments?query=${encodeURIComponent(q)}&status=${status}`);
-        document.getElementById('list').innerHTML = tournaments.length
-          ? tournaments.map((t) => `
+        const { tournaments } = await BX.api(`/api/tournaments?query=${encodeURIComponent(q)}`);
+        const card = (t) => `
             <a class="list-card" href="/torneio/${t.slug}">
               <div style="display:flex;justify-content:space-between;gap:8px;align-items:start">
                 <h3>${BX.esc(t.name)}</h3>
@@ -81,12 +73,22 @@
                 <span>${t.playersCount} inscrito(s)</span>
                 <span>${t.format === 'MD3' ? 'Melhor de 3' : 'Até 4 pontos'} • ${t.roundsPlanned} rodadas</span>
               </div>
-            </a>`).join('')
-          : '<div class="empty-state">Nenhum torneio por aqui ainda — crie o primeiro!</div>';
+            </a>`;
+        const groups = [
+          { status: 'RUNNING', title: 'Em andamento', note: 'Acompanhe as rodadas que estão acontecendo agora.', tone: 'running' },
+          { status: 'OPEN', title: 'Inscrições abertas', note: 'Entre ou divulgue seu torneio.', tone: 'open' },
+          { status: 'FINISHED', title: 'Torneios passados', note: 'Confira os resultados e a classificação final.', tone: 'finished' },
+        ];
+        document.getElementById('list').innerHTML = tournaments.length
+          ? groups.map((g) => { const items = tournaments.filter((t) => t.status === g.status); return `
+              <section class="tournament-section ${g.tone}">
+                <div class="tournament-section-head"><div><p class="eyebrow">${g.title}</p><p>${g.note}</p></div><span>${items.length}</span></div>
+                <div class="card-grid">${items.map(card).join('') || '<div class="tournament-section-empty">Nenhum torneio nesta seção.</div>'}</div>
+              </section>`; }).join('')
+          : '<div class="empty-state">Nenhum torneio encontrado.</div>';
       }
       load();
       document.getElementById('q').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(load, 300); });
-      document.getElementById('status').addEventListener('change', load);
 
       const modal = document.getElementById('newModal');
       document.getElementById('newT').addEventListener('click', async () => {

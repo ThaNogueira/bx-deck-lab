@@ -546,6 +546,12 @@ select { height: 42px; padding: 0 10px; width: 100%; }
 .fav-bey-card .part-art{width:92px;height:92px}
 .profile-grid{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(300px,.75fr);gap:16px;align-items:start;margin-top:22px}
 .card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+.tournament-section{border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin:0 0 18px;background:#10131b}
+.tournament-section.running{border-color:#846b23;background:linear-gradient(135deg,rgba(120,92,16,.24),rgba(18,18,17,.9))}
+.tournament-section.open{border-color:#237146;background:linear-gradient(135deg,rgba(22,106,57,.23),rgba(14,20,17,.9))}
+.tournament-section.finished{border-color:#71363d;background:linear-gradient(135deg,rgba(130,42,50,.20),rgba(21,14,16,.9))}
+.tournament-section-head{display:flex;align-items:start;justify-content:space-between;gap:12px;margin:0 2px 13px}.tournament-section-head .eyebrow{margin:0}.tournament-section-head p:not(.eyebrow){color:var(--muted);font-size:12px;margin:4px 0 0}.tournament-section-head>span{min-width:28px;height:28px;border-radius:999px;display:grid;place-items:center;background:rgba(255,255,255,.1);font:800 14px var(--display)}
+.tournament-section-empty{color:var(--muted);font-size:13px;padding:8px 2px}
 .sale-tag{display:inline-flex;align-items:center;gap:5px;background:rgba(84,230,156,.12);border:1px solid rgba(84,230,156,.4);color:#74eeb0;font:800 9px var(--display);text-transform:uppercase;letter-spacing:.08em;border-radius:999px;padding:4px 8px}
 .price{font:800 20px var(--display);color:var(--green)}
 .wa-btn{display:inline-flex;align-items:center;gap:7px;background:#1faa53;color:white;border:0;border-radius:10px;padding:9px 13px;font-weight:800;font-size:12px;text-decoration:none}
