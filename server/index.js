@@ -90,8 +90,12 @@ app.use(marketRoutes);
 app.use(adminRoutes);
 app.use(communityRoutes);
 app.use(homeRoutes);
-warmModeration();
-scheduleMetaJobs();
+// Integration tests use an isolated database and must not start network jobs.
+const isolatedTest = process.env.NODE_ENV === 'test' && process.env.BX_ISOLATED_TEST === '1';
+if (!isolatedTest) {
+  warmModeration();
+  scheduleMetaJobs();
+}
 
 // Uploads e estáticos
 app.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '30d', immutable: true }));
@@ -154,10 +158,10 @@ app.use((err, req, res, _next) => {
 });
 
 const port = parseInt(process.env.PORT, 10) || 3000;
-app.listen(port, () => console.log(`BX Deck Lab ouvindo em http://localhost:${port}`));
+app.listen(port, isolatedTest ? '127.0.0.1' : undefined, () => console.log(`BX Deck Lab ouvindo em http://localhost:${port}`));
 
 // Catálogo de peças/produtos: sincroniza sozinho no boot (se estiver velho) e periodicamente
-scheduleAutoSync();
+if (!isolatedTest) scheduleAutoSync();
 
 process.on('unhandledRejection', (e) => logError(e, 'unhandledRejection'));
 process.on('SIGTERM', async () => {

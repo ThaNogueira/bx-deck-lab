@@ -9,7 +9,7 @@ import multer from 'multer';
  * /uploads. GIF/WebP animado e MP4/WebM curtos são aceitos (item 3).
  */
 
-export const UPLOADS_DIR = path.resolve('data/uploads');
+export const UPLOADS_DIR = path.resolve(process.env.NODE_ENV === 'test' && process.env.BX_ISOLATED_TEST === '1' ? 'data/qa/uploads' : 'data/uploads');
 fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
 const EXT = {

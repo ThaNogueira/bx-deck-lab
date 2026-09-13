@@ -1,0 +1,89 @@
+/* Screen composition. Never change geometry of miniature parts or scoring controls. */
+.profile-banner, .part-card, .player-card, .bracket-match, .notif-menu { background: var(--panel); border-color: var(--line); }
+.player-card small, .bracket-round.current > h3 { color: var(--accent); }
+.player-card h3, .profile-id h1 { line-height: 1.15; }
+.notif-btn { background: var(--panel); color: var(--text); min-width: 44px; min-height: 44px; }
+.notif-badge { background: var(--accent); color: var(--accent-ink); }
+.notif-item { border-color: var(--line); }
+.notif-item:hover, .notif-item.unread { background: var(--accent-soft); }
+.notif-head strong { font: 700 14px var(--body); letter-spacing: 0; text-transform: none; }
+.bracket-viewport { background: var(--bg); }
+.bracket-rounds button { background: var(--panel); color: var(--muted); min-height: 44px; font: 600 12px var(--body); }
+.bracket-rounds button.active { background: var(--accent-soft); color: var(--accent); }
+.mini-builder-parts button, .mini-part-chip { background: var(--bg); color: var(--text); border-color: var(--line); }
+.mini-builder-parts button { min-height: 44px; }
+.mini-builder-parts button:hover { border-color: var(--accent); }
+.mini-builder-current, .mini-builder-slots button, .stat-tile { background: var(--panel); border-color: var(--line); }
+.mini-builder-slots button.active { background: var(--accent-soft); color: var(--accent); }
+.mini-builder-slots small, .mini-builder-current>small { font: 600 11px/1.5 var(--body); }
+.admin-nav button { min-height: 44px; }
+.admin-nav button:hover { background: var(--panel2); }
+.admin-nav button.active { background: var(--accent-soft); color: var(--accent); box-shadow: inset 2px 0 var(--accent); }
+.admin-nav .nav-sep, .stat-tile small { color: var(--muted); font-size: 11px; }
+.meta-state { background: var(--panel); border-color: var(--line); border-radius: 12px; padding: 22px; }
+.meta-state::after { display: none; }
+.hl-card:not(.clip) { background: var(--panel); }
+.pc-title { font-family: var(--body); font-weight: 700; font-size: 20px; text-transform: none; line-height: 1.4; letter-spacing: -.025em; }
+.ms-head h2, .hl-strip-head h2, .home-feed-head h2 { font-family: var(--body); font-size: 23px; text-transform: none; letter-spacing: -.035em; }
+.side-row b, .hl-card b { font-family: var(--body); font-size: 13px; text-transform: none; line-height: 1.4; }
+.mode-switch { background: var(--bg); border-color: var(--line); }
+.mode-switch .ms-thumb { background: var(--accent-soft); border-color: #637b45; box-shadow: none; }
+.mode-switch .ms-txt b { font: 600 12px var(--body); text-transform: none; letter-spacing: 0; }
+.mode-switch .ms-txt small, .mode-switch button.active .ms-txt small { color: var(--muted); }
+.mode-switch .ms-ic { background: var(--panel2); }
+.mode-switch button.active .ms-ic { background: var(--accent-soft); }
+.bey-card.active-slot { border-color: var(--accent); box-shadow: none; }
+.bey-card.active-slot .slot-number b { color: var(--accent-ink); }
+.analysis-card { background: var(--panel); }
+.bey-analysis.empty p, .bey-analysis > p, .bey-analysis details p { color: var(--muted); font-size: 12px; line-height: 1.6; }
+.bey-analysis summary { font-size: 12px; color: var(--text); }
+.home-hero { padding: 28px 0 32px; border-bottom: 1px solid var(--line); margin-bottom: 28px; background-image: linear-gradient(#ffffff03 1px, transparent 1px), linear-gradient(90deg, #ffffff03 1px, transparent 1px); background-size: 36px 36px; }
+.home-hero h1 { font-family: var(--body); font-size: clamp(36px, 4.2vw, 62px); font-weight: 700; text-transform: none; letter-spacing: -.055em; line-height: 1.08; max-width: 15ch; margin-bottom: 16px; }
+.home-hero .hero-actions { flex-shrink: 0; }
+.ms-head h2 { font-size: 23px; }
+.ms-item { background: var(--panel); border-radius: 8px; padding: 12px 10px; }
+.ms-text strong { font-size: 16px; }
+.ms-text small, .ms-foot, .side-row small { color: var(--muted); font-size: 11px; }
+.ms-rank, .side-rank { color: var(--muted); }
+.hl-card { border-radius: 10px; border-color: var(--line); }
+.side-row { padding-top: 12px; padding-bottom: 12px; }
+.side-row:hover { background: var(--panel2); }
+.side-row b { font-size: 13px; }
+.side-ic { background: var(--panel2); color: var(--muted); }
+.builder-bar { padding: 14px; border-radius: 10px; }
+.bey-card::after, .bey-visual .rings { display: none; }
+.bey-head { background: transparent; }
+.slot-number b { background: var(--accent); color: var(--accent-ink); transform: none; border-radius: 5px; }
+.slot-number b i { transform: none; }
+.slot-ring { background: var(--bg); border-color: #59624f; }
+.slot-lab { font: 600 10px var(--body); color: var(--muted); letter-spacing: .05em; }
+.slot.empty .slot-name, .slot-plus { color: var(--muted); }
+.slot:focus-visible .slot-ring { outline: 2px solid var(--accent); outline-offset: 4px; box-shadow: none; }
+.bey-summary strong { font-size: 21px; }
+.cx-box { background: var(--bg); border-color: var(--line); }
+.picker-target { font-size: 11px; background: var(--bg); }
+.picker-chip { min-height: 36px; border-radius: 6px; background: var(--bg); color: var(--muted); font: 600 11px var(--body); letter-spacing: 0; text-transform: none; }
+.picker-chip.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+.picker-tile { background: var(--bg); border-color: var(--line); }
+.picker-tile:hover { background: var(--accent-soft); transform: none; }
+.picker-tile-name { font: 600 11px/1.35 var(--body); text-transform: none; }
+.picker-tile .part-art.tile { background: var(--panel2); }
+.picker-hint, .sheet-count { font-size: 12px; color: var(--muted); }
+.picker-recs { background: var(--accent-soft); border-color: #52633d; }
+.sheet-titles h3 { font-size: 26px; }
+.center-page .panel-card { padding: clamp(24px, 5vw, 40px); }
+.center-page h1 em { color: var(--accent) !important; font-style: normal; }
+.center-page .panel-card p { font-size: 14px !important; color: var(--muted) !important; }
+.center-page label { font-size: 12px !important; letter-spacing: .03em !important; }
+@media (max-width: 900px) {
+  .home-hero { padding-top: 12px; }
+  .home-hero .hero-actions { flex-shrink: 1; }
+}
+@media (max-width: 520px) {
+  .home-hero h1 { font-size: 40px; }
+  .home-hero { padding-bottom: 24px; }
+  .picker-chip { min-height: 44px; }
+}
+@media print {
+  body { background: white; color: black; }
+}

@@ -17,3 +17,6 @@ data/
 
 # logs do servidor local (Start-Process)
 server.err
+
+# Local visual QA captures
+artifacts/

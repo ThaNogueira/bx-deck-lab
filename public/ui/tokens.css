@@ -1,0 +1,30 @@
+/* Bey Lab / Competitive editorial. Semantic danger remains independent of brand. */
+:root {
+  --bg: #10110f;
+  --panel: #181a17;
+  --panel2: #20231e;
+  --panel3: #292d26;
+  --line: #353a30;
+  --text: #f3f5ee;
+  --muted: #b0b7a8;
+  --accent: #c2f970;
+  --accent-hover: #d4ff99;
+  --accent-ink: #172208;
+  --accent-soft: #232d1b;
+  --cyan: var(--accent);
+  --green: #b6ed83;
+  --red: #ff8290;
+  --red2: #ce344e;
+  --yellow: #edcf80;
+  --orange: #edac7c;
+  --radius: 12px;
+  --body: Inter, system-ui, -apple-system, sans-serif;
+  --display: 'Barlow Condensed', 'Arial Narrow', sans-serif;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --surface-shadow: 0 18px 60px #0005;
+}

@@ -5,6 +5,11 @@
   "type": "module",
   "description": "BX Deck Lab — montador de decks, comunidade, torneios e marketplace de Beyblade X",
   "scripts": {
+    "test": "node --test scripts/catalog.test.mjs",
+    "test:contracts": "node scripts/check-frontend-contracts.mjs",
+    "test:server": "node scripts/test-server.mjs",
+    "test:e2e": "node scripts/authenticated-smoke.mjs",
+    "test:visual": "node scripts/visual-smoke.mjs",
     "dev": "node --env-file=.env --watch server/index.js",
     "start": "node --env-file=.env server/index.js",
     "db:migrate": "prisma migrate deploy",
@@ -25,6 +30,7 @@
     "sharp": "^0.35.4"
   },
   "devDependencies": {
+    "playwright": "1.62.1",
     "prisma": "^6.16.0"
   }
 }

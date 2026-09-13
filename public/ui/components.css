@@ -1,0 +1,78 @@
+/* Compatibility components: retain existing DOM, event hooks and layout contracts. */
+body { background: var(--bg); color: var(--text); font-size: 15px; line-height: 1.55; }
+.noise { display: none; }
+::selection { background: var(--accent); color: var(--accent-ink); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+[hidden] { display: none !important; }
+.topbar, .topbar.shell { background: #10110ff5; backdrop-filter: blur(12px); }
+.side-nav { background: var(--bg); }
+.brand-mark { border-color: var(--accent); border-radius: 50%; transform: none; box-shadow: none; }
+.brand-mark span { color: var(--accent); transform: none; }
+.side-brand-text strong { font-family: var(--body); font-size: 16px; letter-spacing: -.04em; }
+.side-brand-text small { font-size: 10px; letter-spacing: .08em; }
+.side-item { min-height: 44px; font-size: 13px; border-radius: 7px; font-weight: 500; }
+.side-item:hover { background: var(--panel2); }
+.side-item.active { background: var(--accent-soft); color: var(--accent); box-shadow: inset 2px 0 var(--accent); }
+.side-item.active .vicon { color: var(--accent); }
+.side-group-title { color: var(--muted); font: 600 10px var(--body); letter-spacing: .12em; margin-top: 24px; }
+main { padding-top: 40px; }
+.hero { gap: 24px; margin-bottom: 32px; }
+.hero h1, .hero.compact h1 { font-size: clamp(38px, 4.5vw, 64px); line-height: 1.02; letter-spacing: -.025em; text-wrap: balance; }
+.hero h1 em { color: var(--accent); font-style: normal; }
+.hero p:not(.eyebrow) { font-size: 15px; line-height: 1.7; max-width: 65ch; }
+.eyebrow { font-size: 11px; letter-spacing: .12em; margin-bottom: 12px; }
+.hero-actions { flex-wrap: wrap; align-items: center; }
+.btn { min-height: 44px; border-radius: 7px; font-size: 13px; font-weight: 700; line-height: 1.3; transition: background .15s, border-color .15s; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); box-shadow: none; }
+.btn.primary:hover { background: var(--accent-hover); transform: none; }
+.btn.secondary, .btn.ghost { background: var(--panel); color: var(--text); border: 1px solid var(--line); }
+.btn.secondary:hover, .btn.ghost:hover { background: var(--panel2); border-color: #68745b; }
+button:disabled, .btn:disabled, input:disabled, select:disabled { opacity: .45; cursor: not-allowed; }
+input:not([type=checkbox]):not([type=radio]):not([type=range]), select, textarea { background: var(--bg); color: var(--text); border-color: var(--line); border-radius: 7px; font-size: 15px; }
+input:not([type=checkbox]):not([type=radio]):not([type=range]), select { min-height: 44px; }
+input::placeholder, textarea::placeholder { color: #969e8e; }
+input:focus, textarea:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px #c2f97018; }
+input[type=checkbox], input[type=radio] { accent-color: var(--accent); }
+.field label, .deck-name-wrap label { font-size: 11px; letter-spacing: .06em; }
+.field label span { color: var(--muted); }
+.panel-card, .list-card, .bey-card, .pc, .builder-bar { background: var(--panel); border-color: var(--line); box-shadow: none; }
+.list-card { padding: 20px; gap: 14px; }
+.list-card:hover { transform: none; border-color: #68745b; }
+.list-card h2, .list-card h3 { font-size: 25px; line-height: 1.15; }
+.list-card .muted, .list-card-foot { font-size: 12px; line-height: 1.6; }
+.panel-card h2 { line-height: 1.15; }
+.pill-toggle { background: var(--bg); padding: 3px; gap: 3px; border-radius: 9px; }
+.pill-toggle button { min-height: 40px; background: transparent; font: 600 12px var(--body); border-radius: 6px; text-transform: none; color: var(--muted); }
+.pill-toggle button.active, .tab.active { background: var(--accent-soft); color: var(--accent); box-shadow: none; }
+.tab { min-height: 44px; }
+.tab:hover { background: var(--panel2); }
+.modal, .sheet, .bx-dialog, .user-menu, .gen-menu, .pc-menu { background: var(--panel); border-color: var(--line); box-shadow: var(--surface-shadow); }
+.modal h2 { font-size: 32px; padding-right: 36px; }
+.modal-close, .sheet-close { min-width: 40px; min-height: 40px; background: var(--panel2); color: var(--text); border-color: var(--line); }
+.modal-backdrop, .sheet-backdrop { background: #080a07c9; }
+.user-menu button:hover, .user-menu a:hover, .gen-menu button:hover, .pc-menu button:hover { background: var(--panel2); }
+.standings th { color: var(--muted); font-size: 11px; letter-spacing: .06em; }
+.standings td { border-color: var(--line); }
+.standings tbody tr:nth-child(odd) { background: #ffffff03; }
+.standings tbody tr:hover { background: var(--panel2); }
+.pc-title { font-size: 26px; line-height: 1.15; }
+.pc-body { font-size: 15px; line-height: 1.75; }
+.pc .react-group { background: var(--bg); }
+.pc .react-btn.on { color: var(--accent); background: var(--accent-soft); }
+.empty-state, .empty { color: var(--muted); line-height: 1.7; }
+@media (max-width: 900px) {
+  main { padding-top: 24px; }
+  .hero { gap: 18px; }
+}
+@media (max-width: 520px) {
+  .hero-actions { display: flex; gap: 8px; width: 100%; }
+  .hero-actions .btn { flex: 1 1 auto; text-align: center; }
+  .hero h1, .hero.compact h1 { font-size: 40px; }
+  .hero p:not(.eyebrow) { font-size: 14px; }
+  input:not([type=checkbox]):not([type=radio]):not([type=range]), select, textarea { font-size: 16px; }
+  .modal-backdrop { padding: 12px; }
+  .modal { padding: 20px 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
