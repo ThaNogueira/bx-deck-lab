@@ -1,5 +1,9 @@
 # Frontend revamp — incremental rollout
 
+Update: the first React slice is now implemented for `/entrar` and `/icones`.
+See [REACT-MIGRATION.md](./REACT-MIGRATION.md) for current architecture, build and
+tests. The first-stage notes below describe the preceding visual-only release.
+
 ## Inventory and dependencies
 
 The current frontend has 21 HTML entry points, a shared navigation/API layer

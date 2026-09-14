@@ -98,3 +98,10 @@ Permite reservar peças em decks já montados para partidas casuais com várias 
 - BeyCommunity — listas de produtos TT/Hasbro: https://beycommunity.com/en/x/products/ e https://beycommunity.com/en/x/hasbro/
 
 Este projeto não é afiliado à Takara Tomy, Hasbro, WBO ou às bases acima.
+# Frontend React (migração incremental)
+
+As rotas `/entrar` e `/icones` usam React + TypeScript + Vite. Antes de iniciar
+o servidor fora do Docker, execute `npm ci` e `npm run build`. O Docker já executa
+o build automaticamente. Para reconstruir enquanto edita: `npm run dev:frontend`.
+
+Documentação e testes: [docs/REACT-MIGRATION.md](docs/REACT-MIGRATION.md).

@@ -5,11 +5,15 @@
   "type": "module",
   "description": "BX Deck Lab — montador de decks, comunidade, torneios e marketplace de Beyblade X",
   "scripts": {
+    "build": "tsc --noEmit && vite build",
+    "dev:frontend": "vite build --watch",
+    "typecheck": "tsc --noEmit",
     "test": "node --test scripts/catalog.test.mjs",
     "test:contracts": "node scripts/check-frontend-contracts.mjs",
     "test:server": "node scripts/test-server.mjs",
     "test:e2e": "node scripts/authenticated-smoke.mjs",
     "test:visual": "node scripts/visual-smoke.mjs",
+    "test:react": "node scripts/react-smoke.mjs",
     "dev": "node --env-file=.env --watch server/index.js",
     "start": "node --env-file=.env server/index.js",
     "db:migrate": "prisma migrate deploy",
@@ -27,10 +31,17 @@
     "multer": "^2.0.0",
     "nsfwjs": "^4.3.0",
     "qrcode": "^1.5.4",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
     "sharp": "^0.35.4"
   },
   "devDependencies": {
+    "@types/node": "^26.5.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "playwright": "1.62.1",
-    "prisma": "^6.16.0"
+    "prisma": "^6.16.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0"
   }
 }

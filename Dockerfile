@@ -1,3 +1,11 @@
+FROM node:22-alpine AS frontend
+WORKDIR /build
+COPY package.json package-lock.json ./
+RUN npm ci --ignore-scripts
+COPY frontend ./frontend
+COPY tsconfig.json vite.config.ts ./
+RUN npm run build
+
 FROM node:22-alpine
 WORKDIR /app
 
@@ -14,6 +22,7 @@ RUN npm ci --omit=dev && npx prisma generate
 
 COPY server ./server
 COPY public ./public
+COPY --from=frontend /build/public/react ./public/react
 
 ENV NODE_ENV=production
 EXPOSE 3000

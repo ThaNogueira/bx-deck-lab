@@ -1,0 +1,17 @@
+.stack { display: grid; gap: 16px; }
+.panel { margin-bottom: 16px; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.code { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; color: var(--muted); }
+.sectionTitle { margin-top: 24px; margin-bottom: 10px; }
+.form { display: grid; gap: 14px; text-align: left; }
+.label { display: block; color: var(--muted); font-size: 12px; font-weight: 700; margin-bottom: 6px; }
+.title { font: 800 40px/1.1 var(--display); text-transform: uppercase; margin: 4px 0 10px; }
+.title em { color: var(--accent); font-style: normal; }
+.description { color: var(--muted); line-height: 1.7; margin: 0 0 22px; }
+.toggle { display: flex; width: 100%; margin-bottom: 20px; }
+.toggle button { flex: 1; }
+.divider { display: flex; align-items: center; gap: 10px; margin: 20px 0; color: var(--muted); font-size: 12px; }
+.divider::before, .divider::after { content: ''; flex: 1; border-top: 1px solid var(--line); }
+.notice { color: var(--muted); font-size: 12px; line-height: 1.6; margin-top: 20px; }
+.error { margin-bottom: 16px; }
+.disabledLink { opacity: .45; }
