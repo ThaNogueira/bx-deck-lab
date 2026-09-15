@@ -109,36 +109,68 @@ export async function loadTournament(slug) {
 }
 
 export function standingsOf(t, options) {
-  const stats = new Map(t.players.map((p) => [p.id, { wins: 0, nonByeWins: 0, losses: p.lateLosses ?? 0, points: 0, opponents: [] }]));
+  // Regra TamerLeague / Play! Pokémon: pontos do torneio (3-1-0) são
+  // independentes do percentual usado nos desempates (2-1-0). BYEs dão
+  // pontos, mas nunca entram em relacionamento de oponente nem em Win %.
+  const stats = new Map(t.players.map((p) => [p.id, {
+    wins: 0, losses: p.lateLosses ?? 0, ties: 0, points: 0,
+    matchWins: 0, matchTies: 0, matchCount: p.lateLosses ?? 0,
+    opponents: new Set(),
+  }]));
   for (const m of t.matches) {
     if (m.status !== 'DONE') continue;
-    const winner = stats.get(m.winnerId);
-    if (winner) { winner.wins += 1; winner.points += 3; if (m.p2Id) winner.nonByeWins += 1; }
-    if (!m.p2Id) continue; // BYE dá pontos, mas não entra em OPP%.
-    stats.get(m.p1Id)?.opponents.push(m.p2Id);
-    stats.get(m.p2Id)?.opponents.push(m.p1Id);
-    const loserId = m.winnerId === m.p1Id ? m.p2Id : m.p1Id;
-    const loser = stats.get(loserId);
-    if (loser) loser.losses += 1;
+    const p1 = stats.get(m.p1Id);
+    const p2 = m.p2Id ? stats.get(m.p2Id) : null;
+    if (!p2) { // BYE: vitória e 3 pontos, sem oponente e sem Win %.
+      if (p1) { p1.wins += 1; p1.points += 3; }
+      continue;
+    }
+    p1?.opponents.add(m.p2Id);
+    p2.opponents.add(m.p1Id);
+    if (m.winnerId === m.p1Id) {
+      p1.wins += 1; p1.points += 3; p1.matchWins += 1; p1.matchCount += 1;
+      p2.losses += 1; p2.matchCount += 1;
+    } else if (m.winnerId === m.p2Id) {
+      p2.wins += 1; p2.points += 3; p2.matchWins += 1; p2.matchCount += 1;
+      p1.losses += 1; p1.matchCount += 1;
+    } else { // Compatível com eventual empate, apesar de Beyblade normalmente não usá-lo.
+      p1.ties += 1; p1.points += 1; p1.matchTies += 1; p1.matchCount += 1;
+      p2.ties += 1; p2.points += 1; p2.matchTies += 1; p2.matchCount += 1;
+    }
   }
-  // Pokémon TCG: pontos de partida, OMW% (mínimo 25%) e OOMW%.
+  // Win % de cada oponente: (2×vitórias + empates) / (2×partidas),
+  // com BYEs excluídos. O piso de 25% só é aplicado ao calcular OWP.
   const rate = (id) => {
     const s = stats.get(id);
-    // Derrotas tardias contam no percentual próprio, sem inventar um oponente.
-    const denominator = s.opponents.length + (t.players.find((p) => p.id === id)?.lateLosses ?? 0);
-    return denominator ? s.nonByeWins / denominator : 0;
+    return s?.matchCount ? (s.matchWins * 2 + s.matchTies) / (s.matchCount * 2) : 0;
   };
   const omw = (id) => {
-    const opponents = stats.get(id)?.opponents ?? [];
+    const opponents = [...(stats.get(id)?.opponents ?? [])];
     return opponents.length ? opponents.reduce((sum, oid) => sum + Math.max(.25, rate(oid)), 0) / opponents.length : 0;
   };
   const oomw = (id) => {
-    const opponents = stats.get(id)?.opponents ?? [];
+    const opponents = [...(stats.get(id)?.opponents ?? [])];
     return opponents.length ? opponents.reduce((sum, oid) => sum + omw(oid), 0) / opponents.length : 0;
   };
-  return t.players
-    .map((p) => { const { nonByeWins, opponents, ...row } = stats.get(p.id); return { player: playerDto(p, options), ...row, omw: omw(p.id), oomw: oomw(p.id) }; })
-    .sort((a, b) => b.points - a.points || b.omw - a.omw || b.oomw - a.oomw || a.player.user.name.localeCompare(b.player.user.name));
+  const precision = (value) => Math.round(value * 1_000_000);
+  const rows = t.players.map((p) => {
+    const { matchWins, matchTies, matchCount, opponents, ...row } = stats.get(p.id);
+    return { player: playerDto(p, options), ...row, omw: omw(p.id), oomw: oomw(p.id) };
+  });
+  const baseKey = (row) => `${row.player.dropped ? 1 : 0}|${row.points}|${precision(row.omw)}|${precision(row.oomw)}`;
+  const compareBase = (a, b) => Number(a.player.dropped) - Number(b.player.dropped)
+    || b.points - a.points || precision(b.omw) - precision(a.omw) || precision(b.oomw) - precision(a.oomw);
+  const headToHead = (a, b) => {
+    const match = t.matches.find((m) => m.status === 'DONE' && m.p2Id
+      && ((m.p1Id === a.player.id && m.p2Id === b.player.id) || (m.p1Id === b.player.id && m.p2Id === a.player.id)));
+    if (!match?.winnerId) return 0;
+    return match.winnerId === a.player.id ? -1 : match.winnerId === b.player.id ? 1 : 0;
+  };
+  const groups = new Map();
+  for (const row of rows) { const key = baseKey(row); groups.set(key, [...(groups.get(key) || []), row]); }
+  return [...groups.values()]
+    .flatMap((group) => group.sort((a, b) => (group.length === 2 ? headToHead(a, b) : 0) || a.player.user.name.localeCompare(b.player.user.name)))
+    .sort(compareBase);
 }
 
 async function syncTamerLeague(t) {
