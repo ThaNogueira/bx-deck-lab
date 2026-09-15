@@ -13,6 +13,7 @@
   <title>Torneio — BX Deck Lab</title>
   <link rel="stylesheet" href="/styles.css" />
   <link rel="stylesheet" href="/design-system.css" />
+  <link rel="stylesheet" href="/tournament.css" />
 </head>
 <body>
   <div class="noise"></div>
@@ -32,10 +33,11 @@
       let lastSig = '';      // assinatura do último payload — poll só re-renderiza se algo mudou
       let pendingRender = false;
       const editing = () => { const el = document.activeElement; return !!el && app.contains(el) && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName); };
-      let roundsMode = localStorage.getItem('bx_tmode') || (matchMedia('(max-width:700px)').matches ? 'list' : 'tree');
+      let roundsMode = localStorage.getItem('bx_tmode') || 'list';
       BX.partTagReady().then(() => { if (last) render(last.data, last.me, last.myData); }).catch(() => {});
 
       const STATUS_PT = { OPEN: 'inscrições abertas', RUNNING: 'em andamento', FINISHED: 'encerrado', CANCELED: 'cancelado' };
+      const feeLabel = (cents) => cents ? (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'Gratuito';
 
       async function load(prefetched = null) {
         let data = prefetched;
@@ -74,14 +76,16 @@
         ];
 
         app.innerHTML = `
-          <div class="hero compact">
+          <div class="tournament-cover ${t.coverUrl ? 'has-image' : ''}">
+            ${t.coverUrl ? `<img src="${BX.esc(t.coverUrl)}" alt="Capa do torneio ${BX.esc(t.name)}">` : `<div class="tournament-cover-placeholder">${BX.icon('tournaments', 64)}<span>BEYXLAB / TOURNAMENT</span></div>`}
+          </div>
+          <div class="hero compact tournament-hero">
             <div>
-              <p class="eyebrow">${BX.dateFmt(t.startsAt, { weekday: 'long', day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' })}</p>
+              <p class="eyebrow">TORNEIO BEYBLADE X</p>
               <h1>${BX.esc(t.name)}</h1>
               <p>
                 <span class="status-chip ${t.status}">${STATUS_PT[t.status]}${t.status === 'RUNNING' ? ` — rodada ${t.currentRound}/${t.roundsPlanned}` : ''}</span>
-                ${t.storeName ? ` ${BX.ic('store', 14)} ${BX.esc(t.storeName)}` : ''}${t.address ? ` • ${BX.ic('pin', 14)} ${BX.esc(t.address)}` : ''}
-                • ${t.format === 'MD3' ? 'Melhor de 3' : 'Partida simples até 4 pontos'}
+                <span>${t.format === 'MD3' ? 'Melhor de 3' : 'Partida simples até 4 pontos'} · ${t.roundsPlanned} rodadas · ${data.players.length} inscritos</span>
               </p>
             </div>
             <div class="hero-actions">
@@ -90,6 +94,12 @@
               <button class="btn ghost icon-only" id="reportBtn" aria-label="Denunciar torneio" title="Denunciar torneio">${BX.icon('flag', 18)}</button>
             </div>
           </div>
+          <div class="tournament-facts" aria-label="Informações principais">
+            <div class="tournament-fact"><span>${BX.icon('calendar', 20)} Data e horário</span><strong>${BX.dateFmt(t.startsAt, { weekday: 'long', day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' })}</strong></div>
+            <div class="tournament-fact"><span>${BX.icon('pin', 20)} Local</span><strong>${BX.esc(t.storeName || t.address || 'A definir')}</strong>${t.storeName && t.address ? `<small>${BX.esc(t.address)}</small>` : ''}</div>
+            <div class="tournament-fact"><span>${BX.icon('money', 20)} Inscrição</span><strong>${feeLabel(t.entryFeeCents)}</strong></div>
+          </div>
+          ${t.description ? `<section class="tournament-intro"><p class="eyebrow">SOBRE O EVENTO</p><p>${BX.esc(t.description)}</p></section>` : ''}
           ${tabs.length > 1 ? `<nav class="tabs" style="justify-content:flex-start;margin-bottom:18px" aria-label="Seções do torneio">${tabs.map(([k, label]) => `<button class="tab${view === k ? ' active' : ''}" data-view="${k}" aria-selected="${view === k}">${label}</button>`).join('')}</nav>` : ''}
           <div id="viewBox"></div>`;
 
@@ -116,11 +126,11 @@
         if (t.status === 'RUNNING' && m.round === t.currentRound) return ['live', (m.p1Reported || m.p2Reported) ? 'Ao vivo · 1 reporte' : 'Ao vivo'];
         return ['pending', 'Pendente'];
       }
-      function competitor(pl, { won = false, lost = false, reported = false, bye = false } = {}) {
+      function competitor(pl, { won = false, lost = false, reported = false, bye = false, score = null } = {}) {
         const name = BX.esc(pl?.user?.name || (bye ? 'BYE' : '?'));
         const av = pl ? BX.avatarHtml(pl.user, { size: 28 }) : '<span class="avatar" style="width:28px;height:28px"><b>—</b></span>';
         const tag = won ? 'venceu' : reported ? 'reportou' : '';
-        return `<div class="competitor ${won ? 'winner' : ''} ${lost ? 'loser' : ''}">${av}<span title="${name}">${name}</span>${tag ? `<b class="rep">${tag}</b>` : '<span></span>'}</div>`;
+        return `<div class="competitor ${won ? 'winner' : ''} ${lost ? 'loser' : ''}">${av}<span title="${name}">${name}</span>${tag ? `<b class="rep">${tag}</b>` : '<span></span>'}${score != null ? `<b class="tournament-score">${score}</b>` : ''}</div>`;
       }
       function renderRounds(t, data) {
         if (!data.matches?.length) return '';
@@ -129,11 +139,11 @@
         const card = (m) => {
           const [st, label] = matchStatus(t, m);
           const done = m.status === 'DONE';
-          const score = t.format === 'MD3' && (m.p1Score || m.p2Score) ? ` · ${m.p1Score}–${m.p2Score}` : '';
+          const showScore = !m.bye && (m.p1Score || m.p2Score);
           return `<article class="bracket-match ${st} ${done ? 'decided' : ''}">
-            <header class="bm-head"><small>${m.bye ? `Mesa ${m.tableNo}` : `<a href="/mesa/${t.slug}/${m.id}" style="color:inherit;text-decoration:none" title="Abrir tela de mesa">Mesa ${m.tableNo}${score}</a>`}</small><span class="m-status ${st}">${label}</span></header>
-            ${competitor(m.p1, { won: done && m.winnerId === m.p1?.id, lost: done && !!m.winnerId && m.winnerId !== m.p1?.id, reported: !done && m.p1Reported })}
-            ${competitor(m.p2, { won: done && m.winnerId === m.p2?.id, lost: done && !!m.winnerId && m.winnerId !== m.p2?.id, reported: !done && m.p2Reported, bye: m.bye })}
+            <header class="bm-head"><small>${m.bye ? `Mesa ${m.tableNo}` : `<a href="/mesa/${t.slug}/${m.id}" title="Abrir tela de mesa">Mesa ${m.tableNo}</a>`}</small><span class="m-status ${st}">${label}</span></header>
+            ${competitor(m.p1, { won: done && m.winnerId === m.p1?.id, lost: done && !!m.winnerId && m.winnerId !== m.p1?.id, reported: !done && m.p1Reported, score: showScore ? m.p1Score : null })}
+            ${competitor(m.p2, { won: done && m.winnerId === m.p2?.id, lost: done && !!m.winnerId && m.winnerId !== m.p2?.id, reported: !done && m.p2Reported, bye: m.bye, score: showScore ? m.p2Score : null })}
           </article>`;
         };
         const cols = rounds.map((r) => `<section class="bracket-round ${isCur(r) ? 'current' : ''}" data-round="${r}"><h3>Rodada ${r}${isCur(r) ? ' · em andamento' : ''}</h3><div class="round-matches">${data.matches.filter((m) => m.round === r).sort((a, b) => a.tableNo - b.tableNo).map(card).join('')}</div></section>`).join('');
@@ -183,7 +193,6 @@
             </table></div>
           </div>` : '';
         box.innerHTML = `
-          ${t.description ? `<div class="panel-card" style="margin-bottom:16px"><p class="prose" style="margin:0">${BX.esc(t.description)}</p></div>` : ''}
           ${standings}
           ${(() => { const mine = ME && data.players.find((p) => p.user.id === ME.id); return mine ? `<div class="panel-card my-deck-box" style="margin-bottom:16px">
             <div class="section-title-row"><div><p class="eyebrow">MEU DECK NESTE TORNEIO</p><h2 style="font-size:20px">${mine.deck?.title ? BX.esc(mine.deck.title) : 'Nenhum deck declarado'}</h2></div>${BX.icon('decks', 22)}</div>
@@ -200,6 +209,7 @@
                 <div><h3>${BX.esc(p.user.name)}</h3><small>@${BX.esc(p.user.slug)}${p.dropped ? ' • DROP' : ''}${t.status === 'FINISHED' && p.deck?.title ? ` • ${BX.icon('decks', 11)} ${BX.esc(p.deck.title)}` : ''}</small></div>
               </a>`).join('') || '<div class="empty-state">Ninguém inscrito ainda.</div>'}
           </div>
+          ${t.status === 'FINISHED' ? `<section class="tournament-gallery"><div class="section-title-row"><div><p class="eyebrow">MOMENTOS DO EVENTO</p><h2>Galeria de fotos</h2></div></div>${data.photos?.length ? `<div class="tournament-gallery-grid">${data.photos.map((photo, i) => `<a href="${BX.esc(photo.url)}" target="_blank" rel="noopener" aria-label="Abrir foto ${i + 1} do evento"><img src="${BX.esc(photo.url)}" alt="Foto ${i + 1} do torneio" loading="lazy"></a>`).join('')}</div>` : '<p class="muted">As fotos do evento aparecerão aqui.</p>'}</section>` : ''}
           <div class="modal-backdrop" id="publicDeckModal" hidden><div class="modal"></div></div>`;
         const deckByPlayer = new Map(data.standings.filter((s) => s.player.deck?.beys?.length).map((s) => [s.player.id, s]));
         const deckModal = box.querySelector('#publicDeckModal');
@@ -283,6 +293,7 @@
                   ${t.status === 'RUNNING' && t.currentRound < t.roundsPlanned ? `<button class="btn primary" id="nextBtn">Fechar rodada e parear a próxima</button>` : ''}
                   ${t.status === 'RUNNING' ? `<button class="btn secondary" id="lateInviteBtn">${BX.ic('link', 14)} Gerar convite de entrada tardia</button>` : ''}
                   ${t.status === 'RUNNING' ? `<button class="btn secondary" id="finishBtn">${BX.ic('finish', 14)} Encerrar torneio</button>` : ''}
+                  ${t.status !== 'CANCELED' ? `<button class="btn ghost" id="tamerLeagueSyncBtn" title="Reenvia o estado atual do torneio ao TamerLeague">Sincronizar TamerLeague</button>` : ''}
                   ${t.status !== 'CANCELED' && t.status !== 'FINISHED' ? `<button class="btn danger-outline" id="cancelBtn">Cancelar torneio</button>` : ''}
                 </div>
               </div>
@@ -337,18 +348,39 @@
               </div>
               <div class="panel-card form-grid">
                 <p class="eyebrow" style="margin:0">EDITAR TORNEIO</p>
+                <div><label for="coverFile">Capa do torneio</label><input id="coverFile" type="file" accept="image/png,image/jpeg,image/webp" /><small class="muted">PNG, JPG ou WebP até 10 MB. A imagem aparece inteira no desktop.</small><button class="btn secondary" id="uploadCover" type="button">Enviar capa</button></div>
                 <div><label>Nome</label><input id="eName" value="${BX.esc(t.name)}" /></div>
-                <div><label>Loja</label><input id="eStore" value="${BX.esc(t.storeName || '')}" /></div>
-                <div><label>Endereço</label><input id="eAddr" value="${BX.esc(t.address || '')}" /></div>
+                <div><label>Loja</label><select id="eStore"><option value="">Carregando lojas…</option></select></div>
+                <div><label>Endereço</label><input id="eAddr" value="${BX.esc(t.address || '')}" readonly /></div>
+                <div><label>Inscrição (R$)</label><input id="eFee" type="number" min="0" step="0.01" value="${((t.entryFeeCents || 0) / 100).toFixed(2)}" inputmode="decimal" /><small class="muted">Use 0 para gratuito.</small></div>
                 <div><label>Rodadas</label><input id="eRounds" type="number" min="1" max="12" value="${t.roundsPlanned}" /></div>
                 <div><label>Descrição</label><textarea id="eDesc">${BX.esc(t.description || '')}</textarea></div>
                 <div class="inline-actions"><button class="btn primary" id="saveT">Salvar</button></div>
               </div>
+              ${t.status === 'FINISHED' ? `<div class="panel-card form-grid"><p class="eyebrow">FOTOS DO EVENTO</p><label for="eventPhotos">Adicionar fotos à galeria</label><input id="eventPhotos" type="file" accept="image/png,image/jpeg,image/webp" multiple /><small class="muted">Até 6 por envio, 30 no total, 10 MB por foto.</small><button class="btn secondary" id="uploadPhotos" type="button">Enviar fotos</button></div>` : ''}
             </div>
           </div>
           <div class="modal-backdrop" id="manageDeckModal" hidden><div class="modal"></div></div>`;
 
         const act = (fn) => async () => { try { await fn(); load(); } catch (e) { BX.toast(e.message); } };
+        const uploadFiles = async (inputId, field, endpoint, buttonId) => {
+          const input = document.getElementById(inputId);
+          const button = document.getElementById(buttonId);
+          const files = [...(input?.files || [])];
+          if (!files.length) return BX.toast('Selecione uma imagem primeiro.');
+          const form = new FormData(); files.forEach((file) => form.append(field, file));
+          button.disabled = true; button.textContent = 'Enviando…';
+          try { await BX.api(`/api/tournaments/${slug}/${endpoint}`, { method: 'POST', body: form }); BX.toast('Imagem enviada!'); await load(); }
+          catch (e) { BX.toast(e.message); button.disabled = false; button.textContent = 'Tentar novamente'; }
+        };
+        document.getElementById('uploadCover')?.addEventListener('click', () => uploadFiles('coverFile', 'file', 'cover', 'uploadCover'));
+        document.getElementById('uploadPhotos')?.addEventListener('click', () => uploadFiles('eventPhotos', 'photos', 'photos', 'uploadPhotos'));
+        BX.api('/api/stores').then(({ stores }) => {
+          const select = document.getElementById('eStore'); if (!select) return;
+          select.innerHTML = `<option value="">Sem loja vinculada</option>${stores.map((s) => `<option value="${BX.esc(s.id)}" ${s.id === t.storeId ? 'selected' : ''}>${BX.esc(s.name)}</option>`).join('')}`;
+          const updateAddress = () => { const store = stores.find((s) => s.id === select.value); document.getElementById('eAddr').value = store?.address || ''; };
+          select.addEventListener('change', updateAddress);
+        }).catch(() => { const select = document.getElementById('eStore'); if (select) select.innerHTML = '<option value="">Não foi possível carregar lojas</option>'; });
         let deckEditor = null;
         const miniRole = (p) => {
           if (p.kind === 'BLADE') return p.subKind === 'INTEGRATED' ? 'integrated' : 'blade';
@@ -418,6 +450,7 @@
           } catch (e) { BX.toast(e.message); }
         });
         document.getElementById('finishBtn')?.addEventListener('click', act(() => confirm('Encerrar o torneio?') && BX.api(`/api/tournaments/${slug}/finish`, { method: 'POST' })));
+        document.getElementById('tamerLeagueSyncBtn')?.addEventListener('click', act(async () => { await BX.api(`/api/tournaments/${slug}/tamerleague-sync`, { method: 'POST' }); BX.toast('Estado atual enviado ao TamerLeague.'); }));
         document.getElementById('cancelBtn')?.addEventListener('click', act(() => confirm('Cancelar o torneio? Os jogadores serão avisados pelo status.') && BX.api(`/api/tournaments/${slug}/cancel`, { method: 'POST' })));
         box.querySelectorAll('[data-accept]').forEach((b) => b.addEventListener('click', act(() => BX.api(`/api/tournaments/${slug}/matches/${b.dataset.accept}/resolve`, { method: 'POST', body: {} }))));
         box.querySelectorAll('[data-win]').forEach((b) => b.addEventListener('click', act(() => {
@@ -453,8 +486,8 @@
           method: 'PATCH',
           body: {
             name: document.getElementById('eName').value,
-            storeName: document.getElementById('eStore').value,
-            address: document.getElementById('eAddr').value,
+            storeId: document.getElementById('eStore').value,
+            entryFeeCents: Math.round(Number(document.getElementById('eFee').value || 0) * 100),
             roundsPlanned: document.getElementById('eRounds').value,
             description: document.getElementById('eDesc').value,
           },

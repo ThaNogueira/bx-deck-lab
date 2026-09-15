@@ -50,6 +50,15 @@ try {
   results.push('Avatar upload and image retrieval (local only)');
   const {tournament} = await api(owner,'/api/tournaments','POST',{name:`Torneio QA ${run}`,startsAt:new Date().toISOString(),roundsPlanned:1});
   const base = `/api/tournaments/${tournament.slug}`;
+  await api(owner, base, 'PATCH', { entryFeeCents: 2500, description: 'Evento de teste com premiação.' });
+  const coverResponse = await owner.request.post(origin + base + '/cover', { multipart: { file: { name: 'cover.png', mimeType: 'image/png', buffer: png } } });
+  assert.equal(coverResponse.status(), 200, await coverResponse.text());
+  const cover = await coverResponse.json();
+  assert((await owner.request.get(origin + cover.coverUrl)).ok());
+  assert.equal((await api(owner, base)).tournament.entryFeeCents, 2500);
+  const deniedCover = await other.request.post(origin + base + '/cover', { multipart: { file: { name: 'cover.png', mimeType: 'image/png', buffer: png } } });
+  assert.equal(deniedCover.status(), 403);
+  results.push('Tournament cover, entry fee and organizer permissions');
   for (const context of [owner,other,third]) await api(context,base+'/join','POST',{});
   await api(owner,base+'/my-deck','POST',{deckId:deck.id});
   await api(other,base+'/start','POST',{},403);
@@ -60,6 +69,10 @@ try {
   assert(matches.some(m => !m.p2), 'Odd field must have bye');
   for (const match of matches.filter(m => m.p2)) await api(owner,base+`/matches/${match.id}/resolve`,'POST',{winnerId:match.p1.id});
   await api(owner,base+'/finish','POST',{});
+  const photoResponse = await owner.request.post(origin + base + '/photos', { multipart: { photos: { name: 'event.png', mimeType: 'image/png', buffer: png } } });
+  assert.equal(photoResponse.status(), 200, await photoResponse.text());
+  assert.equal((await api(owner, base)).photos.length, 1);
+  results.push('Finished-event gallery upload and retrieval');
   const exported = await api(owner,base+'/standings-image.png');
   assert.equal(exported.headers()['content-type'],'image/png');
   await writeFile('artifacts/revamp-auth/standings.png',await exported.body());

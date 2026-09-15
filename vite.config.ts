@@ -11,7 +11,7 @@ export default defineConfig({
     cssCodeSplit: false,
     manifest: true,
     rollupOptions: {
-      input: { icons: resolve('frontend/entries/icons.tsx'), login: resolve('frontend/entries/login.tsx') },
+      input: { icons: resolve('frontend/entries/icons.tsx'), login: resolve('frontend/entries/login.tsx'), builder: resolve('frontend/entries/builder.tsx') },
       output: {
         entryFileNames: '[name].js',
         chunkFileNames: 'chunks/[name]-[hash].js',

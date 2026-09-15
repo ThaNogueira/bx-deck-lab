@@ -1127,12 +1127,36 @@
     const a=analyzeDeck();
     const complete=deck.filter(isComplete).length;
     el.className=`analysis-card ${a.tone||'neutral'}`;
-    el.innerHTML=`<div class="deck-analysis-head"><div><p class="eyebrow">ANALISADOR DO DECK</p><h2>${escapeHTML(a.title)}</h2></div><span>${complete}/3 completos</span></div><p class="deck-analysis-text">${escapeHTML(a.text)}</p>${a.atk!==undefined?`<div class="deck-score-grid">${scoreBar('Ataque',a.atk)}${scoreBar('Defesa',a.def)}${scoreBar('Stamina',a.sta)}</div>`:''}${a.special?.length?`<div class="analysis-warnings">${a.special.map(x=>`<p>• ${escapeHTML(x)}</p>`).join('')}</div>`:''}<small class="heuristic-note">Avaliação heurística: serve como guia de construção; peso, molde, desgaste, estádio e técnica de lançamento podem alterar bastante o resultado real.</small>`;
+    window.BXBuilderUI.analysis(a,complete);
   }
 
   function renderBuilder() {
     const grid=document.getElementById('deckGrid');
-    grid.innerHTML=deck.map((slot,i)=>renderSlot(slot,i)).join('');
+    window.BXBuilderUI.cards({
+      modes:MODE_LABEL, resolveImage,
+      slots:deck.map((slot,i)=>{
+        const defs=slotDefs(slot), used=currentUsage(i);
+        const tip=slot.mode==='cxrib'?PARTS[slot.rib]:PARTS[slot.bit];
+        const profile=tip?getBitProfile(tip):null;
+        return {
+          mode:slot.mode,index:i,invalid:slotIssues(slot,i),complete:isComplete(slot),
+          name:slotName(slot),filled:slotParts(slot).length,
+          total:defs.filter(d=>d.field!=='over'||PARTS[slot.main]?.requiresOver).length,
+          expand:['cx','cxrib'].includes(slot.mode)&&!!PARTS[slot.main]?.requiresOver,
+          tip:profile?{label:tip.abbrev||tip.display,note:profile.note}:undefined,
+          analysis:analyzeBey(slot),
+          fields:defs.map(d=>{
+            const id=slot[d.field],part=id?PARTS[id]:undefined,problems=[];
+            if(part){
+              if(part.banned)problems.push('banida');
+              if((used[id]||0)>0&&!part.basicLock)problems.push(`repetida (Bey ${deck.findIndex((s,j)=>j!==i&&slotParts(s).includes(id))+1})`);
+              if(!builderShowAll&&(used[id]||0)+1>(inventory[id]||0))problems.push('sem cópia');
+            }
+            return {...d,part,problems,targeted:!!panelTarget&&panelTarget.bey===i&&panelTarget.field===d.field};
+          }),
+        };
+      }),
+    });
     grid.querySelectorAll('select[data-slot]').forEach(el=>el.addEventListener('change',onSlotChange));
     grid.querySelectorAll('.clear-slot').forEach(el=>el.addEventListener('click',e=>{
       e.preventDefault(); e.stopPropagation();
@@ -1184,61 +1208,12 @@
     const v={...v0,info:builderShowAll?v0.info.filter(x=>!/\(modo catálogo\)/.test(x)):v0.info};
     const legalEl=document.getElementById('deckLegality');
     legalEl.className='legality '+(v.legal?'good':v.errors.length?'bad':'neutral');
-    legalEl.innerHTML=v.legal?`${BX.ic('check',13)} Deck legal`:v.errors.length?`${BX.ic('x',13)} Deck ilegal`:`${v.complete}/3 Beys prontos`;
-    document.getElementById('validationList').innerHTML=[
-      ...v.errors.map(x=>`<div class="validation-item err"><i>×</i><span>${escapeHTML(x)}</span></div>`),
-      ...v.info.map(x=>`<div class="validation-item"><i>•</i><span>${escapeHTML(x)}</span></div>`),
-      ...(v.legal?[`<div class="validation-item"><i>${BX.ic('check', 14)}</i><span>Três Beys completos e sem repetições proibidas.</span></div>`]:[])
-    ].join('') || `<div class="validation-item"><i>${BX.ic('check', 14)}</i><span>Nenhum problema detectado.</span></div>`;
+    window.BXBuilderUI.validation(v);
     ['publishDeckBtn','shareDeckBtn'].forEach(id=>document.getElementById(id)?.classList.toggle('glow',v.legal));
     renderDeckBar(v); syncPager(); syncUndoButtons(); renderDraftNotice();
     renderDeckAnalysis();
   }
 
-  function renderStage(slot,i){
-    const defs=slotDefs(slot);
-    const used=currentUsage(i);
-    const html=defs.map(d=>{
-      const id=slot[d.field]; const p=id?PARTS[id]:null;
-      const probs=[];
-      if(p){ if(p.banned)probs.push('banida'); if((used[id]||0)>0&&!p.basicLock)probs.push(`repetida (Bey ${deck.findIndex((s,j)=>j!==i&&slotParts(s).includes(id))+1})`); if(!builderShowAll&&(used[id]||0)+1>(inventory[id]||0))probs.push('sem cópia'); }
-      const targeted=panelTarget&&panelTarget.bey===i&&panelTarget.field===d.field;
-      return `<div class="slot sl-${d.field} ${p?'filled':'empty'} ${probs.length?'bad':''} ${targeted?'targeted':''}" role="button" tabindex="0" data-bey="${i}" data-field="${d.field}" data-kind="${d.kind}" aria-label="${escapeAttr(d.label)}: ${escapeAttr(p?p.display:'vazio')}" title="${escapeAttr(p?`${p.display} — ${d.label}${probs.length?' · '+probs.join(', '):''}`:`Escolher ${d.label}`)}">
-        <span class="slot-ring">${p?partArt(p,'slot'):`<span class="slot-plus">${BX.ic('plus',18)}</span>`}</span>
-        <span class="slot-lab">${escapeHTML(d.label)}</span>
-        <span class="slot-name">${p?escapeHTML(p.abbrev&&p.kind==='bit'?p.display:p.display):(targeted?'aguardando…':'escolher')}</span>
-        ${p?`<button type="button" class="slot-x" tabindex="-1" title="Remover ${escapeAttr(p.display)}" aria-label="Remover">${BX.ic('x',11)}</button>`:''}
-        <span class="slot-tip" aria-hidden="true"></span>
-      </div>`;
-    }).join('');
-    return `<div class="stage" data-mode="${slot.mode}" data-over="${defs.some(d=>d.field==='over')?'1':'0'}"><div class="stage-glow"></div>${html}</div>`;
-  }
-
-  function renderSlot(slot,i) {
-    const invalid = slotIssues(slot,i);
-    const isCX=slot.mode==='cx' || slot.mode==='cxrib';
-    const tipPart=slot.mode==='cxrib' ? PARTS[slot.rib] : PARTS[slot.bit];
-    const bitProfile=tipPart ? getBitProfile(tipPart) : null;
-    const filled=slotParts(slot).length, total=slotDefs(slot).filter(d=>d.field!=='over'||PARTS[slot.main]?.requiresOver).length;
-    return `<article class="bey-card v2 ${invalid.length?'invalid':''} ${isComplete(slot)&&!invalid.length?'complete':''}" data-deck-slot="${i}">
-      <div class="bey-head">
-        <div class="slot-number"><b><i>${i+1}</i></b> Bey ${i+1} <small class="bey-progress">${filled}/${total}</small></div>
-        <div class="bey-head-actions">
-          <button type="button" class="move-slot" data-slot="${i}" data-dir="-1" ${i===0?'disabled':''} title="Mover para a esquerda">${BX.ic('back',13)}</button>
-          <button type="button" class="move-slot" data-slot="${i}" data-dir="1" ${i===2?'disabled':''} title="Mover para a direita">${BX.ic('back',13)}</button>
-          <button type="button" class="dup-slot" data-slot="${i}" title="Copiar só a estrutura (${escapeAttr(MODE_LABEL[slot.mode]||'')}) para um Bey vazio">${BX.ic('grid',13)}</button>
-          <button type="button" class="clear-slot" data-slot="${i}" title="Limpar este Bey">${BX.ic('trash',14)}</button>
-        </div>
-      </div>
-      <div class="bey-structure"><label>Estrutura</label><select data-slot="${i}" data-field="mode" aria-label="Estrutura do Bey ${i+1}">
-        ${Object.entries(MODE_LABEL).map(([k,l])=>`<option value="${k}" ${slot.mode===k?'selected':''}>${l}</option>`).join('')}
-      </select>${isCX&&PARTS[slot.main]?.requiresOver?'<span class="bey-badge">Expand</span>':''}</div>
-      ${renderStage(slot,i)}
-      <div class="bey-summary"><strong>${escapeHTML(slotName(slot))}</strong><small>${isComplete(slot)?(invalid.length?`${BX.ic('warn', 14)} ${escapeHTML(invalid[0])}`:`${BX.ic('check', 14)} Montagem válida`):`Toque num slot para escolher a peça (${filled}/${total})`}</small></div>
-      ${bitProfile?`<div class="bit-inline-note"><b>${escapeHTML(tipPart?.abbrev||tipPart?.display)}</b><span>${escapeHTML(bitProfile.note)}</span></div>`:''}
-      ${renderBeyAnalysis(slot)}
-    </article>`;
-  }
 
   /** Problemas do Bey para exibição: no modo catálogo, não possuir a peça não é problema. */
   function slotIssues(slot,i){ const e=validateSlot(slot,i); return builderShowAll?e.filter(x=>!/^sem cópia física/.test(x)):e; }
@@ -2219,14 +2194,6 @@
       return {p,owned,disabled,why,current:deck[bey][sheetTarget?.field||'']===p.id};
     });
   }
-  function sheetItemHtml({p,owned,disabled,why,current,rec}){
-    return `<button type="button" class="sh-item ${disabled?'disabled':''} ${current?'current':''} ${rec?'rec':''}" data-part="${escapeAttr(p.id)}" ${disabled?'data-disabled="1"':''} title="${escapeAttr(p.display)}">
-      ${partArt(p,'sh')}
-      <span class="sh-txt"><b>${escapeHTML(p.display)}</b><small>${p.abbrev&&p.abbrev!==p.display?escapeHTML(p.abbrev)+' · ':''}${builderShowAll?(owned?`${BX.ic('check',11)} na coleção${owned>1?` ×${owned}`:''}`:`<i class="sh-noown" title="Não está na sua coleção">${BX.ic('backpack',11)}</i>`):`×${owned} na coleção`}${p.banned?' · <em>banida</em>':''}</small></span>
-      ${why?`<span class="sh-why">${escapeHTML(why)}</span>`:current?`<span class="sh-why cur">${BX.ic('check',12)} atual</span>`:rec?`<span class="sh-why rec" title="${escapeAttr(rec.reason)}">${BX.ic('sparkle',11)} recomendada</span>`:''}
-      <i class="sh-fav ${favParts.has(p.id)?'on':''}" data-fav="${escapeAttr(p.id)}" title="Favoritar">${BX.ic('star',14)}</i>
-    </button>`;
-  }
   function renderSheet(){
     if(!sheetTarget)return;
     const {bey,kind}=sheetTarget;
@@ -2240,11 +2207,8 @@
     const byId=new Map(items.map(x=>[x.p.id,x]));
     const favs=[...favParts].map(id=>byId.get(id)).filter(Boolean);
     const rec=recentParts.map(id=>byId.get(id)).filter(x=>x&&!favParts.has(x.p.id)).slice(0,8);
-    const chip=(x,cls='')=>`<button type="button" class="sh-chip ${cls} ${x.disabled?'disabled':''}" data-part="${escapeAttr(x.p.id)}" ${x.disabled?'data-disabled="1"':''} title="${escapeAttr(x.p.display)}${x.why?' — '+escapeAttr(x.why):''}">${partArt(x.p,'chip')}<span>${escapeHTML(x.p.abbrev||x.p.display)}</span></button>`;
-    quick.innerHTML=(recs.length?`<div class="sh-row rec"><small>${BX.ic('sparkle',11)} Recomendadas para este Bey</small><div>${recs.map(r=>recCardHtml(r)).join('')}</div></div>`:'')
-      +(favs.length?`<div class="sh-row"><small>${BX.ic('star',11)} Favoritas</small><div>${favs.map(x=>chip(x,'fav')).join('')}</div></div>`:'')
-      +(rec.length?`<div class="sh-row"><small>${BX.ic('clock',11)} Recentes</small><div>${rec.map(x=>chip(x)).join('')}</div></div>`:'');
-    list.innerHTML=items.slice(0,220).map(sheetItemHtml).join('')||`<div class="empty-state">Nenhuma peça desse tipo${builderShowAll?'':' na sua coleção'}.</div>`;
+    const dto=x=>({...x,favorite:favParts.has(x.p.id)});
+    window.BXBuilderUI.sheet({items:items.slice(0,220).map(dto),favorites:favs.map(dto),recent:rec.map(dto),recommendations:recs,showAll:builderShowAll,resolveImage});
     document.getElementById('sheetCount').textContent=`${items.length} peça(s)`;
     hydrateImages(quick); hydrateImages(list);
     bindPreview(list,'.sh-item',el=>PARTS[el.dataset.part]);
@@ -2599,8 +2563,11 @@
       const grid=document.getElementById(cfg.grid); if(!grid)return;
       const filters=document.getElementById(cfg.filters);
       if(filters&&!filters.dataset.ready){
+        if(cfg.grid==='pickerGrid') window.BXBuilderUI.filters(PICKER_KINDS,st.kind);
+        else {
         filters.innerHTML=PICKER_KINDS.map(([k,label])=>`<button class="picker-chip ${k===st.kind?'active':''}" data-kind="${k}">${label}</button>`).join('')
           +(cfg.onlyOwned?'':`<button class="picker-chip owned-toggle" data-owned="1" title="Mostrar só peças que eu tenho">${BX.ic('check', 14)} Tenho</button>`);
+        }
         filters.dataset.ready='1';
         filters.querySelectorAll('[data-kind]').forEach(b=>b.addEventListener('click',()=>{
           st.kind=b.dataset.kind;
@@ -2617,7 +2584,11 @@
       if(st.ownedOnly||cfg.onlyOwned)items=items.filter(p=>(inventory[p.id]||0)>0);
       items.sort((a,b)=>(cfg.favorites?(favParts.has(b.id)-favParts.has(a.id)):0)||((inventory[b.id]||0)>0)-((inventory[a.id]||0)>0)||a.display.localeCompare(b.display));
       const shown=items.slice(0,160);
-      grid.innerHTML=shown.map(p=>{
+      if(cfg.grid==='pickerGrid') window.BXBuilderUI.picker({resolveImage,items:shown.map(p=>({
+        part:p,owned:inventory[p.id]||0,favorite:favParts.has(p.id),
+        title:`${p.display} — ${KIND_LABEL[p.kind]||p.kind}${inventory[p.id]?` (você tem ×${inventory[p.id]})`:''}`,
+      }))});
+      else grid.innerHTML=shown.map(p=>{
         const owned=inventory[p.id]||0;
         const stt=cfg.tileState?cfg.tileState(p):null;
         return `<button class="picker-tile ${owned?'owned':''} ${stt?.disabled?'disabled':''} ${cfg.favorites&&favParts.has(p.id)?'fav':''}" data-part="${escapeAttr(p.id)}" ${cfg.draggable&&!stt?.disabled?'draggable="true"':''} ${stt?.disabled?'data-disabled="1"':''} title="${escapeAttr(p.display)} — ${KIND_LABEL[p.kind]||p.kind}${owned?` (você tem ×${owned})`:''}${stt?.title?` — ${escapeAttr(stt.title)}`:''}">

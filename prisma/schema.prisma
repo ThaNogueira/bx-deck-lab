@@ -231,19 +231,45 @@ model Tournament {
   name          String
   storeName     String?
   address       String?
+  storeId       String?
   startsAt      DateTime
   format        String   @default("MD3") // MD3 | POINTS4
   roundsPlanned Int      @default(4)
   description   String?
+  coverUrl      String?
+  entryFeeCents Int      @default(0)
   status        String   @default("OPEN") // OPEN | RUNNING | FINISHED | CANCELED
   currentRound  Int      @default(0)
   organizerId   String
   createdAt     DateTime @default(now())
   organizer     User     @relation("organizer", fields: [organizerId], references: [id], onDelete: Cascade)
+  store         Store?   @relation(fields: [storeId], references: [id], onDelete: SetNull)
 
   players       TournamentPlayer[]
   matches       TMatch[]
   lateInvites   TournamentLateEntryInvite[]
+  photos        TournamentPhoto[]
+}
+
+model Store {
+  id              String   @id @default(cuid())
+  name            String   @unique
+  address         String?
+  active          Boolean  @default(true)
+  tamerLeagueSync Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  tournaments     Tournament[]
+}
+
+model TournamentPhoto {
+  id           String     @id @default(cuid())
+  tournamentId String
+  url          String
+  createdAt    DateTime   @default(now())
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+
+  @@index([tournamentId, createdAt])
 }
 
 model TournamentPlayer {

@@ -672,6 +672,21 @@ a.list-card{text-decoration:none;color:inherit}
 @media (max-width:1180px){.admin-layout{grid-template-columns:1fr}.admin-nav{position:static;flex-direction:row;flex-wrap:wrap}}
 @media (max-width:820px){.profile-grid,.home-grid{grid-template-columns:1fr}.part-hero{grid-template-columns:96px 1fr}.part-hero .part-art{width:92px;height:92px}.profile-head{flex-wrap:wrap}.page-toolbar{grid-template-columns:1fr}}
 
+/* Gestão de torneio no celular: decisões de resultado precisam ser fáceis de tocar. */
+@media (max-width:600px){
+  .profile-grid{margin-top:14px}
+  .org-match-row{grid-template-columns:42px minmax(0,1fr);gap:9px;padding:12px}
+  .org-match-row .row-actions{grid-column:1 / -1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:3px}
+  .org-match-row .row-actions .btn{min-height:44px;padding:8px 7px;font-size:11px;line-height:1.15;justify-content:center;text-align:center}
+  .org-match-row .row-actions [data-accept]{grid-column:1 / -1;border-color:rgba(80,231,255,.55);color:var(--cyan);font-weight:800}
+  .org-match-row .row-actions [data-win]{background:#183022;border-color:rgba(84,230,156,.5);color:#d5ffe7;font-weight:800}
+  .org-match-row .row-actions [data-reopen]{background:#312319;border-color:rgba(255,186,92,.5);color:#ffd595}
+  .org-match-row .row-actions [data-mesa]{background:#171d29}
+  .panel-card>.inline-actions{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  .panel-card>.inline-actions .btn{min-height:46px;padding:9px;font-size:12px;justify-content:center;text-align:center}
+  .panel-card>.inline-actions .primary{grid-column:1 / -1}
+}
+
 /* Cartaz de impressão (item 7) */
 .poster{max-width:760px;margin:0 auto;background:white;color:#0b0c11;border-radius:18px;padding:56px 42px;text-align:center}
 .poster .poster-logo{font:800 64px/1 var(--display);letter-spacing:.02em;text-transform:uppercase}

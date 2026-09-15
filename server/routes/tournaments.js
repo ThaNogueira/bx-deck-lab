@@ -9,7 +9,8 @@ import { requireUser, publicUser, isStaff } from '../auth.js';
 import { moderateFields, getSetting } from '../settings.js';
 import { audit } from '../audit.js';
 import { siteUrl, uniqueSlug } from '../util.js';
-import { UPLOADS_DIR } from '../uploads.js';
+import { UPLOADS_DIR, uploadTournamentImages, uploadedUrl } from '../uploads.js';
+import { pushTamerLeagueTournament } from '../tamerleague.js';
 
 const router = Router();
 const ah = (fn) => (req, res, next) => fn(req, res, next).catch(next);
@@ -23,10 +24,13 @@ function tournamentDto(t, user) {
     name: t.name,
     storeName: t.storeName,
     address: t.address,
+    storeId: t.storeId,
     startsAt: t.startsAt,
     format: t.format,
     roundsPlanned: t.roundsPlanned,
     description: t.description,
+    coverUrl: t.coverUrl,
+    entryFeeCents: t.entryFeeCents ?? 0,
     status: t.status,
     currentRound: t.currentRound,
     organizer: t.organizer ? publicUser(t.organizer) : undefined,
@@ -96,6 +100,8 @@ export async function loadTournament(slug) {
     where: { slug },
     include: {
       organizer: true,
+      store: true,
+      photos: { orderBy: { createdAt: 'desc' } },
       players: { include: { user: true, deck: true } },
       matches: { include: { p1: { include: { user: true, deck: true } }, p2: { include: { user: true, deck: true } } }, orderBy: [{ round: 'asc' }, { tableNo: 'asc' }] },
     },
@@ -133,6 +139,17 @@ export function standingsOf(t, options) {
   return t.players
     .map((p) => { const { nonByeWins, opponents, ...row } = stats.get(p.id); return { player: playerDto(p, options), ...row, omw: omw(p.id), oomw: oomw(p.id) }; })
     .sort((a, b) => b.points - a.points || b.omw - a.omw || b.oomw - a.oomw || a.player.user.name.localeCompare(b.player.user.name));
+}
+
+async function syncTamerLeague(t) {
+  const fresh = await loadTournament(t.slug);
+  return pushTamerLeagueTournament(fresh, standingsOf(fresh));
+}
+async function automaticTamerLeagueSync(t) {
+  const fresh = await loadTournament(t.slug);
+  if (!fresh?.store?.active || !fresh.store.tamerLeagueSync) return { synced: false, skipped: true };
+  try { return { synced: true, ...(await syncTamerLeague(t)) }; }
+  catch (error) { console.error('[tamerleague]', t.id, error); return { synced: false, error: error.message }; }
 }
 
 /** Pareamento suíço: procura uma combinação inteira sem revanche antes de aceitá-la. */
@@ -216,6 +233,11 @@ router.get('/api/tournaments', ah(async (req, res) => {
   res.json({ tournaments: list.map((t) => tournamentDto(t, req.user)) });
 }));
 
+router.get('/api/stores', ah(async (_req, res) => {
+  const stores = await prisma.store.findMany({ where: { active: true }, select: { id: true, name: true, address: true }, orderBy: { name: 'asc' } });
+  res.json({ stores });
+}));
+
 router.post('/api/tournaments', requireUser, moderateFields('name', 'description'), ah(async (req, res) => {
   const flags = await getSetting('flags');
   if (flags.tournaments === false) return res.status(403).json({ error: 'Criação de torneios está temporariamente desativada.' });
@@ -224,16 +246,21 @@ router.post('/api/tournaments', requireUser, moderateFields('name', 'description
   const startsAt = new Date(b.startsAt || '');
   if (!name) return res.status(422).json({ error: 'Dê um nome ao torneio.' });
   if (Number.isNaN(startsAt.getTime())) return res.status(422).json({ error: 'Data/horário inválidos.' });
+  const storeId = String(b.storeId || '').trim();
+  const store = storeId ? await prisma.store.findFirst({ where: { id: storeId, active: true } }) : null;
+  if (storeId && !store) return res.status(422).json({ error: 'Escolha uma loja ativa da lista.' });
   const t = await prisma.tournament.create({
     data: {
       slug: await uniqueSlug(prisma.tournament, name),
       name,
-      storeName: String(b.storeName || '').slice(0, 80) || null,
-      address: String(b.address || '').slice(0, 160) || null,
+      storeId: store?.id || null,
+      storeName: store?.name || null,
+      address: store?.address || null,
       startsAt,
       format: b.format === 'POINTS4' ? 'POINTS4' : 'MD3',
       roundsPlanned: Math.max(1, Math.min(12, parseInt(b.roundsPlanned, 10) || 4)),
       description: String(b.description || '').slice(0, 2000) || null,
+      entryFeeCents: Number.isInteger(Number(b.entryFeeCents)) ? Math.max(0, Math.min(10000000, Number(b.entryFeeCents))) : 0,
       organizerId: req.user.id,
     },
     include: { organizer: true, players: true },
@@ -267,6 +294,7 @@ router.get('/api/tournaments/:slug', ah(async (req, res) => {
     tournament: tournamentDto(t, req.user),
     players: t.players.map((p) => playerDto(p, deckOptions)),
     matches: t.matches.map((m) => matchDto(m, deckOptions)),
+    photos: t.photos.map(({ id, url, createdAt }) => ({ id, url, createdAt })),
     standings: t.status === 'OPEN' ? [] : standingsOf(t, deckOptions),
     me: me ? { playerId: me.id, dropped: me.dropped } : null,
   });
@@ -519,9 +547,20 @@ router.patch('/api/tournaments/:slug', requireManage(bySlug), moderateFields('na
   const b = req.body || {};
   const data = {};
   if (typeof b.name === 'string' && b.name.trim()) data.name = b.name.trim().slice(0, 80);
-  if ('storeName' in b) data.storeName = String(b.storeName || '').slice(0, 80) || null;
-  if ('address' in b) data.address = String(b.address || '').slice(0, 160) || null;
+  if ('storeId' in b) {
+    const storeId = String(b.storeId || '').trim();
+    const store = storeId ? await prisma.store.findFirst({ where: { id: storeId, active: true } }) : null;
+    if (storeId && !store) return res.status(422).json({ error: 'Escolha uma loja ativa da lista.' });
+    data.storeId = store?.id || null;
+    data.storeName = store?.name || null;
+    data.address = store?.address || null;
+  }
   if ('description' in b) data.description = String(b.description || '').slice(0, 2000) || null;
+  if ('entryFeeCents' in b) {
+    const fee = Number(b.entryFeeCents);
+    if (!Number.isInteger(fee) || fee < 0 || fee > 10000000) return res.status(422).json({ error: 'Informe um valor de inscrição válido.' });
+    data.entryFeeCents = fee;
+  }
   if (b.startsAt) {
     const d = new Date(b.startsAt);
     if (!Number.isNaN(d.getTime())) data.startsAt = d;
@@ -533,6 +572,37 @@ router.patch('/api/tournaments/:slug', requireManage(bySlug), moderateFields('na
   res.json({ tournament: tournamentDto(t, req.user) });
 }));
 
+router.post('/api/tournaments/:slug/cover', requireManage(bySlug), uploadTournamentImages.single('file'), ah(async (req, res) => {
+  if (!req.file) return res.status(422).json({ error: 'Selecione uma imagem para a capa.' });
+  try {
+    await sharp(req.file.path).metadata();
+    const coverUrl = uploadedUrl(req.file);
+    await prisma.tournament.update({ where: { id: req.tournament.id }, data: { coverUrl } });
+    await audit(req.user, 'tournament.cover.set', 'TOURNAMENT', req.tournament.id);
+    res.json({ coverUrl });
+  } catch (e) { await fs.unlink(req.file.path).catch(() => {}); throw e; }
+}));
+
+router.post('/api/tournaments/:slug/photos', requireManage(bySlug), uploadTournamentImages.array('photos', 6), ah(async (req, res) => {
+  const files = req.files || [];
+  if (req.tournament.status !== 'FINISHED') {
+    await Promise.all(files.map((file) => fs.unlink(file.path).catch(() => {})));
+    return res.status(422).json({ error: 'A galeria fica disponível após o encerramento do torneio.' });
+  }
+  if (!files.length) return res.status(422).json({ error: 'Selecione pelo menos uma foto.' });
+  try {
+    const count = await prisma.tournamentPhoto.count({ where: { tournamentId: req.tournament.id } });
+    if (count + files.length > 30) {
+      await Promise.all(files.map((file) => fs.unlink(file.path).catch(() => {})));
+      return res.status(422).json({ error: 'A galeria aceita até 30 fotos.' });
+    }
+    await Promise.all(files.map((file) => sharp(file.path).metadata()));
+    const photos = await prisma.$transaction(files.map((file) => prisma.tournamentPhoto.create({ data: { tournamentId: req.tournament.id, url: uploadedUrl(file) } })));
+    await audit(req.user, 'tournament.photos.add', 'TOURNAMENT', req.tournament.id, { count: photos.length });
+    res.json({ photos });
+  } catch (e) { await Promise.all(files.map((file) => fs.unlink(file.path).catch(() => {}))); throw e; }
+}));
+
 router.post('/api/tournaments/:slug/start', requireManage(bySlug), ah(async (req, res) => {
   const t = req.tournament;
   if (t.status !== 'OPEN') return res.status(403).json({ error: 'O torneio já começou.' });
@@ -540,7 +610,7 @@ router.post('/api/tournaments/:slug/start', requireManage(bySlug), ah(async (req
   await pairRound(t, 1);
   await prisma.tournament.update({ where: { id: t.id }, data: { status: 'RUNNING', currentRound: 1 } });
   await audit(req.user, 'tournament.start', 'TOURNAMENT', t.id);
-  res.json({ ok: true, round: 1 });
+  res.json({ ok: true, round: 1, tamerLeague: await automaticTamerLeagueSync(t) });
 }));
 
 router.post('/api/tournaments/:slug/next-round', requireManage(bySlug), ah(async (req, res) => {
@@ -552,7 +622,7 @@ router.post('/api/tournaments/:slug/next-round', requireManage(bySlug), ah(async
   const round = t.currentRound + 1;
   await pairRound(t, round);
   await prisma.tournament.update({ where: { id: t.id }, data: { currentRound: round } });
-  res.json({ ok: true, round });
+  res.json({ ok: true, round, tamerLeague: await automaticTamerLeagueSync(t) });
 }));
 
 router.post('/api/tournaments/:slug/late-entry-invites', requireManage(bySlug), ah(async (req, res) => {
@@ -570,7 +640,16 @@ router.post('/api/tournaments/:slug/finish', requireManage(bySlug), ah(async (re
   await prisma.tournament.update({ where: { id: req.tournament.id }, data: { status: 'FINISHED' } });
   await audit(req.user, 'tournament.finish', 'TOURNAMENT', req.tournament.id);
   import('../meta.js').then((m) => m.onTournamentFinished(req.tournament.slug)).catch(() => {});
-  res.json({ ok: true });
+  res.json({ ok: true, tamerLeague: await automaticTamerLeagueSync(req.tournament) });
+}));
+
+router.post('/api/tournaments/:slug/tamerleague-sync', requireManage(bySlug), ah(async (req, res) => {
+  if (req.tournament.status === 'CANCELED') return res.status(422).json({ error: 'Torneios cancelados não podem ser enviados ao TamerLeague.' });
+  const fresh = await loadTournament(req.tournament.slug);
+  if (!fresh?.store?.active || !fresh.store.tamerLeagueSync) return res.status(403).json({ error: 'Somente torneios de lojas integradas ao TamerLeague podem sincronizar.' });
+  const tamerLeague = await syncTamerLeague(req.tournament);
+  await audit(req.user, 'tournament.tamerleague.sync', 'TOURNAMENT', req.tournament.id);
+  res.json({ ok: true, tamerLeague });
 }));
 
 router.post('/api/tournaments/:slug/cancel', requireManage(bySlug), ah(async (req, res) => {

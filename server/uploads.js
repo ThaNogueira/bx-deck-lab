@@ -48,6 +48,16 @@ export const uploadPost = multer({
   },
 });
 
+/** Imagens de torneio: sem SVG, GIF ou vídeo; limite controlado por endpoint. */
+export const uploadTournamentImages = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024, files: 6 },
+  fileFilter: (_req, file, cb) => {
+    if (['image/png', 'image/jpeg', 'image/webp'].includes(file.mimetype)) return cb(null, true);
+    cb(new Error('Use uma imagem PNG, JPG ou WebP de até 10 MB.'));
+  },
+});
+
 export function uploadedUrl(file) {
   return file ? `/uploads/${file.filename}` : null;
 }

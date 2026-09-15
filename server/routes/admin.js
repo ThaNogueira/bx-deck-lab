@@ -581,6 +581,27 @@ router.get('/api/admin/settings', ADMIN, ah(async (_req, res) => {
   res.json({ settings: out });
 }));
 
+router.get('/api/admin/stores', ADMIN, ah(async (_req, res) => {
+  res.json({ stores: await prisma.store.findMany({ orderBy: { name: 'asc' } }) });
+}));
+router.post('/api/admin/stores', ADMIN, ah(async (req, res) => {
+  const name = String(req.body?.name || '').trim().slice(0, 80);
+  if (!name) return res.status(422).json({ error: 'Nome da loja é obrigatório.' });
+  const store = await prisma.store.create({ data: { name, address: String(req.body?.address || '').trim().slice(0, 200) || null, active: req.body?.active !== false, tamerLeagueSync: !!req.body?.tamerLeagueSync } });
+  await audit(req.user, 'admin.store.create', 'STORE', store.id, { name });
+  res.json({ store });
+}));
+router.patch('/api/admin/stores/:id', ADMIN, ah(async (req, res) => {
+  const b = req.body || {}; const data = {};
+  if (typeof b.name === 'string' && b.name.trim()) data.name = b.name.trim().slice(0, 80);
+  if ('address' in b) data.address = String(b.address || '').trim().slice(0, 200) || null;
+  if ('active' in b) data.active = !!b.active;
+  if ('tamerLeagueSync' in b) data.tamerLeagueSync = !!b.tamerLeagueSync;
+  const store = await prisma.store.update({ where: { id: req.params.id }, data });
+  await audit(req.user, 'admin.store.update', 'STORE', store.id, { fields: Object.keys(data) });
+  res.json({ store });
+}));
+
 router.put('/api/admin/settings/:key', ADMIN, ah(async (req, res) => {
   const key = req.params.key;
   if (!EDITABLE_SETTINGS.includes(key)) return res.status(422).json({ error: 'Configuração desconhecida.' });

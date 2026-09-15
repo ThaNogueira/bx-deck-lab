@@ -24,33 +24,13 @@
         <h1>Torneios <em>abertos</em></h1>
         <p>Inscreva-se num torneio perto de você ou crie o seu — o site gera link de inscrição, QR Code e cartaz prontos.</p>
       </div>
-      <div class="hero-actions"><button class="btn primary" id="newT">+ Criar torneio</button></div>
+      <div class="hero-actions"><a class="btn primary" href="/torneios/novo">+ Criar torneio</a></div>
     </div>
     <div class="page-toolbar">
       <input id="q" placeholder="Buscar por nome, loja ou cidade…" />
     </div>
     <div id="list"><div class="empty-state">Carregando torneios…</div></div>
 
-    <div class="modal-backdrop" id="newModal" hidden>
-      <div class="modal">
-        <button class="modal-close" id="newClose">×</button>
-        <h2>Criar torneio</h2>
-        <div class="form-grid">
-          <div><label>Nome do torneio</label><input id="tName" maxlength="80" placeholder="Ex.: X Clash — Edição 4" /></div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-            <div><label>Loja</label><input id="tStore" maxlength="80" placeholder="Nome da loja" /></div>
-            <div><label>Data e horário</label><input id="tDate" type="datetime-local" /></div>
-          </div>
-          <div><label>Endereço</label><input id="tAddr" maxlength="160" placeholder="Rua, número, cidade" /></div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-            <div><label>Formato</label><select id="tFormat"><option value="MD3">Melhor de 3 (MD3)</option><option value="POINTS4">Partida simples até 4 pontos</option></select></div>
-            <div><label>Rodadas</label><input id="tRounds" type="number" min="1" max="12" value="4" /></div>
-          </div>
-          <div><label>Informações extras</label><textarea id="tDesc" maxlength="2000" placeholder="Taxa de inscrição, premiação, regras da casa…"></textarea></div>
-          <div class="inline-actions"><button class="btn primary" id="tCreate">Criar torneio</button></div>
-        </div>
-      </div>
-    </div>
   </main>
   <script src="/js/shared.js"></script>
   <script>
@@ -91,28 +71,6 @@
       load();
       document.getElementById('q').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(load, 300); });
 
-      const modal = document.getElementById('newModal');
-      document.getElementById('newT').addEventListener('click', async () => {
-        if (await BX.requireLogin('/torneios')) modal.hidden = false;
-      });
-      document.getElementById('newClose').addEventListener('click', () => { modal.hidden = true; });
-      document.getElementById('tCreate').addEventListener('click', async () => {
-        try {
-          const { tournament } = await BX.api('/api/tournaments', {
-            method: 'POST',
-            body: {
-              name: document.getElementById('tName').value,
-              storeName: document.getElementById('tStore').value,
-              address: document.getElementById('tAddr').value,
-              startsAt: document.getElementById('tDate').value,
-              format: document.getElementById('tFormat').value,
-              roundsPlanned: document.getElementById('tRounds').value,
-              description: document.getElementById('tDesc').value,
-            },
-          });
-          location.href = `/torneio/${tournament.slug}`;
-        } catch (e) { BX.toast(e.message); }
-      });
     })();
   </script>
 </body>
