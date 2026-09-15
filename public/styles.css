@@ -2282,3 +2282,29 @@ body.builder-mine .picker-noown{color:#7bd88f}
 }
 @media (max-width:520px){.hero-actions{display:none}}
 .gen-menu{position:absolute;top:calc(100% + 6px);z-index:30;border:1px solid #333a47;border-radius:12px;background:#12151c;box-shadow:0 18px 40px rgba(0,0,0,.5);padding:6px}.gen-menu[hidden]{display:none}.gen-menu button{width:100%;border:0;background:transparent;color:#d5dae2;padding:10px 12px;border-radius:8px;font-size:13px;text-align:left;min-height:0;height:auto}.gen-menu button:hover{background:#1c2029}
+
+/* Meta e decks populares são a ala competitiva do BX Deck Lab: o verde X
+   entra nas superfícies, bordas e chamadas — não apenas nos botões. */
+#view-meta .hero.compact,#view-popular .hero.compact{position:relative;padding:26px 28px;border:1px solid rgba(166,239,112,.24);border-radius:20px;background:radial-gradient(ellipse at 86% 8%,rgba(166,239,112,.16),transparent 43%),linear-gradient(135deg,#10170f,#0d1110 62%,#13190f);overflow:hidden}
+#view-meta .hero.compact::after,#view-popular .hero.compact::after{content:"";position:absolute;inset:auto -8% -80px 48%;height:170px;background:radial-gradient(ellipse,rgba(166,239,112,.14),transparent 68%);pointer-events:none}
+#view-meta .hero.compact>*,#view-popular .hero.compact>*{position:relative;z-index:1}
+#view-meta .meta-cloud-card{border-color:rgba(166,239,112,.30);background:radial-gradient(circle at 12% 0%,rgba(166,239,112,.16),transparent 40%),radial-gradient(circle at 92% 14%,rgba(84,230,156,.10),transparent 36%),linear-gradient(160deg,#121b12,#0d1110)}
+#view-meta .mblock{border-color:rgba(166,239,112,.22);background:linear-gradient(168deg,#172016,#0d120e)}
+#view-meta .mblock-head{border-bottom-color:rgba(166,239,112,.16)}
+#view-meta .mblock-field{border-color:rgba(166,239,112,.15);background:radial-gradient(ellipse at 50% 0%,rgba(166,239,112,.10),transparent 62%),#0b100c}
+#view-meta .mblock-count,#view-meta .mscore{border-color:rgba(166,239,112,.30);color:#c9f8a5}
+#view-meta .mbey:hover .morb{border-color:var(--lime);box-shadow:0 0 0 2px rgba(166,239,112,.20),0 20px 44px rgba(0,0,0,.5)}
+#view-meta .cloud-switch button.active{background:#2a4820;color:#d8ffc0;box-shadow:inset 0 -2px 0 var(--lime)}
+#view-meta .source-banner{border-left-color:var(--lime);background:#10170f}
+#view-popular .meta-fetch-toolbar{border-color:rgba(166,239,112,.28);background:linear-gradient(105deg,#121b11,#101410)}
+#view-popular .meta-deck{border-color:rgba(166,239,112,.22);background:linear-gradient(155deg,#151d14,#0d110d)}
+#view-popular .meta-deck:hover{border-color:rgba(166,239,112,.62);box-shadow:0 14px 34px rgba(84,230,156,.08)}
+#view-popular .meta-head{border-bottom-color:rgba(166,239,112,.16);background:linear-gradient(100deg,rgba(166,239,112,.07),transparent 55%)}
+#view-popular .place{border-color:rgba(166,239,112,.28);background:#1a2917;color:#d5fa9f}
+#view-popular .meta-source-badge.podium{border-color:rgba(166,239,112,.38);color:#b9f38d;background:#122013}
+#view-popular .meta-source-badge.aggregate{border-color:rgba(166,239,112,.26);color:#c9e9a3;background:#171d12}
+#view-popular .meta-foot{background:#0b100b}
+#view-popular .owned-meter i{background:linear-gradient(90deg,#54e69c,var(--lime))}
+#view-popular .meta-link,#view-meta .meta-link{color:var(--lime)}
+#view-popular .source-banner{border-left-color:var(--lime);border-top:1px solid rgba(166,239,112,.18);border-right:1px solid rgba(166,239,112,.18);border-bottom:1px solid rgba(166,239,112,.18);background:#10170f}
+@media(max-width:700px){#view-meta .hero.compact,#view-popular .hero.compact{padding:21px 18px;border-radius:16px}}
