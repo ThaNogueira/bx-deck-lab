@@ -51,6 +51,12 @@
         }
         const me = await BX.me().catch(() => null);
         const myMatch = me && data.me ? await BX.api(`/api/tournaments/${encodeURIComponent(slug)}/me`).catch(() => null) : null;
+        // Participante com mesa pendente entra direto no report em tela cheia.
+        // O link "Voltar ao torneio" da mesa continua sendo a saída explícita.
+        if (data.tournament.status === 'RUNNING' && myMatch?.match && myMatch.match.status !== 'DONE' && !myMatch.match.bye) {
+          location.replace(`/mesa/${encodeURIComponent(slug)}/${encodeURIComponent(myMatch.match.id)}`);
+          return;
+        }
         const sig = JSON.stringify([data, myMatch]);
         last = { data, me, myData: myMatch };
         if (sig === lastSig && prefetched) return; // nada mudou: não mexe na tela

@@ -254,6 +254,7 @@ router.get('/api/tournaments', ah(async (req, res) => {
   const where = {};
   if (status) where.status = String(status);
   else where.status = { in: ['OPEN', 'RUNNING', 'FINISHED'] };
+  if (!isStaff(req.user)) where.NOT = { description: { startsWith: '[ADMIN TEST]' } };
   let list = await prisma.tournament.findMany({
     where,
     include: { organizer: true, players: true },
@@ -302,6 +303,21 @@ router.post('/api/tournaments', requireUser, moderateFields('name', 'description
   res.json({ tournament: tournamentDto(t, req.user) });
 }));
 
+/** Arena isolada para admins testarem fluxos sem aparecer à comunidade. */
+router.post('/api/tournaments/admin-test', requireUser, ah(async (req, res) => {
+  if (!isStaff(req.user)) return res.status(403).json({ error: 'Apenas admins podem criar torneios de teste.' });
+  const users = await prisma.user.findMany({ where: { id: { not: req.user.id }, status: 'ACTIVE' }, take: 7, orderBy: { createdAt: 'asc' } });
+  if (users.length < 7) return res.status(422).json({ error: 'São necessários ao menos 7 outros usuários para montar a mesa de teste.' });
+  const name = `TESTE ADMIN • ${new Date().toLocaleString('pt-BR')}`;
+  const t = await prisma.tournament.create({ data: { slug: await uniqueSlug(prisma.tournament, `teste-admin-${Date.now()}`), name, startsAt: new Date(), format: 'MD3', roundsPlanned: 3, description: '[ADMIN TEST] Torneio oculto de teste.', organizerId: req.user.id, entryFeeCents: 0 } });
+  await prisma.tournamentPlayer.createMany({ data: [req.user, ...users].map((u) => ({ tournamentId: t.id, userId: u.id })) });
+  const full = await loadTournament(t.slug);
+  await pairRound(full, 1);
+  await prisma.tournament.update({ where: { id: t.id }, data: { status: 'RUNNING', currentRound: 1 } });
+  await audit(req.user, 'tournament.admin_test.create', 'TOURNAMENT', t.id, { players: 8 });
+  res.json({ tournament: { slug: t.slug } });
+}));
+
 /** Jogador inscrito declara (ou remove) o deck que vai usar — alimenta o meta e o card do campeão. */
 router.post('/api/tournaments/:slug/my-deck', requireUser, ah(async (req, res) => {
   const t = await loadTournament(req.params.slug);
@@ -320,6 +336,7 @@ router.post('/api/tournaments/:slug/my-deck', requireUser, ah(async (req, res) =
 router.get('/api/tournaments/:slug', ah(async (req, res) => {
   const t = await loadTournament(req.params.slug);
   if (!t) return res.status(404).json({ error: 'Torneio não encontrado.' });
+  if (t.description?.startsWith('[ADMIN TEST]') && !isStaff(req.user)) return res.status(404).json({ error: 'Torneio não encontrado.' });
   const me = req.user ? t.players.find((p) => p.userId === req.user.id) : null;
   const deckOptions = { showDeclaredDeck: (p) => t.status === 'FINISHED' || p.userId === req.user?.id };
   res.json({
