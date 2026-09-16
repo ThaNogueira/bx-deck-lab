@@ -83,6 +83,15 @@
           ...(t.canManage ? [['gestao', `${BX.ic('settings', 14)} Gestão`]] : []),
         ];
 
+        // Foco de jogo: preserva o mesmo report responsivo, mas remove capa,
+        // resumo e rolagem antes dele. As abas mantêm a saída para o torneio.
+        if (view === 'partida' && myData?.match) {
+          app.innerHTML = `<section class="match-focus" style="min-height:calc(100vh - 90px);display:flex;flex-direction:column"><nav class="tabs" style="justify-content:flex-start;margin:10px 0 18px" aria-label="Navegação do torneio">${tabs.map(([k, label]) => `<button class="tab${k === 'partida' ? ' active' : ''}" data-view="${k}">${label}</button>`).join('')}</nav><div id="viewBox" style="flex:1;display:grid;place-items:center"></div></section>`;
+          document.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => { view = b.dataset.view; if (view === 'partida') sessionStorage.removeItem(reportExitKey); else sessionStorage.setItem(reportExitKey, '1'); history.replaceState(null, '', '#' + view); render(data, me, myData); }));
+          renderMatch(document.getElementById('viewBox'), t, myData);
+          return;
+        }
+
         app.innerHTML = `
           <div class="tournament-cover ${t.coverUrl ? 'has-image' : ''}">
             ${t.coverUrl ? `<img src="${BX.esc(t.coverUrl)}" alt="Capa do torneio ${BX.esc(t.name)}">` : `<div class="tournament-cover-placeholder">${BX.icon('tournaments', 64)}<span>BEYXLAB / TOURNAMENT</span></div>`}
