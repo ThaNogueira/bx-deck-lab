@@ -28,6 +28,7 @@
       const VIEWS = ['geral', 'pairings', 'partida', 'gestao'];
       const hashView = () => { const v = location.hash.slice(1); return VIEWS.includes(v) ? v : 'geral'; };
       let view = hashView(); // geral | partida | gestao — fica no hash: recarregar/voltar não perde a aba
+      const reportExitKey = `bx_exit_match_report_${slug}`;
       let pollTimer = null;
       let last = null;       // {data, me, myData} do último load — re-render sem nova chamada
       let lastSig = '';      // assinatura do último payload — poll só re-renderiza se algo mudou
@@ -51,11 +52,12 @@
         }
         const me = await BX.me().catch(() => null);
         const myMatch = me && data.me ? await BX.api(`/api/tournaments/${encodeURIComponent(slug)}/me`).catch(() => null) : null;
-        // Participante com mesa pendente entra direto no report em tela cheia.
-        // O link "Voltar ao torneio" da mesa continua sendo a saída explícita.
-        if (data.tournament.status === 'RUNNING' && myMatch?.match && myMatch.match.status !== 'DONE' && !myMatch.match.bye) {
-          location.replace(`/mesa/${encodeURIComponent(slug)}/${encodeURIComponent(myMatch.match.id)}`);
-          return;
+        // Participante vai direto para a aba "Minha partida", que é o report
+        // integrado e responsivo desta própria página. Mantemos a aba aberta
+        // mesmo após o reporte, para a pessoa ver o estado da sua partida.
+        if (data.tournament.status === 'RUNNING' && myMatch?.match && !myMatch.match.bye && !sessionStorage.getItem(reportExitKey) && view !== 'partida') {
+          view = 'partida';
+          history.replaceState(null, '', '#partida');
         }
         const sig = JSON.stringify([data, myMatch]);
         last = { data, me, myData: myMatch };
@@ -109,7 +111,7 @@
           ${tabs.length > 1 ? `<nav class="tabs" style="justify-content:flex-start;margin-bottom:18px" aria-label="Seções do torneio">${tabs.map(([k, label]) => `<button class="tab${view === k ? ' active' : ''}" data-view="${k}" aria-selected="${view === k}">${label}</button>`).join('')}</nav>` : ''}
           <div id="viewBox"></div>`;
 
-        document.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => { view = b.dataset.view; history.replaceState(null, '', '#' + view); render(data, me, myData); }));
+        document.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => { view = b.dataset.view; if (view === 'partida') sessionStorage.removeItem(reportExitKey); else sessionStorage.setItem(reportExitKey, '1'); history.replaceState(null, '', '#' + view); render(data, me, myData); }));
         document.getElementById('joinBtn')?.addEventListener('click', () => { location.href = `/t/${t.slug}`; });
         document.getElementById('leaveBtn')?.addEventListener('click', async () => {
           if (!confirm('Sair deste torneio?')) return;
