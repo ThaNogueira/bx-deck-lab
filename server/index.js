@@ -1,4 +1,5 @@
 import path from 'node:path';
+import fs from 'node:fs';
 import express from 'express';
 import compression from 'compression';
 import { prisma } from './db.js';
@@ -135,6 +136,15 @@ app.get('/deck-novo', (_req, res) => res.redirect('/#builder'));
 app.get('/deck/:slug/editar', (req, res) => res.redirect('/?editar=' + encodeURIComponent(req.params.slug) + '#builder'));
 
 for (const [route, file] of Object.entries(PAGES)) {
+  if (route === '/torneios/novo') {
+    app.get(route, async (_req, res, next) => {
+      try {
+        const html = await fs.promises.readFile(path.resolve('public', file), 'utf8');
+        res.type('html').send(html.replace('</body>', '<script src="/js/admin-test-tournament.js"></script></body>'));
+      } catch (error) { next(error); }
+    });
+    continue;
+  }
   app.get(route, (_req, res) => res.sendFile(path.resolve('public', file)));
 }
 const DYNAMIC = [
