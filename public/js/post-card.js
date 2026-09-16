@@ -239,7 +239,15 @@
       const nav = e.target.closest('.carousel-nav');
       if (nav) { const t = nav.closest('[data-carousel]').querySelector('.carousel-track'); t.scrollBy({ left: +nav.dataset.dir * t.clientWidth, behavior: 'smooth' }); return; }
       const yt = e.target.closest('[data-yt]');
-      if (yt) { yt.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${yt.dataset.yt}?autoplay=1" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen title="Vídeo"></iframe>`; return; }
+      if (yt) {
+        // O YouTube exige identificação do cliente (Referer ou origin). Usamos o
+        // embed oficial e enviamos somente a origem do BX Deck Lab, nunca a URL
+        // completa do post.
+        const videoId = encodeURIComponent(yt.dataset.yt);
+        const origin = encodeURIComponent(location.origin);
+        yt.innerHTML = `<iframe src="https://www.youtube.com/embed/${videoId}?autoplay=1&playsinline=1&origin=${origin}" referrerpolicy="origin" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen title="Vídeo"></iframe>`;
+        return;
+      }
       const opt = e.target.closest('.poll-opt');
       if (opt && !opt.disabled) {
         if (!me) { BX.requireLogin(location.pathname); return; }

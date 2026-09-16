@@ -66,7 +66,9 @@ fi
   echo "    header {"
   echo "        Strict-Transport-Security \"max-age=31536000; includeSubDomains\""
   echo "        X-Content-Type-Options nosniff"
-  echo "        Referrer-Policy no-referrer"
+  # O iframe do YouTube precisa receber a origem como identificação do cliente.
+  # Esta política não envia o caminho completo do post a serviços externos.
+  echo "        Referrer-Policy strict-origin-when-cross-origin"
   echo "        -Server"
   echo "    }"
   echo "}"
