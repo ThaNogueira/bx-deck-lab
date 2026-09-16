@@ -20,6 +20,7 @@ import communityRoutes from './routes/community.js';
 import homeRoutes from './routes/home.js';
 import { scheduleMetaJobs } from './meta.js';
 import { warmModeration } from './moderation.js';
+import { sendSocial, socialMeta, socialRouter } from './social.js';
 
 const app = express();
 app.use(compression({ threshold: 1024 })); // gzip/brotli de HTML/CSS/JS/JSON (o Caddy também comprime; aqui cobre dev e acesso direto)
@@ -90,6 +91,7 @@ app.use(marketRoutes);
 app.use(adminRoutes);
 app.use(communityRoutes);
 app.use(homeRoutes);
+app.use(socialRouter);
 // Integration tests use an isolated database and must not start network jobs.
 const isolatedTest = process.env.NODE_ENV === 'test' && process.env.BX_ISOLATED_TEST === '1';
 if (!isolatedTest) {
@@ -99,6 +101,9 @@ if (!isolatedTest) {
 
 // Uploads e estáticos
 app.use('/uploads', express.static(UPLOADS_DIR, { maxAge: '30d', immutable: true }));
+app.get('/', async (_req, res, next) => { try { await sendSocial(res, 'index.html', await socialMeta('home')); } catch (e) { next(e); } });
+app.get('/deck/:slug', async (req, res, next) => { try { await sendSocial(res, 'deck.html', await socialMeta('deck', req.params.slug)); } catch (e) { next(e); } });
+app.get('/torneio/:slug', async (req, res, next) => { try { await sendSocial(res, 'torneio.html', await socialMeta('tournament', req.params.slug)); } catch (e) { next(e); } });
 // Estáticos do site: sempre revalidam (ETag) — evita o usuário precisar de Ctrl+Shift+R
 // depois de um deploy. O conteúdo só volta pela rede quando muda de verdade (304 caso contrário).
 app.use(express.static('public', {
@@ -134,10 +139,8 @@ for (const [route, file] of Object.entries(PAGES)) {
 }
 const DYNAMIC = [
   ['/u/:slug', 'u.html'],
-  ['/deck/:slug', 'deck.html'],
   ['/peca/:slug', 'peca.html'],
   ['/produto/:slug', 'produto.html'],
-  ['/torneio/:slug', 'torneio.html'],
   ['/t/:slug', 'inscricao.html'],
   ['/torneio/:slug/cartaz', 'cartaz.html'],
   ['/mesa/:slug/:matchId', 'mesa.html'],
