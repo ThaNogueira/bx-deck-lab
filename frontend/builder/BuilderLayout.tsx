@@ -142,6 +142,7 @@ export function BuilderLayout() {
               </div>
             </div>
             <div><label>Pasta (opcional)</label><input id="pubFolder" maxLength={40} placeholder="Ex.: Torneios, Ideias, Meta atual" /></div>
+            <div id="pubAsBeyXLabWrap" hidden><label><input id="pubAsBeyXLab" type="checkbox" /> Publicar como BeyXLab</label><small className="muted">Apenas para administradores.</small></div>
             <div id="pubPreview" className="pub-preview"></div>
             <div className="inline-actions"><button className="btn primary" id="pubSubmit">Salvar deck</button></div>
           </div>

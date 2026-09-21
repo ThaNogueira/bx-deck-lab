@@ -414,6 +414,8 @@
 
     const modal = document.getElementById('publishModal');
     const editSlug = new URLSearchParams(location.search).get('editar');
+    const asSite = document.getElementById('pubAsBeyXLabWrap');
+    if (asSite) asSite.hidden = !(me.role === 'ADMIN' && !editSlug);
     const visBox = document.getElementById('pubVisibility');
     if (visBox && !visBox.dataset.ready) {
       visBox.dataset.ready = '1';
@@ -441,6 +443,7 @@
         youtubeUrl: document.getElementById('pubVideo').value,
         folder: document.getElementById('pubFolder')?.value || '',
         isPublic: document.querySelector('#pubVisibility [data-public].active')?.dataset.public === '1',
+        asBeyXLab: me.role === 'ADMIN' && !editSlug && document.getElementById('pubAsBeyXLab')?.checked,
         beys,
       };
       try {

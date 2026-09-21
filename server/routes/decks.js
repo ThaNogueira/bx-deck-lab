@@ -88,6 +88,12 @@ async function enqueueAnalysis(beys) {
   const partMap = Object.fromEntries(parts.map((part) => [part.id, partDto(part)]));
   return queueDeckAnalysis(beys, partMap);
 }
+async function beyXLabAuthor() {
+  const email = 'decks@beyxlab.local';
+  const found = await prisma.user.findUnique({ where: { email } });
+  if (found) return found;
+  return prisma.user.create({ data: { email, name: 'BeyXLab', slug: await uniqueSlug(prisma.user, 'beyxlab'), bio: 'Decks publicados pela equipe BeyXLab.', verified: true } });
+}
 
 router.get('/api/decks', ah(async (req, res) => {
   const { query = '', author = '', featured = '', mine = '' } = req.query;
@@ -196,10 +202,11 @@ router.post('/api/decks', requireUser, moderateFields('title', 'description', 'l
   const youtubeUrl = String(b.youtubeUrl || '').trim();
   if (youtubeUrl && !YT_RE.test(youtubeUrl)) return res.status(422).json({ error: 'Link do YouTube inválido.' });
 
+  const authorId = b.asBeyXLab === true && req.user.role === 'ADMIN' ? (await beyXLabAuthor()).id : req.user.id;
   const deck = await prisma.communityDeck.create({
     data: {
       slug: await uniqueSlug(prisma.communityDeck, title),
-      authorId: req.user.id,
+      authorId,
       title,
       description: String(b.description || '').slice(0, 2000) || null,
       launchGuide: String(b.launchGuide || '').slice(0, 2000) || null,

@@ -345,7 +345,7 @@ router.get('/api/tournaments/:slug', ah(async (req, res) => {
   if (isTestTournament(t) && !isStaff(req.user)) return res.status(404).json({ error: 'Torneio não encontrado.' });
   if (!canView(t, req.user)) return res.status(404).json({ error: 'Torneio não encontrado.' });
   const me = req.user ? t.players.find((p) => p.userId === req.user.id) : null;
-  const deckOptions = { showDeclaredDeck: (p) => t.status === 'FINISHED' || p.userId === req.user?.id };
+  const deckOptions = { showDeclaredDeck: (p) => t.status === 'FINISHED' || p.userId === req.user?.id || canManage(t, req.user) };
   res.json({
     tournament: tournamentDto(t, req.user),
     players: t.players.map((p) => playerDto(p, deckOptions)),
@@ -571,7 +571,7 @@ router.post('/api/tournaments/:slug/players/:playerId/deck', requireManage(bySlu
   const deckId = req.body?.deckId ? String(req.body.deckId) : null;
   if (deckId) {
     const deck = await prisma.communityDeck.findUnique({ where: { id: deckId } });
-    if (!deck || deck.authorId !== player.userId) return res.status(422).json({ error: 'Escolha um deck que pertença a este jogador.' });
+    if (!deck || !deck.isPublic || deck.status !== 'VISIBLE') return res.status(422).json({ error: 'Escolha um deck público publicado no site.' });
   }
   const updated = await prisma.tournamentPlayer.update({ where: { id: player.id }, data: { deckId, manualDeckJson: null, manualDeckTitle: null }, include: { user: true, deck: true } });
   await audit(req.user, 'tournament.player.deck.set', 'TOURNAMENT', req.tournament.id, { playerId: player.id, deckId });

@@ -348,6 +348,7 @@
                     ${BX.avatarHtml(p.user, { size: 34 })}
                     <div style="font-size:12px"><b>${BX.esc(p.user.name)}</b>${p.dropped ? ' <small style="color:var(--muted)">(removido/drop)</small>' : ''}<small style="display:block;color:var(--muted)">${p.deck?.title ? `Deck: ${BX.esc(p.deck.title)}${p.deck.managed ? ' (gestão)' : ''}` : p.deckDeclared ? 'Deck do jogador (privado)' : 'Sem deck declarado'}</small>${p.deck?.beys?.length ? `<div class="manage-deck-preview">${BX.deckPreview(p.deck.beys, { u: 27 })}</div>` : ''}</div>
                     <button class="btn secondary" data-build-deck="${p.id}">${BX.icon('decks', 14)} Montar deck</button>
+                    <button class="btn secondary" data-pick-deck="${p.id}">${BX.icon('community', 14)} Escolher deck</button>
                     ${!p.dropped && !['FINISHED', 'CANCELED'].includes(t.status) ? `<button class="btn danger-outline" data-kick="${p.id}">${t.status === 'OPEN' ? 'Remover' : 'Drop'}</button>` : '<span></span>'}
                   </div>`).join('')}</div>
               </div>
@@ -504,6 +505,19 @@
             deckEditor = { player, index: idx, slot: 0, query: '', filter: '', title: player.deck?.managed ? player.deck.title : `Deck de ${player.user.name}`, beys: Array.from({ length: 3 }, (_, n) => [...(player.deck?.managed ? player.deck?.beys?.[n] || [] : [])]) };
             renderDeckEditor();
           } catch (e) { BX.toast(e.message); }
+        }));
+        box.querySelectorAll('[data-pick-deck]').forEach((b) => b.addEventListener('click', async () => {
+          try {
+            const player = data.players.find((p) => p.id === b.dataset.pickDeck);
+            const { decks } = await BX.api('/api/decks?sort=updated');
+            const choices = decks.slice(0, 30);
+            const pick = await BX.promptDialog({ title: `Escolher deck para ${player.user.name}`, text: choices.map((deck, i) => `${i + 1}. ${deck.title} — ${deck.author?.name || 'BeyXLab'}`).join('\n'), placeholder: 'Digite o número do deck', okLabel: 'Usar deck' });
+            const deck = choices[Number(pick) - 1];
+            if (pick === null) return;
+            if (!deck) return BX.toast('Escolha um número válido da lista.');
+            await BX.api(`/api/tournaments/${slug}/players/${player.id}/deck`, { method: 'POST', body: { deckId: deck.id } });
+            BX.toast('Deck público definido para o jogador.'); load();
+          } catch (error) { BX.toast(error.message); }
         }));
         document.getElementById('copyLink')?.addEventListener('click', async () => {
           await navigator.clipboard.writeText(t.joinUrl);
