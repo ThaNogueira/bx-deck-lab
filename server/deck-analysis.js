@@ -8,10 +8,12 @@ import { json } from './util.js';
 const SOURCE_URL = 'https://meta.beycrate.com/';
 const SOURCE_KEY = 'external-bey-meta-v1';
 const HISTORY_URL = 'https://bbxhub.net/meta/';
+const HISTORY_OVERVIEW_URL = 'https://bbxhub.net/';
+const HISTORY_OVERVIEW_KEY = 'external-bey-history-overview-v1';
 const HISTORY_TTL = 20 * 60 * 60 * 1000;
 const SOURCE_TTL = 24 * 60 * 60 * 1000;
 const ANALYSIS_TTL = 6 * 60 * 60 * 1000;
-const ANALYSIS_STORE_PREFIX = 'deck-ai-analysis-v2:';
+const ANALYSIS_STORE_PREFIX = 'deck-ai-analysis-v3:';
 const analysisCache = new Map();
 
 const norm = (value) => String(value || '')
@@ -100,9 +102,22 @@ async function getHistoricalBlade(name, { force = false } = {}) {
   }
 }
 
+async function getGlobalHistory() {
+  const saved = await getSetting(HISTORY_OVERVIEW_KEY);
+  if (saved?.fetchedAt && Date.now() - new Date(saved.fetchedAt).getTime() < HISTORY_TTL && saved.comboCount) return saved;
+  try {
+    const response = await fetch(HISTORY_OVERVIEW_URL, { headers: { 'User-Agent': 'BX-Deck-Lab meta reader/1.0 (+https://bxdecklab.com)' }, signal: AbortSignal.timeout(15_000) });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const match = text(await response.text()).match(/([\d,]+)\s+(?:winning\s+)?combos/i);
+    const fresh = { fetchedAt: new Date().toISOString(), comboCount: Number((match?.[1] || '').replace(/,/g, '')) || 40_709 };
+    await setSetting(HISTORY_OVERVIEW_KEY, fresh);
+    return fresh;
+  } catch { return saved?.comboCount ? saved : { comboCount: 40_709 }; }
+}
+
 function partName(part) { return part?.displayName || part?.name || ''; }
 function category(parts, kinds) { return parts.find((part) => kinds.includes(part?.kind)); }
-function describeSignal(combo, meta, history) {
+function describeSignal(combo, meta, history, globalHistory) {
   const parts = combo.map(partName).filter(Boolean);
   const blade = category(combo, ['BLADE', 'MAIN_BLADE', 'OVER_BLADE']);
   const ratchet = category(combo, ['RATCHET']);
@@ -142,11 +157,23 @@ function describeSignal(combo, meta, history) {
       historicalBuild: historicExact?.label || null,
       historicalUses: historicExact?.uses || null,
       historicalShare: historicExact?.percent || null,
+      metaPresence: history?.total && globalHistory?.comboCount ? Number(((history.total / globalHistory.comboCount) * 100).toFixed(3)) : 0,
       historyUrl: history?.url || null,
       partBehavior: behavior || null,
     },
     physical: combo.map((part) => ({ name: partName(part), kind: part?.kind, type: part?.type, behavior: part?.behavior || part?.note || null, stats: part?.stats || null })),
   };
+}
+
+function fallbackIndividual(combo) {
+  const profiles = {
+    Attack: { summary: 'Combo de pressão que busca contato cedo e jogadas explosivas.', launch: 'Entre com inclinação baixa e acelere o movimento para buscar as linhas externas.', favored: 'stamina passiva', favoredWhy: 'A pressão constante força o oponente a gastar rotação antes de estabilizar.', risk: 'defesa pesada', riskWhy: 'Estruturas firmes absorvem o impacto inicial e podem devolver o contato.', counterTip: 'Varie a inclinação e evite insistir na mesma linha de entrada.' },
+    Defense: { summary: 'Combo de contenção, feito para absorver contato e controlar o ritmo.', launch: 'Use lançamento estável e centralizado, preservando a linha para receber o impacto.', favored: 'ataque sem controle', favoredWhy: 'Entradas previsíveis perdem energia ao bater em uma estrutura estável.', risk: 'stamina limpa', riskWhy: 'Um rival que evita contato pode vencer na rotação.', counterTip: 'Aproxime o ponto de contato aos poucos, sem abrir demais a defesa.' },
+    Stamina: { summary: 'Combo focado em manter rotação e sobreviver até o fim da rodada.', launch: 'Priorize um lançamento limpo no centro para reduzir atrito desnecessário.', favored: 'ataque que se expõe', favoredWhy: 'Após gastar energia em investidas, o rival tende a cair antes na rotação.', risk: 'ataque de impacto', riskWhy: 'Um contato muito forte pode tirar o combo da sua zona de estabilidade.', counterTip: 'Ajuste a inclinação para não entregar uma entrada direta na parede.' },
+    Balance: { summary: 'Combo versátil, capaz de alternar entre pressão e sobrevivência conforme a rodada.', launch: 'Comece com linha controlada e ajuste a inclinação conforme o adversário ocupa a arena.', favored: 'combos muito especializados', favoredWhy: 'A versatilidade permite responder sem depender de uma única condição de vitória.', risk: 'pressão muito bem direcionada', riskWhy: 'Um rival que impõe o ritmo pode impedir a adaptação do conjunto.', counterTip: 'Escolha uma entrada consciente e não deixe o rival definir o primeiro contato.' },
+  };
+  const profile = profiles[combo.type] || profiles.Balance;
+  return { ...profile, why: combo.physical.map((part) => ({ part: part.name, reason: part.behavior || physicalTendency(part.stats) || 'Contribui para a estrutura e o comportamento do conjunto.' })) };
 }
 
 function fallbackNarrative(combos, source) {
@@ -219,19 +246,20 @@ export async function analyzeDeck(beys, partsById, { force = false } = {}) {
     return stored.value;
   }
   const meta = await getExternalMeta();
+  const globalHistory = await getGlobalHistory();
   const rawCombos = (beys || []).filter(Array.isArray).map((ids) => ids.map((id) => partsById?.[id]).filter(Boolean));
   const histories = await Promise.all(rawCombos.map(async (combo) => {
     const blade = category(combo, ['BLADE', 'MAIN_BLADE', 'OVER_BLADE']);
     return getHistoricalBlade(partName(blade));
   }));
-  const combos = rawCombos.map((combo, i) => describeSignal(combo, meta, histories[i]));
+  const combos = rawCombos.map((combo, i) => describeSignal(combo, meta, histories[i], globalHistory));
   const aiNarrative = await humanNarrative(combos);
   const value = {
     source: { ...meta.source, fetchedAt: meta.fetchedAt, stale: !!meta.stale, historyName: 'BBXHub', historyUrl: 'https://bbxhub.net/', historyEvents: 4034 },
     combos,
     deckLabel: aiNarrative?.deckLabel || 'IDENTIDADE DO TRIO',
     deckSummary: aiNarrative?.deck || fallbackNarrative(combos, meta.source),
-    individual: aiNarrative?.beys || [],
+    individual: aiNarrative?.beys || combos.map(fallbackIndividual),
     generatedBy: aiNarrative ? 'LLM + dados de pódios' : 'dados de pódios',
   };
   analysisCache.set(signature, { at: Date.now(), value });
