@@ -106,14 +106,11 @@ function describeSignal(combo, meta, history) {
   const bit = category(combo, ['BIT']);
   const bladeRow = meta.blades.find((row) => compact(row.blade) === compact(partName(blade)))
     || meta.blades.find((row) => compact(partName(blade)).includes(compact(row.blade)) || compact(row.blade).includes(compact(partName(blade))));
-  const comboText = compact(parts.join(' '));
   const exact = bladeRow?.builds.find((build) => {
-    const candidate = compact(build.label);
-    return [partName(ratchet), partName(bit)].filter(Boolean).every((name) => candidate.includes(compact(name)));
+    return norm(build.label) === norm(parts.join(' '));
   });
   const historicExact = history?.builds?.find((build) => {
-    const candidate = compact(build.label);
-    return [partName(ratchet), partName(bit)].filter(Boolean).every((name) => candidate.includes(compact(name)));
+    return norm(build.label) === norm(parts.join(' '));
   });
   const type = blade?.type || bit?.type || 'Balance';
   let status = 'SEM AMOSTRA PÚBLICA';
