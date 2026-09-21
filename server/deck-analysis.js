@@ -111,6 +111,7 @@ function fallbackNarrative(combos, source) {
 async function humanNarrative(combos, source) {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) return null;
+  const model = process.env.GROQ_MODEL || 'qwen/qwen3.8-27b';
   const payload = {
     source: { name: source.name, events: source.events, podiumDecks: source.podiumDecks, updated: source.updated },
     combos: combos.map((combo) => ({ label: combo.label, type: combo.type, status: combo.status, evidence: combo.evidence })),
@@ -120,7 +121,7 @@ async function humanNarrative(combos, source) {
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: process.env.GROQ_MODEL || 'openai/gpt-oss-20b', temperature: 0.35, max_tokens: 360, reasoning_effort: 'low', include_reasoning: false, messages: [{ role: 'user', content: prompt }] }),
+      body: JSON.stringify({ model, temperature: 0.35, max_tokens: 300, reasoning_effort: model.startsWith('qwen/') ? 'none' : 'low', include_reasoning: false, messages: [{ role: 'user', content: prompt }] }),
       signal: AbortSignal.timeout(12_000),
     });
     if (!response.ok) throw new Error(`Groq HTTP ${response.status}`);
@@ -128,6 +129,7 @@ async function humanNarrative(combos, source) {
     const narrative = String(body?.choices?.[0]?.message?.content || '').replace(/[*_#]/g, '').replace(/\s+/g, ' ').trim().slice(0, 1200);
     // Não deixa a redação da IA contradizer a evidência quando a amostra não
     // validou nenhum combo completo.
+    if (/```|\bfunction\s+\w+\s*\(/i.test(narrative)) return null;
     if (!combos.some((combo) => combo.status === 'COMBO VALIDADO NO META') && /\bvalidado|validada|comprovado|comprovada\b/i.test(narrative)) return null;
     return narrative || null;
   } catch (error) {
