@@ -115,7 +115,7 @@ async function humanNarrative(combos, source) {
     source: { name: source.name, events: source.events, podiumDecks: source.podiumDecks, updated: source.updated },
     combos: combos.map((combo) => ({ label: combo.label, type: combo.type, status: combo.status, evidence: combo.evidence })),
   };
-  const prompt = `Você é um analista competitivo de Beyblade X e escreve em pt-BR. Faça uma leitura curta, humana e útil de um deck de 3 Beys usando SOMENTE os fatos deste JSON. Não invente win rate, matchup, ranking ou resultado. Diferencie explicitamente combo validado de Blade popular com configuração não comprovada. Dê a função de cada Bey e uma conclusão de deck em até 115 palavras. Sem markdown, sem título. Dados: ${JSON.stringify(payload)}`;
+  const prompt = `Você é um analista competitivo de Beyblade X e escreve em pt-BR. Faça uma leitura curta, humana e útil de um deck de 3 Beys usando SOMENTE os fatos deste JSON. Não invente win rate, matchup, ranking, resultado, "confiável" ou "comprovado". Para cada Bey, copie o valor do campo status EXATAMENTE como está, em letras maiúsculas: nunca chame de validado algo com status BASE PRESENTE NO META ou SEM AMOSTRA PÚBLICA. Dê a função declarada pelo tipo e uma conclusão cuidadosa em até 115 palavras. Sem markdown, sem título. Dados: ${JSON.stringify(payload)}`;
   try {
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
@@ -125,7 +125,11 @@ async function humanNarrative(combos, source) {
     });
     if (!response.ok) throw new Error(`Groq HTTP ${response.status}`);
     const body = await response.json();
-    return String(body?.choices?.[0]?.message?.content || '').replace(/\s+/g, ' ').trim().slice(0, 1200) || null;
+    const narrative = String(body?.choices?.[0]?.message?.content || '').replace(/[*_#]/g, '').replace(/\s+/g, ' ').trim().slice(0, 1200);
+    // Não deixa a redação da IA contradizer a evidência quando a amostra não
+    // validou nenhum combo completo.
+    if (!combos.some((combo) => combo.status === 'COMBO VALIDADO NO META') && /\bvalidado|validada|comprovado|comprovada\b/i.test(narrative)) return null;
+    return narrative || null;
   } catch (error) {
     console.warn('[deck analysis] LLM:', error.message);
     return null;
