@@ -42,6 +42,7 @@
     (async () => {
       BX.renderTopbar('/decks');
       await BX.partTagReady();
+      const me = await BX.me().catch(() => null);
       document.getElementById('newDeck').addEventListener('click', async () => {
         if (await BX.requireLogin('/#builder')) location.href = '/#builder';
       });
@@ -65,12 +66,20 @@
                 </div>
               </a>
               <button class="btn secondary deck-directory-copy-btn" type="button" data-copy-text="${BX.esc(d.id)}" title="Copiar lista das Beys">${BX.ic('link', 14)}<span>Copiar</span></button>
+              ${me?.role === 'ADMIN' ? `<button class="btn danger-outline deck-directory-delete-btn" type="button" data-delete-deck="${BX.esc(d.id)}" title="Excluir deck">${BX.ic('trash', 14)}<span>Excluir</span></button>` : ''}
             </article>`).join('')
           : '<div class="empty-state">Nenhum deck publicado ainda — seja a primeira pessoa!</div>';
         document.querySelectorAll('[data-copy-text]').forEach((button) => button.addEventListener('click', async () => {
           const deck = decks.find((d) => d.id === button.dataset.copyText);
           try { await BX.copyDeckText(deck?.beys); BX.toast('Lista das Beys copiada!'); }
           catch (e) { BX.toast(e.message); }
+        }));
+        document.querySelectorAll('[data-delete-deck]').forEach((button) => button.addEventListener('click', async () => {
+          const deck = decks.find((d) => d.id === button.dataset.deleteDeck);
+          if (!deck || !confirm(`Excluir definitivamente o deck “${deck.title}”?`)) return;
+          button.disabled = true;
+          try { await BX.api(`/api/decks/${deck.id}`, { method: 'DELETE' }); BX.toast('Deck excluído.'); load(); }
+          catch (error) { BX.toast(error.message); button.disabled = false; }
         }));
       }
       document.getElementById('q').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(load, 300); });
