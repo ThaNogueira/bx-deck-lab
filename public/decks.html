@@ -35,7 +35,7 @@
         <option value="featured">Em destaque</option>
       </select>
     </div>
-    <div id="list" class="card-grid"><div class="empty-state">Carregando decks…</div></div>
+    <div id="list" class="deck-directory"><div class="empty-state">Carregando decks…</div></div>
   </main>
   <script src="/js/shared.js"></script>
   <script>
@@ -52,20 +52,19 @@
         const { decks } = await BX.api(`/api/decks?query=${encodeURIComponent(q)}&featured=${featured}`);
         document.getElementById('list').innerHTML = decks.length
           ? decks.map((d) => `
-            <article class="list-card deck-list-card">
-              <a class="deck-list-main" href="/deck/${d.slug}">
-              <div style="display:flex;justify-content:space-between;gap:8px">
-                <h2>${BX.esc(d.title)}</h2>
-                ${d.featured ? `<span class="badge owned">${BX.ic('star', 14)} destaque</span>` : ''}
-              </div>
-              ${BX.deckPreview(d.beys, { u: 50 })}
-              ${d.description ? `<p class="muted" style="margin:0">${BX.esc(d.description.slice(0, 120))}${d.description.length > 120 ? '…' : ''}</p>` : ''}
-              <div class="list-card-foot">
-                <span class="author-line">${BX.avatarHtml(d.author, { size: 24 })}<span style="color:#c4cad3">${BX.esc(d.author?.name || '?')}</span></span>
-                <span style="margin-left:auto">${BX.dateFmt(d.createdAt, { day: '2-digit', month: 'short', year: 'numeric' })}</span>
-              </div>
+            <article class="deck-directory-row">
+              <a class="deck-directory-main" href="/deck/${d.slug}">
+                <div class="deck-directory-copy">
+                  <div class="deck-directory-title"><h2>${BX.esc(d.title)}</h2>${d.featured ? `<span class="badge owned">${BX.ic('star', 14)} destaque</span>` : ''}</div>
+                  ${d.description ? `<p>${BX.esc(d.description)}</p>` : '<p class="deck-directory-empty">Sem descrição do deck.</p>'}
+                </div>
+                <div class="deck-directory-preview">${BX.deckPreview(d.beys, { u: 42 })}</div>
+                <div class="deck-directory-author">
+                  ${BX.avatarHtml(d.author, { size: 34 })}
+                  <span><b>${BX.esc(d.author?.name || '?')}</b><small>Criado em ${BX.dateFmt(d.createdAt, { day: '2-digit', month: 'short', year: 'numeric' })}</small></span>
+                </div>
               </a>
-              <div class="list-card-actions"><button class="btn secondary" type="button" data-copy-text="${BX.esc(d.id)}">${BX.ic('link', 14)} Copiar lista</button></div>
+              <button class="btn secondary deck-directory-copy-btn" type="button" data-copy-text="${BX.esc(d.id)}" title="Copiar lista das Beys">${BX.ic('link', 14)}<span>Copiar</span></button>
             </article>`).join('')
           : '<div class="empty-state">Nenhum deck publicado ainda — seja a primeira pessoa!</div>';
         document.querySelectorAll('[data-copy-text]').forEach((button) => button.addEventListener('click', async () => {
