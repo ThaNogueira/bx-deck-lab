@@ -260,7 +260,7 @@ router.get('/api/tournaments', ah(async (req, res) => {
   const where = {};
   if (status) where.status = String(status);
   else where.status = { in: ['OPEN', 'RUNNING', 'FINISHED'] };
-  if (!isStaff(req.user)) where.AND = [{ visibility: 'PUBLIC' }, { NOT: { description: { startsWith: '[ADMIN TEST]' } } }];
+  if (!isStaff(req.user)) where.AND = [{ visibility: 'PUBLIC' }, { OR: [{ description: null }, { NOT: { description: { startsWith: '[ADMIN TEST]' } } }] }];
   let list = await prisma.tournament.findMany({
     where,
     include: { organizer: true, players: true },

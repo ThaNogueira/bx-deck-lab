@@ -28,7 +28,7 @@ export const bustHomeCache = () => cache.clear();
 /** Ranking público: somente torneios concluídos, sem as arenas privadas de teste. */
 async function buildPlayerRanking({ limit = null } = {}) {
   const finished = await prisma.tournament.findMany({
-    where: { status: 'FINISHED', visibility: { in: ['PUBLIC', 'LINK_ONLY'] }, NOT: { description: { startsWith: '[ADMIN TEST]' } } },
+    where: { status: 'FINISHED', visibility: { in: ['PUBLIC', 'LINK_ONLY'] }, OR: [{ description: null }, { NOT: { description: { startsWith: '[ADMIN TEST]' } } }] },
     select: { slug: true }, orderBy: { startsAt: 'desc' }, take: 150,
   });
   const players = new Map();
