@@ -43,6 +43,16 @@
         const count = Math.max(1, parts.filter((part) => part.stats).length);
         return `<div class="physical-bars">${[['atk','ATK'],['def','DEF'],['sta','STA']].map(([key,label]) => { const value = Math.min(10, totals[key] / count); return `<div><small>${label}</small><span><i style="width:${Math.max(3, value * 10)}%"></i></span><b>${value.toFixed(1)}</b></div>`; }).join('')}</div>`;
       };
+      const performanceCard = () => {
+        const keys = [['atk', 'ATAQUE'], ['def', 'DEFESA'], ['sta', 'STAMINA'], ['burst', 'BURST'], ['dash', 'X-DASH']];
+        const totals = Object.fromEntries(keys.map(([key]) => [key, 0]));
+        deck.beys.flat().map((id) => deck.parts?.[id]).filter(Boolean).forEach((part) => {
+          keys.forEach(([key]) => { totals[key] += Number(part.stats?.[key]) || 0; });
+        });
+        const divisor = Math.max(1, deck.beys.length);
+        const stats = Object.fromEntries(keys.map(([key]) => [key, Math.min(100, Math.round(totals[key] / divisor))]));
+        return `<section class="panel-card part-stats-card deck-performance-card"><p class="eyebrow">PERFORMANCE</p><div class="radar-wrap">${BX.radar(stats, { size: 250, max: 100 })}</div><div class="deck-performance-bars">${keys.map(([key, label]) => `<div><small>${label}</small><span><i style="width:${stats[key]}%"></i></span><b>${stats[key]}</b></div>`).join('')}</div></section>`;
+      };
 
       const beysHtml = deck.beys.map((bey, i) => `
         <div class="list-card deck-bey-card" id="deckBey-${i}">
@@ -86,6 +96,7 @@
             ${deck.launchGuide ? `<div class="panel-card"><p class="eyebrow">GUIA DE LANÇAMENTO</p><p class="prose">${BX.esc(deck.launchGuide)}</p></div>` : ''}
           </div>
           <div>
+            ${performanceCard()}
             ${embed ? `<div class="video-embed"><iframe src="${embed}" title="Vídeo do deck" allowfullscreen loading="lazy"></iframe></div>` : ''}
           </div>
         </div>`;
