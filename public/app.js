@@ -2764,6 +2764,10 @@
   document.getElementById('randomDeckBtn').addEventListener('click',()=>generateRandomDeck(false));
   document.getElementById('viableDeckBtn').addEventListener('click',()=>generateRandomDeck(true));
   document.getElementById('clearDeckBtn').addEventListener('click',()=>{deck=emptyDeck();saveState();renderAll();toast('Deck limpo.');});
+  document.getElementById('copyDeckTextBtn')?.addEventListener('click',async()=>{
+    try { await BX.copyDeckText(deck.map(slot=>slotParts(slot).map(id=>PARTS[id]).filter(Boolean))); toast('Lista das Beys copiada!'); }
+    catch(e) { toast(e.message); }
+  });
   document.getElementById('deckName').addEventListener('input',e=>localStorage.setItem('bx_deck_name',e.target.value));
   document.getElementById('deckName').value=localStorage.getItem('bx_deck_name')||'';
 

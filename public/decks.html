@@ -52,7 +52,8 @@
         const { decks } = await BX.api(`/api/decks?query=${encodeURIComponent(q)}&featured=${featured}`);
         document.getElementById('list').innerHTML = decks.length
           ? decks.map((d) => `
-            <a class="list-card" href="/deck/${d.slug}">
+            <article class="list-card deck-list-card">
+              <a class="deck-list-main" href="/deck/${d.slug}">
               <div style="display:flex;justify-content:space-between;gap:8px">
                 <h2>${BX.esc(d.title)}</h2>
                 ${d.featured ? `<span class="badge owned">${BX.ic('star', 14)} destaque</span>` : ''}
@@ -63,8 +64,15 @@
                 <span class="author-line">${BX.avatarHtml(d.author, { size: 24 })}<span style="color:#c4cad3">${BX.esc(d.author?.name || '?')}</span></span>
                 <span style="margin-left:auto">${BX.dateFmt(d.createdAt, { day: '2-digit', month: 'short', year: 'numeric' })}</span>
               </div>
-            </a>`).join('')
+              </a>
+              <div class="list-card-actions"><button class="btn secondary" type="button" data-copy-text="${BX.esc(d.id)}">${BX.ic('link', 14)} Copiar lista</button></div>
+            </article>`).join('')
           : '<div class="empty-state">Nenhum deck publicado ainda — seja a primeira pessoa!</div>';
+        document.querySelectorAll('[data-copy-text]').forEach((button) => button.addEventListener('click', async () => {
+          const deck = decks.find((d) => d.id === button.dataset.copyText);
+          try { await BX.copyDeckText(deck?.beys); BX.toast('Lista das Beys copiada!'); }
+          catch (e) { BX.toast(e.message); }
+        }));
       }
       document.getElementById('q').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(load, 300); });
       document.getElementById('filter').addEventListener('change', load);

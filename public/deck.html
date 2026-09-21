@@ -38,9 +38,10 @@
       const embed = BX.ytEmbed(deck.youtubeUrl);
 
       const beysHtml = deck.beys.map((bey, i) => `
-        <div class="list-card">
+        <div class="list-card deck-bey-card" id="deckBey-${i}">
           <h3>Bey ${i + 1}</h3>
           ${BX.beyVisual(bey.map((id) => deck.parts?.[id] || id), { size: 'lg' })}
+          <div class="deck-analysis-loading">Consultando histórico competitivo…</div>
         </div>`).join('');
 
       app.innerHTML = `
@@ -57,6 +58,7 @@
             </div>
           </div>
           <div class="hero-actions">
+            <button class="btn secondary" id="copyTextBtn" title="Copiar somente a lista das Beys">${BX.ic('link', 14)} Copiar lista</button>
             ${mine ? `<button class="btn secondary" id="visBtn">${deck.isPublic === false ? `${BX.ic('globe', 14)} Tornar público` : `${BX.ic('lock', 14)} Tornar privado`}</button><a class="btn secondary" href="/deck/${deck.slug}/editar">Editar</a><a class="btn ghost" href="/meus-decks">Meus decks</a>` : ''}
             ${mine ? (deck.sharedPostId ? `<a class="btn secondary" href="/comunidade/p/${deck.sharedPostId}" style="text-decoration:none">${BX.ic('feed', 14)} Ver post na comunidade</a>` : `<button class="btn secondary" id="shareBtn">${BX.ic('feed', 14)} Compartilhar na comunidade</button>`) : ''}
             ${!mine && deck.isPublic !== false ? `<button class="btn primary" id="copyBtn" title="Salva uma cópia privada em Meus decks e conta no ranking do meta">${BX.ic('save', 14)} Copiar deck<small class="copy-count" id="copyCount">${deck.copyCount || 0}</small></button><a class="btn secondary" href="/?copiar=${deck.slug}#builder" style="text-decoration:none">${BX.ic('builder', 14)} Abrir no builder</a>` : ''}
@@ -64,6 +66,12 @@
           </div>
         </div>
         <div class="deck-viewer" style="margin-bottom:20px">${beysHtml}</div>
+        <section class="panel-card deck-analysis-card" id="deckAnalysis">
+          <div class="section-title-row">
+            <div><p class="eyebrow">ANALISADOR COMPETITIVO</p><h2>Status do deck</h2></div>
+            <span class="deck-analysis-loading">Carregando dados de torneios…</span>
+          </div>
+        </section>
         <div class="profile-grid">
           <div style="display:flex;flex-direction:column;gap:16px">
             ${deck.description ? `<div class="panel-card"><p class="eyebrow">SOBRE O DECK</p><p class="prose">${BX.esc(deck.description)}</p></div>` : ''}
@@ -75,6 +83,32 @@
         </div>`;
 
       document.getElementById('reportBtn')?.addEventListener('click', () => BX.report('DECK', deck.id, 'este deck'));
+      document.getElementById('copyTextBtn')?.addEventListener('click', async () => {
+        try { await BX.copyDeckText(deck.beys, { parts: deck.parts }); BX.toast('Lista das Beys copiada!'); }
+        catch (e) { BX.toast(e.message); }
+      });
+      const renderAnalysis = async () => {
+        try {
+          const { analysis } = await BX.api(`/api/decks/${encodeURIComponent(deck.slug)}/analysis`);
+          analysis.combos.forEach((combo, i) => {
+            const card = document.getElementById(`deckBey-${i}`);
+            if (!card) return;
+            const exact = combo.evidence.exactBuild ? `<p class="deck-analysis-evidence">${BX.ic('trophy', 14)} Build de pódio: <b>${BX.esc(combo.evidence.exactBuild)}</b>${combo.evidence.exactBuildShare != null ? ` · ${combo.evidence.exactBuildShare}% dos builds da Blade` : ''}</p>` : combo.evidence.bladePodiumShare != null ? `<p class="deck-analysis-evidence">${BX.ic('target', 14)} ${BX.esc(combo.evidence.blade)} em ${combo.evidence.bladePodiumShare}% dos decks de pódio.</p>` : '';
+            card.querySelector('.deck-analysis-loading').outerHTML = `<div class="deck-bey-status ${combo.status === 'COMBO VALIDADO NO META' ? 'validated' : combo.status === 'BASE PRESENTE NO META' ? 'grounded' : 'untested'}"><span>${BX.esc(combo.status)}</span><b>${BX.esc(combo.type)}</b><p>${BX.esc(combo.summary)}</p>${exact}</div>`;
+          });
+          const source = analysis.source;
+          document.getElementById('deckAnalysis').innerHTML = `
+            <div class="section-title-row deck-analysis-heading">
+              <div><p class="eyebrow">ANALISADOR COMPETITIVO</p><h2>Status geral do deck</h2></div>
+              <span class="badge owned">${BX.ic('sparkle', 14)} ${BX.esc(analysis.generatedBy)}</span>
+            </div>
+            <p class="deck-analysis-summary">${BX.esc(analysis.deckSummary)}</p>
+            <p class="deck-analysis-source">Base: <a href="${BX.esc(source.url)}" target="_blank" rel="noopener">${BX.esc(source.name)}</a>${source.events ? ` · ${source.events} eventos` : ''}${source.podiumDecks ? ` · ${source.podiumDecks} decks de pódio` : ''}${source.updated ? ` · ${BX.esc(source.updated)}` : ''}${source.stale ? ' · usando a última atualização disponível' : ''}.</p>`;
+        } catch (e) {
+          document.querySelectorAll('.deck-analysis-loading').forEach((el) => { el.textContent = 'Histórico competitivo indisponível agora.'; });
+        }
+      };
+      renderAnalysis();
       const shareNow = async () => {
         const text = await BX.promptDialog({ title: 'Compartilhar na comunidade', text: 'Descreva a build (opcional). O post nasce com a tag Deck e botões de abrir no builder e copiar.', placeholder: 'ex.: Deck de stamina com bit Ball…', multiline: true, okLabel: 'Publicar na comunidade' });
         if (text === null) return;

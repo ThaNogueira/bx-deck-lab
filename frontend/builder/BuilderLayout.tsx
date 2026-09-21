@@ -31,6 +31,7 @@ export function BuilderLayout() {
               </div>
             </div>
             <button type="button" className="btn secondary" id="clearDeckBtn" title="Limpar os 3 Beys"><svg className="vicon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="bevel" strokeLinecap="square" aria-hidden="true"><use href="#i-trash"/></svg><span>Limpar</span></button>
+            <button type="button" className="btn secondary" id="copyDeckTextBtn" title="Copiar a lista das Beys"><svg className="vicon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="bevel" strokeLinecap="square" aria-hidden="true"><use href="#i-link"/></svg><span>Copiar lista</span></button>
             <button type="button" className="icon-btn" id="undoDeckBtn" data-undo title="Desfazer (Ctrl+Z) — últimos 10 passos" disabled><svg className="vicon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="bevel" strokeLinecap="square" aria-hidden="true"><use href="#i-rotate"/></svg></button>
             <button type="button" className="icon-btn" id="sfxBtn" title="Som ao encaixar peça"></button>
           </div>

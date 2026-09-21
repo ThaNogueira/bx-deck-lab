@@ -93,6 +93,7 @@
           <div class="archive-actions">
             <a class="btn secondary" href="/deck/${esc(d.slug)}">Abrir</a>
             <a class="btn secondary" href="/?editar=${esc(d.slug)}#builder">Editar</a>
+            <button class="btn secondary" data-copy-text="${d.id}">${BX.ic('link', 14)} Copiar lista</button>
             <button class="btn secondary" data-move="${d.id}">${BX.ic('folder', 14)} Pasta</button>
             <button class="btn secondary" data-dup="${d.id}">Duplicar</button>
             <button class="btn danger-outline" data-del="${d.id}">Excluir</button>
@@ -215,6 +216,11 @@
             BX.toast(d.isPublic ? 'Deck publicado na comunidade.' : 'Deck agora é privado — só você vê.');
             render();
           } catch (e) { BX.toast(e.message); }
+        }));
+        document.querySelectorAll('[data-copy-text]').forEach((b) => b.addEventListener('click', async () => {
+          const d = decks.find((x) => x.id === b.dataset.copyText);
+          try { await BX.copyDeckText(d?.beys); BX.toast('Lista das Beys copiada!'); }
+          catch (e) { BX.toast(e.message); }
         }));
         document.querySelectorAll('[data-move]').forEach((b) => b.addEventListener('click', async () => {
           const d = decks.find((x) => x.id === b.dataset.move);

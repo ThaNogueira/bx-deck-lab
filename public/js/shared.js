@@ -274,6 +274,24 @@
     return `<div class="deck-mini" style="--u:${u}px">${list.map((refs) => beyMini(refs, { u, link })).join('')}</div>`;
   }
 
+  /** Texto compacto para compartilhar uma lista de 3 Beys sem os dados extras do deck. */
+  function deckText(beys, { parts = null } = {}) {
+    const idx = partTag._idx;
+    const nameOf = (ref) => {
+      const part = ref && typeof ref === 'object' ? ref : parts?.[ref] || idx?.byId.get(ref);
+      return String(part?.display || part?.displayName || part?.name || ref || '').trim();
+    };
+    return (beys || []).filter((bey) => Array.isArray(bey) && bey.length).slice(0, 3)
+      .map((bey, i) => `**Bey ${i + 1}**\n${bey.map(nameOf).filter(Boolean).join(' ')}`)
+      .join('\n\n');
+  }
+  async function copyDeckText(beys, opts = {}) {
+    const text = deckText(beys, opts);
+    if (!text) throw new Error('Monte ao menos uma Bey para copiar a lista.');
+    await navigator.clipboard.writeText(text);
+    return text;
+  }
+
   /**
    * Radar de 5 eixos (ATK/DEF/STA/X-DASH/BURST) em SVG, no estilo do site.
    * stats: {atk,def,sta,dash,burst}; max é o teto da escala.
@@ -930,7 +948,7 @@
 
   window.BX = {
     api, me, site, esc, norm, toast, money, dateFmt, icon, ic, stickerIcon, ICON_NAMES, ICON_GROUPS, EMOJIS,
-    partsIndex, partTagReady, partTag, comboTags, partThumb, KIND_PT, radar, beyVisual, beyMini, deckPreview, colorDialog, itemDialog, confirmDialog, promptDialog, pickColor, collectionProgress, progressBarHtml, KIND_SORT,
+    partsIndex, partTagReady, partTag, comboTags, partThumb, KIND_PT, radar, beyVisual, beyMini, deckPreview, deckText, copyDeckText, colorDialog, itemDialog, confirmDialog, promptDialog, pickColor, collectionProgress, progressBarHtml, KIND_SORT,
     avatarHtml, renderTopbar, renderShell, mountUserWidget, userChipHtml, setActiveNav,
     report, requireLogin, qs, pathPart, ytEmbed,
   };

@@ -5,6 +5,7 @@ import { moderateFields, getSetting } from '../settings.js';
 import { json, uniqueSlug } from '../util.js';
 import { partDto } from './catalog.js';
 import { audit } from '../audit.js';
+import { analyzeDeck } from '../deck-analysis.js';
 
 const router = Router();
 const ah = (fn) => (req, res, next) => fn(req, res, next).catch(next);
@@ -115,6 +116,19 @@ router.get('/api/decks/:slug', ah(async (req, res) => {
   const dto = await deckDto(deck, { withParts: true });
   dto.author = publicUser(deck.author, { cosmetics: { frame, stickers: [] } });
   res.json({ deck: dto });
+}));
+
+/** Leitura competitiva: cruza o deck com a amostra pública de pódios, sem expor chave de IA ao navegador. */
+router.get('/api/decks/:slug/analysis', ah(async (req, res) => {
+  const deck = await prisma.communityDeck.findUnique({ where: { slug: req.params.slug } });
+  const isOwner = deck && req.user && deck.authorId === req.user.id;
+  const restricted = deck && (deck.status !== 'VISIBLE' || !deck.isPublic);
+  if (!deck || (restricted && !isOwner && !isStaff(req.user))) return res.status(404).json({ error: 'Deck não encontrado.' });
+  const beys = json(deck.beysJson, []);
+  const ids = [...new Set(beys.flat())];
+  const parts = ids.length ? await prisma.part.findMany({ where: { id: { in: ids } } }) : [];
+  const partMap = Object.fromEntries(parts.map((part) => [part.id, partDto(part)]));
+  res.json({ analysis: await analyzeDeck(beys, partMap) });
 }));
 
 router.post('/api/decks', requireUser, moderateFields('title', 'description', 'launchGuide'), ah(async (req, res) => {
