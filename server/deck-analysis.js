@@ -116,7 +116,7 @@ async function humanNarrative(combos, source) {
     source: { name: source.name, events: source.events, podiumDecks: source.podiumDecks, updated: source.updated },
     combos: combos.map((combo) => ({ label: combo.label, type: combo.type, status: combo.status, evidence: combo.evidence })),
   };
-  const prompt = `Você é um analista competitivo de Beyblade X e escreve em pt-BR. Faça uma leitura curta, humana e útil de um deck de 3 Beys usando SOMENTE os fatos deste JSON. Não invente win rate, matchup, ranking, resultado, "confiável" ou "comprovado". Para cada Bey, copie o valor do campo status EXATAMENTE como está, em letras maiúsculas: nunca chame de validado algo com status BASE PRESENTE NO META ou SEM AMOSTRA PÚBLICA. Dê a função declarada pelo tipo e uma conclusão cuidadosa em até 115 palavras. Sem markdown, sem título. Dados: ${JSON.stringify(payload)}`;
+  const prompt = `Você é um analista competitivo de Beyblade X e escreve em pt-BR. Faça uma leitura curta, humana e útil de um deck de 3 Beys usando SOMENTE os fatos deste JSON. Não invente win rate, matchup, ranking, resultado, "confiável" ou "comprovado". Para cada Bey, copie o valor do campo status EXATAMENTE como está, em letras maiúsculas: nunca chame de validado algo com status BASE PRESENTE NO META ou SEM AMOSTRA PÚBLICA. Dê a função declarada pelo tipo e uma conclusão cuidadosa em até 115 palavras. Não mencione JSON, regras, instruções, limitações da IA ou o ato de evitar afirmações. Sem markdown, sem título. Dados: ${JSON.stringify(payload)}`;
   try {
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
