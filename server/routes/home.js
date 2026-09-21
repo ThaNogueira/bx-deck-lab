@@ -87,11 +87,23 @@ async function buildPlayerRanking({ limit = null } = {}) {
       path: [blade, ratchet, bit].filter(Boolean).map(([id, uses]) => ({ id, uses })),
     };
   };
+  const favoriteBeys = (beyMap) => {
+    let remaining = [...beyMap.values()];
+    const picks = [];
+    while (remaining.length && picks.length < 3) {
+      const pick = favoriteBey(new Map(remaining.map((entry) => [entry.ids.join('|'), entry])));
+      if (!pick) break;
+      picks.push(pick);
+      const pickedKey = pick.ids.join('|');
+      remaining = remaining.filter((entry) => entry.ids.join('|') !== pickedKey);
+    }
+    return picks;
+  };
   const ranking = [...players.values()]
     .sort((a, b) => b.points - a.points || b.gold - a.gold || b.wins - a.wins || a.user.name.localeCompare(b.user.name))
-    .map(({ beyMap, ...row }) => ({ ...row, favoriteBey: favoriteBey(beyMap) }));
+    .map(({ beyMap, ...row }) => ({ ...row, favoriteBeys: favoriteBeys(beyMap) }));
   const publishedRanking = limit ? ranking.slice(0, limit) : ranking;
-  const partIds = [...new Set(publishedRanking.flatMap((player) => player.favoriteBey?.ids || []))];
+  const partIds = [...new Set(publishedRanking.flatMap((player) => player.favoriteBeys.flatMap((bey) => bey.ids)))];
   const parts = partIds.map((id) => partById.get(id)).filter(Boolean);
   return {
     ranking: publishedRanking,
