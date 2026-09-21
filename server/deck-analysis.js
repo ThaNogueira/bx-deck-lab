@@ -120,7 +120,7 @@ async function humanNarrative(combos, source) {
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: process.env.GROQ_MODEL || 'openai/gpt-oss-20b', temperature: 0.35, max_tokens: 220, messages: [{ role: 'user', content: prompt }] }),
+      body: JSON.stringify({ model: process.env.GROQ_MODEL || 'openai/gpt-oss-20b', temperature: 0.35, max_tokens: 360, reasoning_effort: 'low', include_reasoning: false, messages: [{ role: 'user', content: prompt }] }),
       signal: AbortSignal.timeout(12_000),
     });
     if (!response.ok) throw new Error(`Groq HTTP ${response.status}`);
