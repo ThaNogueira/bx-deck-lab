@@ -5,8 +5,8 @@ import { json } from './util.js';
 
 // A fonte publica agrega pódios de eventos WBO. Guardamos uma cópia curta por
 // um dia: evita depender da página externa a cada abertura de deck.
-const SOURCE_URL = 'https://meta.beycrate.com/';
-const SOURCE_KEY = 'external-bey-meta-v1';
+const SOURCE_URL = 'https://meta.beycrate.com/?window=3m';
+const SOURCE_KEY = 'external-bey-meta-v2';
 const HISTORY_URL = 'https://bbxhub.net/meta/';
 const HISTORY_OVERVIEW_URL = 'https://bbxhub.net/';
 const HISTORY_OVERVIEW_KEY = 'external-bey-history-overview-v1';
@@ -108,11 +108,17 @@ async function getGlobalHistory() {
   try {
     const response = await fetch(HISTORY_OVERVIEW_URL, { headers: { 'User-Agent': 'BX-Deck-Lab meta reader/1.0 (+https://bxdecklab.com)' }, signal: AbortSignal.timeout(15_000) });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const match = text(await response.text()).match(/([\d,]+)\s+(?:winning\s+)?combos/i);
-    const fresh = { fetchedAt: new Date().toISOString(), comboCount: Number((match?.[1] || '').replace(/,/g, '')) || 40_709 };
+    const plain = text(await response.text());
+    const match = plain.match(/([\d,]+)\s+(?:winning\s+)?combos/i);
+    const eventMatch = plain.match(/([\d,]+)\s+events\s+scanned/i);
+    const fresh = {
+      fetchedAt: new Date().toISOString(),
+      comboCount: Number((match?.[1] || '').replace(/,/g, '')) || 40_709,
+      eventCount: Number((eventMatch?.[1] || '').replace(/,/g, '')) || 4_034,
+    };
     await setSetting(HISTORY_OVERVIEW_KEY, fresh);
     return fresh;
-  } catch { return saved?.comboCount ? saved : { comboCount: 40_709 }; }
+  } catch { return saved?.comboCount ? saved : { comboCount: 40_709, eventCount: 4_034 }; }
 }
 
 function partName(part) { return part?.displayName || part?.name || ''; }
@@ -157,7 +163,9 @@ function describeSignal(combo, meta, history, globalHistory) {
       historicalBuild: historicExact?.label || null,
       historicalUses: historicExact?.uses || null,
       historicalShare: historicExact?.percent || null,
-      metaPresence: history?.total && globalHistory?.comboCount ? Number(((history.total / globalHistory.comboCount) * 100).toFixed(3)) : 0,
+      // Uso da Blade na amostra ampla de decks competitivos da janela atual.
+      // Não é taxa de vitória: cada deck que a inclui conta uma vez.
+      metaPresence: bladeRow?.appearance ?? 0,
       historyUrl: history?.url || null,
       partBehavior: behavior || null,
     },

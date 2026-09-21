@@ -83,7 +83,10 @@
             ${mine ? `<button class="btn danger-outline" id="delBtn">Excluir</button>` : `<button class="btn ghost" id="reportBtn">${BX.ic('flag', 14)} Denunciar</button>`}
           </div>
         </div>
-        <div class="deck-viewer" style="margin-bottom:20px">${beysHtml}</div>
+        <div class="deck-showcase">
+          <div class="deck-viewer">${beysHtml}</div>
+          ${performanceCard()}
+        </div>
         <section class="panel-card deck-analysis-card" id="deckAnalysis">
           <div class="section-title-row">
             <div><p class="eyebrow">ANALISADOR COMPETITIVO</p><h2>Status do deck</h2></div>
@@ -96,7 +99,6 @@
             ${deck.launchGuide ? `<div class="panel-card"><p class="eyebrow">GUIA DE LANÇAMENTO</p><p class="prose">${BX.esc(deck.launchGuide)}</p></div>` : ''}
           </div>
           <div>
-            ${performanceCard()}
             ${embed ? `<div class="video-embed"><iframe src="${embed}" title="Vídeo do deck" allowfullscreen loading="lazy"></iframe></div>` : ''}
           </div>
         </div>`;
@@ -115,7 +117,7 @@
             const individual = analysis.individual?.[i];
             const presence = Number(combo.evidence.metaPresence || 0);
             const presenceLabel = presence.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-            const exact = `<div class="top3-presence" title="Presença entre combinações vencedoras registradas em torneios"><span>Presença no meta</span><div><i style="width:${presence > 0 ? Math.max(1, Math.min(100, presence)) : 0}%"></i></div><b>${presenceLabel}%</b></div>`;
+            const exact = `<div class="top3-presence" title="Frequência da Blade na amostra de decks competitivos"><span>Presença no meta</span><div><i style="width:${presence > 0 ? Math.max(1, Math.min(100, presence)) : 0}%"></i></div><b>${presenceLabel}%</b></div>`;
             const why = individual?.why?.length ? `<details class="deck-why"><summary>Por quê?</summary>${individual.why.map((item) => `<p><b>${BX.esc(item.part)}:</b> ${BX.esc(item.reason)}</p>`).join('')}</details>` : '';
             const play = individual ? `<details class="deck-more"><summary>Ver mais</summary><div><p><small>SUGESTÃO DE LANÇAMENTO</small>${BX.esc(individual.launch)}</p><p><small>VANTAGEM · ${BX.esc(individual.favored)}</small>${BX.esc(individual.favoredWhy)}</p><p><small>FRAQUEZA · ${BX.esc(individual.risk)}</small>${BX.esc(individual.riskWhy)}</p><p class="counter-tip"><small>COMO RESPONDER</small>${BX.esc(individual.counterTip)}</p></div></details>` : '';
             const previous = card.querySelector('.deck-analysis-loading, .deck-bey-status');
