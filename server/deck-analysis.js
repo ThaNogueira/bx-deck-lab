@@ -196,7 +196,7 @@ export async function analyzeDeck(beys, partsById, { force = false } = {}) {
   const hit = analysisCache.get(signature);
   if (!force && hit && Date.now() - hit.at < ANALYSIS_TTL) return hit.value;
   const stored = !force ? await getSetting(analysisKey(signature)) : null;
-  if (stored?.signature === signature && stored?.value?.deckLabel) {
+  if (stored?.signature === signature && stored?.value?.generatedBy === 'LLM + dados de pódios') {
     analysisCache.set(signature, { at: Date.now(), value: stored.value });
     return stored.value;
   }
@@ -217,7 +217,10 @@ export async function analyzeDeck(beys, partsById, { force = false } = {}) {
     generatedBy: aiNarrative ? 'LLM + dados de pódios' : 'dados de pódios',
   };
   analysisCache.set(signature, { at: Date.now(), value });
-  await setSetting(analysisKey(signature), { signature, generatedAt: new Date().toISOString(), value });
+  // Só uma resposta completa da IA entra no cache persistente. Se a cota
+  // externa estiver temporariamente indisponível, uma visita posterior pode
+  // tentar novamente em vez de congelar o fallback genérico no deck.
+  if (aiNarrative) await setSetting(analysisKey(signature), { signature, generatedAt: new Date().toISOString(), value });
   return value;
 }
 
