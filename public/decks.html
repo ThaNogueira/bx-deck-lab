@@ -52,10 +52,10 @@
         const { decks } = await BX.api(`/api/decks?query=${encodeURIComponent(q)}&featured=${featured}`);
         document.getElementById('list').innerHTML = decks.length
           ? decks.map((d) => `
-            <article class="deck-directory-row">
+            <article class="deck-directory-row ${d.achievements?.some((a) => a.place === 1) ? 'deck-directory-champion' : ''}">
               <a class="deck-directory-main" href="/deck/${d.slug}">
                 <div class="deck-directory-copy">
-                  <div class="deck-directory-title"><h2>${BX.esc(d.title)}</h2>${d.featured ? `<span class="badge owned">${BX.ic('star', 14)} destaque</span>` : ''}</div>
+                  <div class="deck-directory-title">${d.achievements?.length ? `<span class="deck-podium-icon p${d.achievements[0].place}" title="${BX.esc(`${d.achievements[0].place}º lugar — ${d.achievements[0].tournament.name`)}"><img src="/assets/achievements/trophy-neon-gold.png" alt="" /></span>` : ''}<h2>${BX.esc(d.title)}</h2>${d.featured ? `<span class="badge owned">${BX.ic('star', 14)} destaque</span>` : ''}</div>
                   ${d.description ? `<p>${BX.esc(d.description)}</p>` : '<p class="deck-directory-empty">Sem descrição do deck.</p>'}
                 </div>
                 <div class="deck-directory-preview">${BX.deckPreview(d.beys, { u: 42 })}</div>

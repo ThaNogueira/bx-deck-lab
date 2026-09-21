@@ -6,13 +6,14 @@ import { json, uniqueSlug } from '../util.js';
 import { partDto } from './catalog.js';
 import { audit } from '../audit.js';
 import { analyzeDeck, isDeckAnalysisBusy } from '../deck-analysis.js';
+import { standingsOf } from './tournaments.js';
 
 const router = Router();
 const ah = (fn) => (req, res, next) => fn(req, res, next).catch(next);
 
 const YT_RE = /^(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|shorts\/|embed\/)|youtu\.be\/)[\w-]{6,}([&?#].*)?$/i;
 
-async function deckDto(d, { withParts = false } = {}) {
+async function deckDto(d, { withParts = false, achievements = null } = {}) {
   const beys = json(d.beysJson, []);
   const base = {
     id: d.id,
@@ -31,6 +32,7 @@ async function deckDto(d, { withParts = false } = {}) {
     createdAt: d.createdAt,
     author: d.author ? publicUser(d.author) : undefined,
     beys,
+    achievements: achievements?.get(d.id) || [],
   };
   if (withParts) {
     const ids = [...new Set(beys.flat())];
@@ -38,6 +40,36 @@ async function deckDto(d, { withParts = false } = {}) {
     base.parts = Object.fromEntries(parts.map((p) => [p.id, partDto(p)]));
   }
   return base;
+}
+
+/** Pódios de torneios que efetivamente usam este deck. Privados e arenas de teste
+ * nunca aparecem como conquista pública. */
+async function achievementsForDecks(deckIds) {
+  const ids = [...new Set(deckIds.filter(Boolean))];
+  const out = new Map(ids.map((id) => [id, []]));
+  if (!ids.length) return out;
+  const tournaments = await prisma.tournament.findMany({
+    where: {
+      status: 'FINISHED',
+      visibility: { in: ['PUBLIC', 'LINK_ONLY'] },
+      players: { some: { deckId: { in: ids } } },
+      OR: [{ description: null }, { NOT: { description: { startsWith: '[ADMIN TEST]' } } }],
+    },
+    include: {
+      players: { include: { user: true, deck: true } },
+      matches: { include: { p1: { include: { user: true, deck: true } }, p2: { include: { user: true, deck: true } } } },
+    },
+  });
+  for (const tournament of tournaments) {
+    const deckByPlayer = new Map(tournament.players.map((player) => [player.id, player.deckId]));
+    standingsOf(tournament).slice(0, 3).forEach((row, index) => {
+      const deckId = deckByPlayer.get(row.player.id);
+      if (!deckId || !out.has(deckId)) return;
+      out.get(deckId).push({ place: index + 1, tournament: { name: tournament.name, slug: tournament.slug, startsAt: tournament.startsAt } });
+    });
+  }
+  for (const list of out.values()) list.sort((a, b) => a.place - b.place || new Date(b.tournament.startsAt) - new Date(a.tournament.startsAt));
+  return out;
 }
 
 async function validateBeys(beysInput) {
@@ -80,7 +112,8 @@ router.get('/api/decks', ah(async (req, res) => {
   });
   const q = String(query).toLowerCase().trim();
   if (q) decks = decks.filter((d) => [d.title, d.description, d.author?.name].some((v) => v && v.toLowerCase().includes(q)));
-  res.json({ decks: await Promise.all(decks.map((d) => deckDto(d))) });
+  const achievements = await achievementsForDecks(decks.map((deck) => deck.id));
+  res.json({ decks: await Promise.all(decks.map((d) => deckDto(d, { achievements }))) });
 }));
 
 /** Destaques da home (item 8): fixados pelo admin primeiro, depois recentes. */
@@ -114,6 +147,7 @@ router.get('/api/decks/:slug', ah(async (req, res) => {
   }
   const frame = deck.author.frameId ? await prisma.cosmetic.findUnique({ where: { id: deck.author.frameId } }) : null;
   const dto = await deckDto(deck, { withParts: true });
+  dto.achievements = (await achievementsForDecks([deck.id])).get(deck.id) || [];
   dto.author = publicUser(deck.author, { cosmetics: { frame, stickers: [] } });
   res.json({ deck: dto });
 }));

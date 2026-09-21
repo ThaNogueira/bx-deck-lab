@@ -36,6 +36,8 @@
       const me = await BX.me().catch(() => null);
       const mine = me && deck.author && me.id === deck.author.id;
       const embed = BX.ytEmbed(deck.youtubeUrl);
+      const medalName = (place) => ({ 1: 'Campeão', 2: 'Prata', 3: 'Bronze' })[place] || `${place}º lugar`;
+      const podiumTags = (deck.achievements || []).map((achievement) => `<a class="deck-podium-tag p${achievement.place}" href="/torneio/${BX.esc(achievement.tournament.slug)}"><img src="/assets/achievements/trophy-neon-gold.png" alt="" /><span><b>${medalName(achievement.place)}</b> em ${BX.esc(achievement.tournament.name)}<small>${BX.dateFmt(achievement.tournament.startsAt, { day: '2-digit', month: 'long', year: 'numeric' })}</small></span></a>`).join('');
       const physicalBars = (ids) => {
         const parts = ids.map((id) => deck.parts?.[id]).filter(Boolean);
         const totals = { atk: 0, def: 0, sta: 0 };
@@ -66,6 +68,7 @@
           <div>
             <p class="eyebrow">${deck.isPublic === false ? `${BX.ic('lock', 14)} DECK PRIVADO • SÓ VOCÊ VÊ` : 'DECK DA COMUNIDADE'}${deck.featured ? ` • ${BX.ic('star', 14)} EM DESTAQUE` : ''}</p>
             <h1>${BX.esc(deck.title)}</h1>
+            ${podiumTags ? `<div class="deck-podium-tags">${podiumTags}</div>` : ''}
             <div class="author-line" style="margin-top:10px">
               ${BX.avatarHtml(deck.author, { size: 46 })}
               <span>
