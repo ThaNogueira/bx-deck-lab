@@ -11,6 +11,7 @@ import { audit } from '../audit.js';
 import { siteUrl, uniqueSlug } from '../util.js';
 import { UPLOADS_DIR, uploadTournamentImages, uploadedUrl } from '../uploads.js';
 import { pushTamerLeagueTournament } from '../tamerleague.js';
+import { queueDeckAnalysis } from '../deck-analysis.js';
 
 const router = Router();
 const ah = (fn) => (req, res, next) => fn(req, res, next).catch(next);
@@ -593,7 +594,7 @@ router.post('/api/tournaments/:slug/players/:playerId/manual-deck', requireManag
   const beys = raw.slice(0, 3).map((b) => Array.isArray(b) ? [...new Set(b.map(String))].slice(0, 6) : []).filter((b) => b.length);
   if (!beys.length) return res.status(422).json({ error: 'Monte pelo menos uma Bey antes de salvar.' });
   const ids = [...new Set(beys.flat())];
-  const parts = await prisma.part.findMany({ where: { id: { in: ids }, hidden: false }, select: { id: true, kind: true, subKind: true } });
+  const parts = await prisma.part.findMany({ where: { id: { in: ids }, hidden: false } });
   if (parts.length !== ids.length) return res.status(422).json({ error: 'Uma ou mais peças não existem mais no catálogo.' });
   const byId = new Map(parts.map((p) => [p.id, p]));
   const invalid = beys.map((b) => validManualBey(b.map((id) => byId.get(id)))).find(Boolean);
@@ -607,6 +608,8 @@ router.post('/api/tournaments/:slug/players/:playerId/manual-deck', requireManag
     description: `Deck registrado pela gestão para ${player.user.name} no torneio ${req.tournament.name}.`,
     beysJson: JSON.stringify(beys), isPublic: true, folder: 'Torneios',
   } });
+  const partMap = Object.fromEntries(parts.map((part) => [part.id, { ...part, stats: parseDeck(part.statsJson || '{}') }]));
+  void queueDeckAnalysis(beys, partMap).catch((error) => console.warn('[deck analysis] torneio:', error.message));
   const updated = await prisma.tournamentPlayer.update({
     where: { id: player.id },
     data: { deckId: deck.id, manualDeckJson: null, manualDeckTitle: null },

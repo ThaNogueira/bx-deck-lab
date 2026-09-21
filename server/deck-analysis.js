@@ -353,6 +353,23 @@ export async function refreshExistingDeckAnalysesOnce() {
 /** Atualiza o recorte competitivo todas as manhãs; peças sem cache continuam
  * sendo pesquisadas sob demanda uma única vez e guardadas por 20 horas. */
 export function scheduleDeckAnalysisJobs() {
+  // A fila em memória é reiniciada junto com o container. Recolocamos na fila
+  // toda composição sem resultado salvo para que uma publicação/redeploy no
+  // meio da geração nunca deixe um deck preso em "preparação".
+  const recover = async () => {
+    const decks = await prisma.communityDeck.findMany({ where: { status: 'VISIBLE' }, select: { beysJson: true } });
+    const seen = new Set();
+    for (const deck of decks) {
+      const beys = json(deck.beysJson, []); const signature = JSON.stringify(beys);
+      if (!beys.length || seen.has(signature) || await getStoredDeckAnalysis(beys)) continue;
+      seen.add(signature);
+      const ids = [...new Set(beys.flat())];
+      const parts = await prisma.part.findMany({ where: { id: { in: ids } } });
+      const partMap = Object.fromEntries(parts.map((part) => [part.id, { ...part, stats: json(part.statsJson, null) }]));
+      void queueDeckAnalysis(beys, partMap).catch((error) => console.warn('[deck analysis] recuperação:', error.message));
+    }
+  };
+  setTimeout(() => recover().catch((error) => console.warn('[deck analysis] recuperação:', error.message)), 15_000).unref();
   const refresh = () => getExternalMeta({ force: true }).then(() => console.log('[deck analysis] meta diário atualizado')).catch((error) => console.warn('[deck analysis] meta diário:', error.message));
   const next = new Date();
   next.setHours(7, 15, 0, 0);
