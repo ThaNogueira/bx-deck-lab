@@ -234,7 +234,7 @@ async function humanNarrative(combos) {
     const narrative = JSON.parse(String(body?.choices?.[0]?.message?.content || '{}'));
     // Não deixa a redação da IA contradizer a evidência quando a amostra não
     // validou nenhum combo completo.
-    if (!narrative?.deck || !Array.isArray(narrative.beys) || narrative.beys.length !== combos.length) return null;
+    if (!narrative?.deck || !Array.isArray(narrative.beys)) return null;
     return { deckLabel: String(narrative.deckLabel || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 90), deck: String(narrative.deck).slice(0, 1400), beys: narrative.beys.slice(0, 3).map((bey) => ({ summary: String(bey?.summary || '').slice(0, 700), launch: String(bey?.launch || '').slice(0, 550), favored: String(bey?.favored || '').slice(0, 250), favoredWhy: String(bey?.favoredWhy || '').slice(0, 450), risk: String(bey?.risk || '').slice(0, 250), riskWhy: String(bey?.riskWhy || '').slice(0, 450), counterTip: String(bey?.counterTip || '').slice(0, 450), why: Array.isArray(bey?.why) ? bey.why.slice(0, 7).map((item) => ({ part: String(item?.part || '').slice(0, 100), reason: String(item?.reason || '').slice(0, 350) })) : [] })) };
   } catch (error) {
     console.warn('[deck analysis] LLM:', error.message);
@@ -267,7 +267,7 @@ export async function analyzeDeck(beys, partsById, { force = false } = {}) {
     combos,
     deckLabel: aiNarrative?.deckLabel || 'IDENTIDADE DO TRIO',
     deckSummary: aiNarrative?.deck || fallbackNarrative(combos, meta.source),
-    individual: aiNarrative?.beys || combos.map(fallbackIndividual),
+    individual: combos.map((combo, index) => aiNarrative?.beys?.[index] || fallbackIndividual(combo)),
     generatedBy: aiNarrative ? 'LLM + dados de pódios' : 'dados de pódios',
   };
   analysisCache.set(signature, { at: Date.now(), value });

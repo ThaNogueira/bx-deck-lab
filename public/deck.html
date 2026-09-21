@@ -83,6 +83,7 @@
             ${mine ? `<button class="btn danger-outline" id="delBtn">Excluir</button>` : `<button class="btn ghost" id="reportBtn">${BX.ic('flag', 14)} Denunciar</button>`}
           </div>
         </div>
+        ${deck.description ? `<p class="deck-intro">${BX.esc(deck.description)}</p>` : ''}
         <div class="deck-showcase">
           <div class="deck-viewer">${beysHtml}</div>
           ${performanceCard()}
@@ -95,7 +96,6 @@
         </section>
         <div class="profile-grid">
           <div style="display:flex;flex-direction:column;gap:16px">
-            ${deck.description ? `<div class="panel-card"><p class="eyebrow">SOBRE O DECK</p><p class="prose">${BX.esc(deck.description)}</p></div>` : ''}
             ${deck.launchGuide ? `<div class="panel-card"><p class="eyebrow">GUIA DE LANÇAMENTO</p><p class="prose">${BX.esc(deck.launchGuide)}</p></div>` : ''}
           </div>
           <div>

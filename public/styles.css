@@ -907,6 +907,7 @@ button.user-chip{cursor:pointer}
 .deck-viewer{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
 .deck-viewer .list-card{gap:6px}
 .deck-viewer h3{color:var(--cyan)}
+.deck-intro{margin:0 0 12px;padding:10px 14px;border:1px solid rgba(255,255,255,.08);border-left:3px solid rgba(166,239,112,.5);border-radius:10px;background:rgba(116,124,136,.12);color:#b7bec6;font-size:12px;line-height:1.55;font-style:italic;white-space:pre-wrap}
 .deck-showcase{display:grid;grid-template-columns:minmax(0,1fr) 270px;gap:16px;align-items:start;margin-bottom:20px}.deck-showcase .deck-viewer{grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.deck-showcase .deck-bey-card{padding:12px}.deck-showcase .bey-visual.lg .part-art.big{width:130px;height:130px}.deck-showcase .bey-visual.lg .part-art.mini{width:56px;height:56px}.deck-showcase .bey-visual.lg .rings{inset:35px 31px 49px}.deck-showcase .bey-visual.lg .visual-piece>span,.deck-showcase .bey-visual.lg .main-piece>span{font-size:8px}.deck-showcase .deck-performance-card{margin:0;position:sticky;top:82px}@media(max-width:820px){.deck-showcase{grid-template-columns:1fr}.deck-showcase .deck-viewer{grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}.deck-showcase .deck-performance-card{position:static;max-width:360px;justify-self:center;width:100%}.deck-showcase .bey-visual.lg .part-art.big{width:104px;height:104px}.deck-showcase .bey-visual.lg .part-art.mini{width:45px;height:45px}.deck-showcase .bey-visual.lg .rings{inset:29px 25px 40px}}
 
 /* --- Nuvem do meta (home) --- */
