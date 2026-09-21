@@ -50,6 +50,12 @@ function tournamentDto(t, user) {
 }
 
 const parseDeck = (value) => { try { return JSON.parse(value || '[]'); } catch { return []; } };
+async function beyXLabAuthor() {
+  const email = 'decks@beyxlab.local';
+  const found = await prisma.user.findUnique({ where: { email } });
+  if (found) return found;
+  return prisma.user.create({ data: { email, name: 'BeyXLab', slug: await uniqueSlug(prisma.user, 'beyxlab'), bio: 'Decks publicados pela equipe BeyXLab.', verified: true } });
+}
 const manualRole = (p) => {
   if (p.kind === 'BLADE') return p.subKind === 'INTEGRATED' ? 'integrated' : 'blade';
   if (p.kind === 'BIT') return p.subKind === 'RIB' ? 'rib' : 'bit';
@@ -578,7 +584,8 @@ router.post('/api/tournaments/:slug/players/:playerId/deck', requireManage(bySlu
   res.json({ player: playerDto(updated) });
 }));
 
-/** O gestor monta uma composição efêmera para o evento sem acessar os decks privados do jogador. */
+/** O gestor monta a lista entregue pelo jogador: ela vira um deck público
+ * institucional e fica associada ao participante no torneio. */
 router.post('/api/tournaments/:slug/players/:playerId/manual-deck', requireManage(bySlug), ah(async (req, res) => {
   const player = req.tournament.players.find((p) => p.id === req.params.playerId);
   if (!player) return res.status(404).json({ error: 'Jogador não encontrado.' });
@@ -591,13 +598,21 @@ router.post('/api/tournaments/:slug/players/:playerId/manual-deck', requireManag
   const byId = new Map(parts.map((p) => [p.id, p]));
   const invalid = beys.map((b) => validManualBey(b.map((id) => byId.get(id)))).find(Boolean);
   if (invalid) return res.status(422).json({ error: `Deck inválido: ${invalid}.` });
-  const title = String(req.body?.title || `Deck de ${player.user.name}`).trim().slice(0, 80) || `Deck de ${player.user.name}`;
+  const date = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: '2-digit' }).format(req.tournament.startsAt).replaceAll('/', '-');
+  const store = req.tournament.storeName || 'BeyXLab';
+  const title = `Deck de ${player.user.name} - Torneio ${store} ${date}`.slice(0, 80);
+  const author = await beyXLabAuthor();
+  const deck = await prisma.communityDeck.create({ data: {
+    slug: await uniqueSlug(prisma.communityDeck, title), authorId: author.id, title,
+    description: `Deck registrado pela gestão para ${player.user.name} no torneio ${req.tournament.name}.`,
+    beysJson: JSON.stringify(beys), isPublic: true, folder: 'Torneios',
+  } });
   const updated = await prisma.tournamentPlayer.update({
     where: { id: player.id },
-    data: { deckId: null, manualDeckJson: JSON.stringify(beys), manualDeckTitle: title },
+    data: { deckId: deck.id, manualDeckJson: null, manualDeckTitle: null },
     include: { user: true, deck: true },
   });
-  await audit(req.user, 'tournament.player.manual_deck.set', 'TOURNAMENT', req.tournament.id, { playerId: player.id, parts: ids.length });
+  await audit(req.user, 'tournament.player.manual_deck.set', 'TOURNAMENT', req.tournament.id, { playerId: player.id, deckId: deck.id, parts: ids.length });
   res.json({ player: playerDto(updated) });
 }));
 
