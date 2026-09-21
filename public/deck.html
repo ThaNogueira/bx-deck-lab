@@ -138,12 +138,17 @@
       document.getElementById('refreshLlmBtn')?.addEventListener('click', async (event) => {
         const button = event.currentTarget;
         button.disabled = true;
+        button.innerHTML = `${BX.ic('refresh', 14)} Atualizando…`;
+        const progress = document.createElement('div');
+        progress.className = 'llm-progress';
+        progress.innerHTML = `${BX.ic('sparkle', 15)} <span><b>Atualizando análise</b><small>Gerando cada Bey em sequência. Aguarde…</small></span>`;
+        document.body.append(progress);
         try {
           const { analysis } = await BX.api(`/api/decks/${deck.id}/analysis/refresh`, { method: 'POST' });
           BX.toast('Análise da IA atualizada.');
           await renderAnalysis(analysis);
         } catch (error) { BX.toast(error.message); }
-        finally { button.disabled = false; }
+        finally { progress.remove(); button.disabled = false; button.innerHTML = `${BX.ic('refresh', 14)} Atualizar LLM`; }
       });
       const shareNow = async () => {
         const text = await BX.promptDialog({ title: 'Compartilhar na comunidade', text: 'Descreva a build (opcional). O post nasce com a tag Deck e botões de abrir no builder e copiar.', placeholder: 'ex.: Deck de stamina com bit Ball…', multiline: true, okLabel: 'Publicar na comunidade' });

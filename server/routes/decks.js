@@ -5,7 +5,7 @@ import { moderateFields, getSetting } from '../settings.js';
 import { json, uniqueSlug } from '../util.js';
 import { partDto } from './catalog.js';
 import { audit } from '../audit.js';
-import { analyzeDeck } from '../deck-analysis.js';
+import { analyzeDeck, isDeckAnalysisBusy } from '../deck-analysis.js';
 
 const router = Router();
 const ah = (fn) => (req, res, next) => fn(req, res, next).catch(next);
@@ -135,6 +135,7 @@ router.get('/api/decks/:slug/analysis', ah(async (req, res) => {
  * servidor; o resultado é gravado e passa a ser reutilizado por todos. */
 router.post('/api/decks/:id/analysis/refresh', requireUser, ah(async (req, res) => {
   if (req.user.role !== 'ADMIN') return res.status(403).json({ error: 'Apenas administradores podem atualizar a análise.' });
+  if (isDeckAnalysisBusy()) return res.status(409).json({ error: 'Outra análise está sendo atualizada. Aguarde ela terminar.' });
   const deck = await prisma.communityDeck.findUnique({ where: { id: req.params.id } });
   if (!deck) return res.status(404).json({ error: 'Deck não encontrado.' });
   const beys = json(deck.beysJson, []);

@@ -204,42 +204,74 @@ function physicalTendency(stats) {
   return values.slice(0, 2).map(([key]) => names[key]).filter(Boolean).join(' e ') || null;
 }
 
-async function humanNarrative(combos) {
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) return null;
-  const model = process.env.GROQ_MODEL || 'qwen/qwen3.8-27b';
-  // A IA recebe sinais físicos compactos, e não o objeto bruto do catálogo.
-  // Isso reduz muito o consumo de tokens e impede que ela despeje notas no texto.
-  const payload = { combos: combos.map((combo) => ({
+let llmQueue = Promise.resolve();
+let lastLlmBatchAt = 0;
+let llmPending = 0;
+const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function queueLlmBatch(work) {
+  if (llmPending > 0) return null;
+  llmPending++;
+  const run = async () => {
+    // Uma análise completa reserva menos de 700 tokens de saída. Damos uma
+    // janela entre decks para não somar dois lotes no limite de 1k/minuto.
+    const remaining = 45_000 - (Date.now() - lastLlmBatchAt);
+    if (remaining > 0) await pause(remaining);
+    try { return await work(); }
+    finally { lastLlmBatchAt = Date.now(); llmPending--; }
+  };
+  const result = llmQueue.catch(() => null).then(run);
+  llmQueue = result.catch(() => null);
+  return result;
+}
+
+export const isDeckAnalysisBusy = () => llmPending > 0;
+
+function compactCombo(combo) {
+  return {
     label: combo.label,
     type: combo.type,
-    physical: combo.physical.map((part) => ({
-      name: part.name,
-      kind: part.kind,
-      type: part.type,
-      behavior: part.behavior,
-      tendency: physicalTendency(part.stats),
-    })),
-  })) };
-  const prompt = `Você é um analista de Beyblade X e escreve em pt-BR. Responda APENAS JSON válido: {"deckLabel":"rótulo curto e marcante de 2 a 6 palavras","deck":"texto","beys":[{"summary":"texto","launch":"instrução prática","favored":"arquétipo favorecido","favoredWhy":"motivo","risk":"arquétipo perigoso","riskWhy":"motivo","counterTip":"dica","why":[{"part":"nome","reason":"função"}]}]}. Retorne EXATAMENTE ${combos.length} objetos em beys, um para cada combo recebido, na mesma ordem; nenhum pode ser omitido. Seja muito conciso: deck com uma frase; todos os demais textos com até 10 palavras; why com no máximo uma frase curta por peça. O deckLabel deve descrever a identidade concreta do trio, ser interessante e específico às peças; nunca use rótulos genéricos como "Deck muito ofensivo", "Deck equilibrado", "Deck de stamina" ou "Deck defensivo". Use SOMENTE comportamento físico, tipo e stats das peças como raciocínio interno. Escreva para jogador: traduza números em comportamento prático e NUNCA exponha notas, valores, porcentagens, atributos numéricos ou frases como "ataque de 70"; identificadores oficiais de peças como "1-60" podem aparecer só como parte do nome. Trate matchups como tendências, nunca como vitória garantida. Não cite meta, torneios, ranking, presença, percentuais, fontes, status nem dados externos. Sem markdown. Dados: ${JSON.stringify(payload)}`;
+    physical: combo.physical.map((part) => ({ name: part.name, kind: part.kind, type: part.type, behavior: part.behavior, tendency: physicalTendency(part.stats) })),
+  };
+}
+
+async function groqJson(apiKey, model, prompt, maxTokens) {
   try {
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, temperature: 0.35, max_tokens: 450, reasoning_effort: model.startsWith('qwen/') ? 'none' : 'low', include_reasoning: false, response_format: { type: 'json_object' }, messages: [{ role: 'user', content: prompt }] }),
+      body: JSON.stringify({ model, temperature: 0.35, max_tokens: maxTokens, reasoning_effort: model.startsWith('qwen/') ? 'none' : 'low', include_reasoning: false, response_format: { type: 'json_object' }, messages: [{ role: 'user', content: prompt }] }),
       signal: AbortSignal.timeout(12_000),
     });
     if (!response.ok) throw new Error(`Groq HTTP ${response.status}: ${(await response.text()).slice(0, 500)}`);
-    const body = await response.json();
-    const narrative = JSON.parse(String(body?.choices?.[0]?.message?.content || '{}'));
-    // Não deixa a redação da IA contradizer a evidência quando a amostra não
-    // validou nenhum combo completo.
-    if (!narrative?.deck || !Array.isArray(narrative.beys)) return null;
-    return { deckLabel: String(narrative.deckLabel || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 90), deck: String(narrative.deck).slice(0, 1400), beys: narrative.beys.slice(0, 3).map((bey) => ({ summary: String(bey?.summary || '').slice(0, 700), launch: String(bey?.launch || '').slice(0, 550), favored: String(bey?.favored || '').slice(0, 250), favoredWhy: String(bey?.favoredWhy || '').slice(0, 450), risk: String(bey?.risk || '').slice(0, 250), riskWhy: String(bey?.riskWhy || '').slice(0, 450), counterTip: String(bey?.counterTip || '').slice(0, 450), why: Array.isArray(bey?.why) ? bey.why.slice(0, 7).map((item) => ({ part: String(item?.part || '').slice(0, 100), reason: String(item?.reason || '').slice(0, 350) })) : [] })) };
+    return JSON.parse(String((await response.json())?.choices?.[0]?.message?.content || '{}'));
   } catch (error) {
     console.warn('[deck analysis] LLM:', error.message);
     return null;
   }
+}
+
+function cleanBeyNarrative(bey) {
+  return { summary: String(bey?.summary || '').slice(0, 700), launch: String(bey?.launch || '').slice(0, 550), favored: String(bey?.favored || '').slice(0, 250), favoredWhy: String(bey?.favoredWhy || '').slice(0, 450), risk: String(bey?.risk || '').slice(0, 250), riskWhy: String(bey?.riskWhy || '').slice(0, 450), counterTip: String(bey?.counterTip || '').slice(0, 450), why: Array.isArray(bey?.why) ? bey.why.slice(0, 7).map((item) => ({ part: String(item?.part || '').slice(0, 100), reason: String(item?.reason || '').slice(0, 350) })) : [] };
+}
+
+async function humanNarrative(combos) {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) return null;
+  const model = process.env.GROQ_MODEL || 'qwen/qwen3.8-27b';
+  return queueLlmBatch(async () => {
+    const beys = [];
+    for (const combo of combos) {
+      const prompt = `Você é analista de Beyblade X em pt-BR. Responda APENAS JSON válido: {"summary":"texto","launch":"dica detalhada","favored":"arquétipo","favoredWhy":"explicação física","risk":"arquétipo","riskWhy":"explicação física","counterTip":"dica de resposta","why":[{"part":"nome","reason":"função no conjunto"}]}. Analise SOMENTE este combo. Seja específico e prático: summary até 28 palavras; launch, favoredWhy, riskWhy e counterTip até 22 palavras; why com uma frase útil por peça. Fale de linha, inclinação, contato, ritmo, rotação e comportamento na arena quando for relevante. Não mostre números, stats, meta, torneios ou percentuais; use-os apenas como raciocínio interno. Matchups são tendências, não garantias. Dados: ${JSON.stringify(compactCombo(combo))}`;
+      const result = await groqJson(apiKey, model, prompt, 220);
+      beys.push(result ? cleanBeyNarrative(result) : null);
+      await pause(1_200);
+    }
+    const deckPrompt = `Você é analista de Beyblade X em pt-BR. Responda APENAS JSON válido: {"deckLabel":"rótulo curto de 2 a 6 palavras","deck":"análise de até 45 palavras"}. Crie uma identidade específica ao trio, explique a sinergia, o plano de jogo e o principal risco; nunca use "deck ofensivo", "equilibrado", "de stamina" ou "defensivo". Não mostre números, stats, meta, torneios ou percentuais. Dados: ${JSON.stringify({ combos: combos.map(compactCombo) })}`;
+    const overview = await groqJson(apiKey, model, deckPrompt, 160);
+    if (!overview && !beys.some(Boolean)) return null;
+    return { deckLabel: String(overview?.deckLabel || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 90), deck: String(overview?.deck || '').slice(0, 1400), beys };
+  });
 }
 
 const analysisKey = (signature) => `${ANALYSIS_STORE_PREFIX}${createHash('sha256').update(signature).digest('hex')}`;
