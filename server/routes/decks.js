@@ -91,8 +91,8 @@ async function enqueueAnalysis(beys) {
 async function beyXLabAuthor() {
   const email = 'decks@beyxlab.local';
   const found = await prisma.user.findUnique({ where: { email } });
-  if (found) return found;
-  return prisma.user.create({ data: { email, name: 'BeyXLab', slug: await uniqueSlug(prisma.user, 'beyxlab'), bio: 'Decks publicados pela equipe BeyXLab.', verified: true } });
+  if (found) return found.avatarUrl === '/assets/profiles/beyxlab-avatar.png' ? found : prisma.user.update({ where: { id: found.id }, data: { avatarUrl: '/assets/profiles/beyxlab-avatar.png' } });
+  return prisma.user.create({ data: { email, name: 'BeyXLab', slug: await uniqueSlug(prisma.user, 'beyxlab'), bio: 'Decks publicados pela equipe BeyXLab.', avatarUrl: '/assets/profiles/beyxlab-avatar.png', verified: true } });
 }
 
 router.get('/api/decks', ah(async (req, res) => {
