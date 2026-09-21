@@ -93,17 +93,18 @@
           analysis.combos.forEach((combo, i) => {
             const card = document.getElementById(`deckBey-${i}`);
             if (!card) return;
-            const exact = combo.evidence.exactBuild ? `<p class="deck-analysis-evidence">${BX.ic('trophy', 14)} Build de pódio: <b>${BX.esc(combo.evidence.exactBuild)}</b>${combo.evidence.exactBuildShare != null ? ` · ${combo.evidence.exactBuildShare}% dos builds da Blade` : ''}</p>` : combo.evidence.bladePodiumShare != null ? `<p class="deck-analysis-evidence">${BX.ic('target', 14)} ${BX.esc(combo.evidence.blade)} em ${combo.evidence.bladePodiumShare}% dos decks de pódio.</p>` : '';
-            card.querySelector('.deck-analysis-loading').outerHTML = `<div class="deck-bey-status ${combo.status === 'COMBO VALIDADO NO META' ? 'validated' : combo.status === 'BASE PRESENTE NO META' ? 'grounded' : 'untested'}"><span>${BX.esc(combo.status)}</span><b>${BX.esc(combo.type)}</b><p>${BX.esc(combo.summary)}</p>${exact}</div>`;
+            const presence = combo.evidence.exactBuildShare ?? combo.evidence.historicalShare ?? combo.evidence.bladePodiumShare;
+            const exact = presence != null ? `<div class="top3-presence" title="Presença baseada em decks de Top 3"><span>Presença no Top 3</span><div><i style="width:${Math.max(3, Math.min(100, presence))}%"></i></div><b>${presence}%</b></div>` : '';
+            card.querySelector('.deck-analysis-loading').outerHTML = `<div class="deck-bey-status ${combo.status.startsWith('COMBO VALIDADO') ? 'validated' : combo.status.startsWith('BASE PRESENTE') ? 'grounded' : 'untested'}"><b>${BX.esc(combo.type)}</b><p>${BX.esc(combo.summary)}</p>${exact}</div>`;
           });
           const source = analysis.source;
           document.getElementById('deckAnalysis').innerHTML = `
             <div class="section-title-row deck-analysis-heading">
               <div><p class="eyebrow">ANALISADOR COMPETITIVO</p><h2>Status geral do deck</h2></div>
-              <span class="badge owned">${BX.ic('sparkle', 14)} ${BX.esc(analysis.generatedBy)}</span>
+              <span class="badge owned" title="Análise assistida por IA">${BX.ic('sparkle', 14)}</span>
             </div>
             <p class="deck-analysis-summary">${BX.esc(analysis.deckSummary)}</p>
-            <p class="deck-analysis-source">Base: <a href="${BX.esc(source.url)}" target="_blank" rel="noopener">${BX.esc(source.name)}</a>${source.events ? ` · ${source.events} eventos` : ''}${source.podiumDecks ? ` · ${source.podiumDecks} decks de pódio` : ''}${source.updated ? ` · ${BX.esc(source.updated)}` : ''}${source.stale ? ' · usando a última atualização disponível' : ''}.</p>`;
+            `;
         } catch (e) {
           document.querySelectorAll('.deck-analysis-loading').forEach((el) => { el.textContent = 'Histórico competitivo indisponível agora.'; });
         }

@@ -1,9 +1,12 @@
 import { getSetting, setSetting } from './settings.js';
+import { prisma } from './db.js';
 
 // A fonte publica agrega pódios de eventos WBO. Guardamos uma cópia curta por
 // um dia: evita depender da página externa a cada abertura de deck.
 const SOURCE_URL = 'https://meta.beycrate.com/';
 const SOURCE_KEY = 'external-bey-meta-v1';
+const HISTORY_URL = 'https://bbxhub.net/meta/';
+const HISTORY_TTL = 20 * 60 * 60 * 1000;
 const SOURCE_TTL = 24 * 60 * 60 * 1000;
 const ANALYSIS_TTL = 6 * 60 * 60 * 1000;
 const analysisCache = new Map();
@@ -60,9 +63,43 @@ async function getExternalMeta() {
   }
 }
 
+const historySlug = (name) => String(name || '').replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+const historyLines = (html) => decode(String(html || '').replace(/<\/(?:tr|li|p|h[1-6])>/gi, '\n').replace(/<[^>]+>/g, ' ')).split('\n').map((line) => line.replace(/\s+/g, ' ').trim()).filter(Boolean);
+
+async function getHistoricalBlade(name, { force = false } = {}) {
+  const slug = historySlug(name);
+  if (!slug) return null;
+  const key = `external-bey-history-v1:${slug}`;
+  const saved = await getSetting(key);
+  if (!force && saved?.fetchedAt && Date.now() - new Date(saved.fetchedAt).getTime() < HISTORY_TTL) return saved;
+  try {
+    const response = await fetch(`${HISTORY_URL}${slug}`, { headers: { 'User-Agent': 'BX-Deck-Lab meta reader/1.0 (+https://bxdecklab.com)' }, signal: AbortSignal.timeout(15_000) });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const html = await response.text();
+    const lines = historyLines(html);
+    const placement = lines.find((line) => /tracked top placements/i.test(line)) || '';
+    const total = Number((placement.match(/from\s+([\d,]+)\s+tracked/i) || [])[1]?.replace(',', '')) || null;
+    if (!total) return null;
+    const rank = Number((lines.find((line) => /^#\d+ of \d+$/i.test(line)) || '').match(/^#(\d+)/)?.[1]) || null;
+    const tier = lines.find((line) => /^[SABC]\s+/.test(line)) || null;
+    const wins = Number((lines[lines.findIndex((line) => line === 'Tournament wins') + 1] || '').replace(/,/g, '')) || null;
+    const builds = [...html.matchAll(/<tr class="border-t[^>]*>([\s\S]*?)<\/tr>/gi)].map((row) => {
+      const cells = [...row[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map((cell) => text(cell[1]));
+      const uses = Number((cells[1] || '').match(/\d+/)?.[0]);
+      const percent = Number((cells[2] || '').match(/\d+/)?.[0]);
+      return cells[0] && uses && percent ? { label: cells[0], uses, percent } : null;
+    }).filter(Boolean);
+    const fresh = { fetchedAt: new Date().toISOString(), name, url: `${HISTORY_URL}${slug}`, total, rank, tier, wins, builds };
+    await setSetting(key, fresh);
+    return fresh;
+  } catch (error) {
+    return saved || null;
+  }
+}
+
 function partName(part) { return part?.displayName || part?.name || ''; }
 function category(parts, kinds) { return parts.find((part) => kinds.includes(part?.kind)); }
-function describeSignal(combo, meta) {
+function describeSignal(combo, meta, history) {
   const parts = combo.map(partName).filter(Boolean);
   const blade = category(combo, ['BLADE', 'MAIN_BLADE', 'OVER_BLADE']);
   const ratchet = category(combo, ['RATCHET']);
@@ -74,15 +111,25 @@ function describeSignal(combo, meta) {
     const candidate = compact(build.label);
     return [partName(ratchet), partName(bit)].filter(Boolean).every((name) => candidate.includes(compact(name)));
   });
+  const historicExact = history?.builds?.find((build) => {
+    const candidate = compact(build.label);
+    return [partName(ratchet), partName(bit)].filter(Boolean).every((name) => candidate.includes(compact(name)));
+  });
   const type = blade?.type || bit?.type || 'Balance';
   let status = 'SEM AMOSTRA PÚBLICA';
   let summary = 'Ainda não há dado de pódio suficiente nessa amostra pública para validar este conjunto completo.';
   if (exact) {
     status = 'COMBO VALIDADO NO META';
-    summary = `${exact.label} aparece entre os builds de pódio registrados; nesta janela, essa variação representa ${exact.percent}% dos builds listados para ${bladeRow.blade}.`;
+    summary = `Setup de ${type} alinhado ao recorte competitivo atual.`;
   } else if (bladeRow) {
     status = 'BASE PRESENTE NO META';
-    summary = `${bladeRow.blade} esteve em ${bladeRow.appearance}% dos decks de pódio da janela. A configuração exata não apareceu entre os builds mais recorrentes, então o ponto de teste é a combinação com ${partName(ratchet) || 'o ratchet'} e ${partName(bit) || 'o bit'}.`;
+    summary = `A Blade tem presença no Top 3; este setup é uma variação fora dos builds mais recorrentes.`;
+  } else if (historicExact) {
+    status = 'COMBO VALIDADO NO HISTÓRICO';
+    summary = `Setup de ${type} com histórico global de Top 3.`;
+  } else if (history) {
+    status = 'BASE PRESENTE NO HISTÓRICO';
+    summary = `A Blade tem histórico global de Top 3; este setup ainda não está entre os mais recorrentes.`;
   }
   const behavior = [blade?.behavior, bit?.behavior, blade?.note, bit?.note].filter(Boolean)[0];
   return {
@@ -92,14 +139,18 @@ function describeSignal(combo, meta) {
       bladePodiumShare: bladeRow?.appearance || null,
       exactBuild: exact?.label || null,
       exactBuildShare: exact?.percent || null,
+      historicalBuild: historicExact?.label || null,
+      historicalUses: historicExact?.uses || null,
+      historicalShare: historicExact?.percent || null,
+      historyUrl: history?.url || null,
       partBehavior: behavior || null,
     },
   };
 }
 
 function fallbackNarrative(combos, source) {
-  const verified = combos.filter((combo) => combo.status === 'COMBO VALIDADO NO META').length;
-  const based = combos.filter((combo) => combo.status === 'BASE PRESENTE NO META').length;
+  const verified = combos.filter((combo) => combo.status.startsWith('COMBO VALIDADO')).length;
+  const based = combos.filter((combo) => combo.status.startsWith('BASE PRESENTE')).length;
   const missing = combos.length - verified - based;
   const pieces = [];
   if (verified) pieces.push(`${verified} combo${verified > 1 ? 's' : ''} tem histórico direto de pódio`);
@@ -143,10 +194,15 @@ export async function analyzeDeck(beys, partsById) {
   const hit = analysisCache.get(signature);
   if (hit && Date.now() - hit.at < ANALYSIS_TTL) return hit.value;
   const meta = await getExternalMeta();
-  const combos = (beys || []).filter(Array.isArray).map((ids) => describeSignal(ids.map((id) => partsById?.[id]).filter(Boolean), meta));
+  const rawCombos = (beys || []).filter(Array.isArray).map((ids) => ids.map((id) => partsById?.[id]).filter(Boolean));
+  const histories = await Promise.all(rawCombos.map(async (combo) => {
+    const blade = category(combo, ['BLADE', 'MAIN_BLADE', 'OVER_BLADE']);
+    return getHistoricalBlade(partName(blade));
+  }));
+  const combos = rawCombos.map((combo, i) => describeSignal(combo, meta, histories[i]));
   const aiNarrative = await humanNarrative(combos, meta.source);
   const value = {
-    source: { ...meta.source, fetchedAt: meta.fetchedAt, stale: !!meta.stale },
+    source: { ...meta.source, fetchedAt: meta.fetchedAt, stale: !!meta.stale, historyName: 'BBXHub', historyUrl: 'https://bbxhub.net/', historyEvents: 4034 },
     combos,
     deckSummary: aiNarrative || fallbackNarrative(combos, meta.source),
     generatedBy: aiNarrative ? 'LLM + dados de pódios' : 'dados de pódios',
