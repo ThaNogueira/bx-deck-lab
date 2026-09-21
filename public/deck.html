@@ -36,6 +36,13 @@
       const me = await BX.me().catch(() => null);
       const mine = me && deck.author && me.id === deck.author.id;
       const embed = BX.ytEmbed(deck.youtubeUrl);
+      const physicalBars = (ids) => {
+        const parts = ids.map((id) => deck.parts?.[id]).filter(Boolean);
+        const totals = { atk: 0, def: 0, sta: 0 };
+        parts.forEach((part) => ['atk', 'def', 'sta'].forEach((key) => { const value = Number(part.stats?.[key]) || 0; totals[key] += value > 10 ? value / 10 : value; }));
+        const count = Math.max(1, parts.filter((part) => part.stats).length);
+        return `<div class="physical-bars">${[['atk','ATK'],['def','DEF'],['sta','STA']].map(([key,label]) => { const value = Math.min(10, totals[key] / count); return `<div><small>${label}</small><span><i style="width:${Math.max(3, value * 10)}%"></i></span><b>${value.toFixed(1)}</b></div>`; }).join('')}</div>`;
+      };
 
       const beysHtml = deck.beys.map((bey, i) => `
         <div class="list-card deck-bey-card" id="deckBey-${i}">
@@ -95,7 +102,7 @@
             if (!card) return;
             const presence = combo.evidence.exactBuildShare ?? combo.evidence.historicalShare ?? combo.evidence.bladePodiumShare;
             const exact = presence != null ? `<div class="top3-presence" title="Presença baseada em decks de Top 3"><span>Presença no Top 3</span><div><i style="width:${Math.max(3, Math.min(100, presence))}%"></i></div><b>${presence}%</b></div>` : '';
-            card.querySelector('.deck-analysis-loading').outerHTML = `<div class="deck-bey-status ${combo.status.startsWith('COMBO VALIDADO') ? 'validated' : combo.status.startsWith('BASE PRESENTE') ? 'grounded' : 'untested'}"><b>${BX.esc(combo.type)}</b><p>${BX.esc(combo.summary)}</p>${exact}</div>`;
+            card.querySelector('.deck-analysis-loading').outerHTML = `<div class="deck-bey-status"><b>${BX.esc(combo.type)}</b><p>${BX.esc(combo.physical?.map((part) => part.behavior).filter(Boolean)[0] || 'Perfil calculado a partir das peças do conjunto.')}</p>${physicalBars(deck.beys[i])}${exact}</div>`;
           });
           const source = analysis.source;
           document.getElementById('deckAnalysis').innerHTML = `

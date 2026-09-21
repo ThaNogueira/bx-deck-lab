@@ -22,6 +22,7 @@ import homeRoutes from './routes/home.js';
 import { scheduleMetaJobs } from './meta.js';
 import { warmModeration } from './moderation.js';
 import { sendSocial, socialMeta, socialRouter } from './social.js';
+import { scheduleDeckAnalysisJobs } from './deck-analysis.js';
 
 const app = express();
 app.use(compression({ threshold: 1024 })); // gzip/brotli de HTML/CSS/JS/JSON (o Caddy também comprime; aqui cobre dev e acesso direto)
@@ -98,6 +99,7 @@ const isolatedTest = process.env.NODE_ENV === 'test' && process.env.BX_ISOLATED_
 if (!isolatedTest) {
   warmModeration();
   scheduleMetaJobs();
+  scheduleDeckAnalysisJobs();
 }
 
 // Uploads e estáticos

@@ -48,9 +48,9 @@ function parseSource(html) {
   };
 }
 
-async function getExternalMeta() {
+async function getExternalMeta({ force = false } = {}) {
   const saved = await getSetting(SOURCE_KEY);
-  if (saved?.fetchedAt && Date.now() - new Date(saved.fetchedAt).getTime() < SOURCE_TTL && saved.blades?.length) return saved;
+  if (!force && saved?.fetchedAt && Date.now() - new Date(saved.fetchedAt).getTime() < SOURCE_TTL && saved.blades?.length) return saved;
   try {
     const response = await fetch(SOURCE_URL, { headers: { 'User-Agent': 'BX-Deck-Lab meta reader/1.0 (+https://bxdecklab.com)' }, signal: AbortSignal.timeout(15_000) });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -145,6 +145,7 @@ function describeSignal(combo, meta, history) {
       historyUrl: history?.url || null,
       partBehavior: behavior || null,
     },
+    physical: combo.map((part) => ({ name: partName(part), kind: part?.kind, type: part?.type, behavior: part?.behavior || part?.note || null, stats: part?.stats || null })),
   };
 }
 
@@ -165,9 +166,9 @@ async function humanNarrative(combos, source) {
   const model = process.env.GROQ_MODEL || 'qwen/qwen3.8-27b';
   const payload = {
     source: { name: source.name, events: source.events, podiumDecks: source.podiumDecks, updated: source.updated },
-    combos: combos.map((combo) => ({ label: combo.label, type: combo.type, status: combo.status, evidence: combo.evidence })),
+    combos: combos.map((combo) => ({ label: combo.label, type: combo.type, status: combo.status, physical: combo.physical })),
   };
-  const prompt = `Você é um analista competitivo de Beyblade X e escreve em pt-BR. Faça uma leitura curta, humana e útil de um deck de 3 Beys usando SOMENTE os fatos deste JSON. Não invente win rate, matchup, ranking, resultado, "confiável" ou "comprovado". Para cada Bey, copie o valor do campo status EXATAMENTE como está, em letras maiúsculas: nunca chame de validado algo com status BASE PRESENTE NO META ou SEM AMOSTRA PÚBLICA. Dê a função declarada pelo tipo e uma conclusão cuidadosa em até 115 palavras. Não mencione JSON, regras, instruções, limitações da IA ou o ato de evitar afirmações. Sem markdown, sem título. Dados: ${JSON.stringify(payload)}`;
+  const prompt = `Você é um analista de Beyblade X e escreve em pt-BR. Produza uma leitura curta, prática e humana do DECK usando SOMENTE o comportamento físico, tipo e stats das peças neste JSON. Explique a função que cada Bey cumpre no trio e a sinergia/risco do deck, como um bom analista de bancada. Não cite meta, torneios, rankings, presença, percentuais, fontes, status nem dados externos. Não invente matchup, win rate ou resultado. Sem markdown, sem título, sem mencionar JSON ou instruções. Máximo de 105 palavras. Dados: ${JSON.stringify(payload)}`;
   try {
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
@@ -209,4 +210,14 @@ export async function analyzeDeck(beys, partsById) {
   };
   analysisCache.set(signature, { at: Date.now(), value });
   return value;
+}
+
+/** Atualiza o recorte competitivo todas as manhãs; peças sem cache continuam
+ * sendo pesquisadas sob demanda uma única vez e guardadas por 20 horas. */
+export function scheduleDeckAnalysisJobs() {
+  const refresh = () => getExternalMeta({ force: true }).then(() => console.log('[deck analysis] meta diário atualizado')).catch((error) => console.warn('[deck analysis] meta diário:', error.message));
+  const next = new Date();
+  next.setHours(7, 15, 0, 0);
+  if (next <= new Date()) next.setDate(next.getDate() + 1);
+  setTimeout(() => { refresh(); setInterval(refresh, 24 * 60 * 60 * 1000); }, next - new Date()).unref();
 }
