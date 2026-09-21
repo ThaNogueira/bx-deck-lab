@@ -32,7 +32,6 @@ async function buildPlayerRanking({ limit = null } = {}) {
     select: { slug: true }, orderBy: { startsAt: 'desc' }, take: 150,
   });
   const players = new Map();
-  const beys = new Map();
   let matches = 0;
   for (const event of finished) {
     const full = await loadTournament(event.slug);
@@ -40,7 +39,7 @@ async function buildPlayerRanking({ limit = null } = {}) {
     matches += full.matches.filter((m) => m.status === 'DONE' && !!m.p2Id).length;
     standingsOf(full).forEach((s, place) => {
       const u = s.player.user;
-      const row = players.get(u.id) || { user: u, gold: 0, silver: 0, bronze: 0, titles: 0, top4: 0, wins: 0, losses: 0, events: 0, points: 0 };
+      const row = players.get(u.id) || { user: u, gold: 0, silver: 0, bronze: 0, titles: 0, top4: 0, wins: 0, losses: 0, events: 0, points: 0, beyMap: new Map() };
       row.events++; row.wins += s.wins; row.losses += s.losses;
       if (place === 0) { row.gold++; row.titles++; }
       if (place === 1) row.silver++;
@@ -54,18 +53,19 @@ async function buildPlayerRanking({ limit = null } = {}) {
       deck.forEach((bey) => {
         if (!Array.isArray(bey) || !bey.length) return;
         const key = bey.join('|');
-        const item = beys.get(key) || { ids: bey, uses: 0 };
-        item.uses++; beys.set(key, item);
+        const item = row.beyMap.get(key) || { ids: bey, uses: 0 };
+        item.uses++; row.beyMap.set(key, item);
       });
     });
   }
-  const ranking = [...players.values()].sort((a, b) => b.points - a.points || b.gold - a.gold || b.wins - a.wins || a.user.name.localeCompare(b.user.name));
-  const topBeys = [...beys.values()].sort((a, b) => b.uses - a.uses).slice(0, 12);
-  const partIds = [...new Set(topBeys.flatMap((b) => b.ids))];
+  const ranking = [...players.values()]
+    .sort((a, b) => b.points - a.points || b.gold - a.gold || b.wins - a.wins || a.user.name.localeCompare(b.user.name))
+    .map(({ beyMap, ...row }) => ({ ...row, beys: [...beyMap.values()].sort((a, b) => b.uses - a.uses).slice(0, 3) }));
+  const publishedRanking = limit ? ranking.slice(0, limit) : ranking;
+  const partIds = [...new Set(publishedRanking.flatMap((player) => player.beys.flatMap((b) => b.ids)))];
   const parts = partIds.length ? await prisma.part.findMany({ where: { id: { in: partIds } } }) : [];
   return {
-    ranking: limit ? ranking.slice(0, limit) : ranking,
-    topBeys,
+    ranking: publishedRanking,
     parts: Object.fromEntries(parts.map((p) => [p.id, partDto(p)])),
     totals: { tournaments: finished.length, players: players.size, matches },
   };
