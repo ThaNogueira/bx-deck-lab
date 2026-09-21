@@ -57,7 +57,8 @@ export async function computeMeta() {
     if (!full) continue;
     const withDeck = full.players.filter((p) => p.deckId || p.manualDeckJson);
     if (!withDeck.length) continue;
-    const decks = await prisma.communityDeck.findMany({ where: { id: { in: withDeck.map((p) => p.deckId) } } });
+    const deckIds = withDeck.map((p) => p.deckId).filter(Boolean);
+    const decks = deckIds.length ? await prisma.communityDeck.findMany({ where: { id: { in: deckIds } } }) : [];
     const byId = new Map(decks.map((d) => [d.id, d]));
     const standings = full.status === 'FINISHED' ? standingsOf(full) : [];
     for (const p of withDeck) {
