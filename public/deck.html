@@ -113,7 +113,7 @@
             const presence = combo.evidence.exactBuildShare ?? combo.evidence.historicalShare ?? combo.evidence.bladePodiumShare;
             const exact = presence != null ? `<div class="top3-presence" title="Presença baseada em decks de Top 3"><span>Presença no Top 3</span><div><i style="width:${Math.max(3, Math.min(100, presence))}%"></i></div><b>${presence}%</b></div>` : '';
             const why = individual?.why?.length ? `<details class="deck-why"><summary>Por quê?</summary>${individual.why.map((item) => `<p><b>${BX.esc(item.part)}:</b> ${BX.esc(item.reason)}</p>`).join('')}</details>` : '';
-            const play = individual ? `<details class="deck-more"><summary>+ Ver mais</summary><div><p><small>SUGESTÃO DE LANÇAMENTO</small>${BX.esc(individual.launch)}</p><p><small>VANTAGEM</small>${BX.esc(individual.favored)}</p><p><small>FRAQUEZA</small>${BX.esc(individual.risk)}</p></div></details>` : '';
+            const play = individual ? `<details class="deck-more"><summary>Ver mais</summary><div><p><small>SUGESTÃO DE LANÇAMENTO</small>${BX.esc(individual.launch)}</p><p><small>VANTAGEM · ${BX.esc(individual.favored)}</small>${BX.esc(individual.favoredWhy)}</p><p><small>FRAQUEZA · ${BX.esc(individual.risk)}</small>${BX.esc(individual.riskWhy)}</p><p class="counter-tip"><small>COMO RESPONDER</small>${BX.esc(individual.counterTip)}</p></div></details>` : '';
             card.querySelector('.deck-analysis-loading').outerHTML = `<div class="deck-bey-status"><b>${BX.esc(combo.type)}</b><p>${BX.esc(individual?.summary || combo.physical?.map((part) => part.behavior).filter(Boolean)[0] || 'Perfil calculado a partir das peças do conjunto.')}</p>${physicalBars(deck.beys[i])}${play}${exact}${why}</div>`;
           });
           const source = analysis.source;
@@ -123,7 +123,7 @@
               <div><p class="eyebrow">ANALISADOR COMPETITIVO</p><h2>Status geral do deck</h2></div>
               <span class="badge owned" title="Análise assistida por IA">${BX.ic('sparkle', 14)}</span>
             </div>
-            <div class="deck-overview"><div class="deck-overview-head"><h3>${BX.esc(profile.title)}</h3><span>${deck.beys.length}/3 completos</span></div><p class="deck-analysis-summary">${BX.esc(analysis.deckSummary)}</p>${profile.bars}</div>
+            <div class="deck-overview"><div class="deck-overview-head"><h3>${BX.esc(profile.title)}</h3></div><p class="deck-analysis-summary">${BX.esc(analysis.deckSummary)}</p>${profile.bars}</div>
             `;
         } catch (e) {
           document.querySelectorAll('.deck-analysis-loading').forEach((el) => { el.textContent = 'Histórico competitivo indisponível agora.'; });

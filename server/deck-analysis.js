@@ -165,7 +165,7 @@ async function humanNarrative(combos, source) {
     source: { name: source.name, events: source.events, podiumDecks: source.podiumDecks, updated: source.updated },
     combos: combos.map((combo) => ({ label: combo.label, type: combo.type, status: combo.status, physical: combo.physical })),
   };
-  const prompt = `Você é um analista de Beyblade X e escreve em pt-BR. Responda APENAS JSON válido: {"deck":"texto","beys":[{"summary":"texto","launch":"texto curto","favored":"arquétipo que tende a pressionar","risk":"arquétipo que tende a ser difícil","why":[{"part":"nome","reason":"função física"}]}]}. Use SOMENTE comportamento físico, tipo e stats das peças. A análise individual deve explicar papel, lançamento, tendência de matchups por ARQUÉTIPO (ataque, stamina, defesa ou balance) e cada peça no Por quê. A análise do deck explica sinergia e risco. Não cite meta, torneios, ranking, presença, percentuais, fontes, status nem dados externos; não prometa vitórias. Sem markdown. Dados: ${JSON.stringify(payload)}`;
+  const prompt = `Você é um analista de Beyblade X e escreve em pt-BR. Responda APENAS JSON válido: {"deck":"texto","beys":[{"summary":"texto","launch":"instrução prática de lançamento com força, inclinação ou alvo","favored":"arquétipo favorecido","favoredWhy":"por que a física do combo pressiona esse arquétipo","risk":"arquétipo perigoso","riskWhy":"por que a física do combo sofre contra ele","counterTip":"dica curta e prática para enfrentar essa Bey","why":[{"part":"nome","reason":"função física"}]}]}. Use SOMENTE comportamento físico, tipo e stats das peças. Seja específico e útil, mas trate matchups como tendências de arquétipo, nunca como vitória garantida. A análise do deck explica sinergia e risco. Não cite meta, torneios, ranking, presença, percentuais, fontes, status nem dados externos. Sem markdown. Dados: ${JSON.stringify(payload)}`;
   try {
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
@@ -179,7 +179,7 @@ async function humanNarrative(combos, source) {
     // Não deixa a redação da IA contradizer a evidência quando a amostra não
     // validou nenhum combo completo.
     if (!narrative?.deck || !Array.isArray(narrative.beys)) return null;
-    return { deck: String(narrative.deck).slice(0, 1400), beys: narrative.beys.slice(0, 3).map((bey) => ({ summary: String(bey?.summary || '').slice(0, 700), launch: String(bey?.launch || '').slice(0, 350), favored: String(bey?.favored || '').slice(0, 250), risk: String(bey?.risk || '').slice(0, 250), why: Array.isArray(bey?.why) ? bey.why.slice(0, 7).map((item) => ({ part: String(item?.part || '').slice(0, 100), reason: String(item?.reason || '').slice(0, 350) })) : [] })) };
+    return { deck: String(narrative.deck).slice(0, 1400), beys: narrative.beys.slice(0, 3).map((bey) => ({ summary: String(bey?.summary || '').slice(0, 700), launch: String(bey?.launch || '').slice(0, 550), favored: String(bey?.favored || '').slice(0, 250), favoredWhy: String(bey?.favoredWhy || '').slice(0, 450), risk: String(bey?.risk || '').slice(0, 250), riskWhy: String(bey?.riskWhy || '').slice(0, 450), counterTip: String(bey?.counterTip || '').slice(0, 450), why: Array.isArray(bey?.why) ? bey.why.slice(0, 7).map((item) => ({ part: String(item?.part || '').slice(0, 100), reason: String(item?.reason || '').slice(0, 350) })) : [] })) };
   } catch (error) {
     console.warn('[deck analysis] LLM:', error.message);
     return null;
