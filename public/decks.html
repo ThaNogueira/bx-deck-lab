@@ -47,12 +47,15 @@
         if (await BX.requireLogin('/#builder')) location.href = '/#builder';
       });
       let timer;
+      let page = 1;
       async function load() {
         const q = document.getElementById('q').value;
         const featured = document.getElementById('filter').value === 'featured' ? '1' : '';
         const { decks } = await BX.api(`/api/decks?query=${encodeURIComponent(q)}&featured=${featured}`);
+        const pages = Math.max(1, Math.ceil(decks.length / 10)); page = Math.min(page, pages);
+        const visible = decks.slice((page - 1) * 10, page * 10);
         document.getElementById('list').innerHTML = decks.length
-          ? decks.map((d) => `
+          ? visible.map((d) => `
             <article class="deck-directory-row ${d.achievements?.some((a) => a.place === 1) ? 'deck-directory-champion' : ''}">
               <a class="deck-directory-main" href="/deck/${d.slug}">
                 <div class="deck-directory-copy">
@@ -66,24 +69,17 @@
                 </div>
               </a>
               <button class="btn secondary deck-directory-copy-btn" type="button" data-copy-text="${BX.esc(d.id)}" title="Copiar lista das Beys">${BX.ic('link', 14)}<span>Copiar</span></button>
-              ${me?.role === 'ADMIN' ? `<button class="btn danger-outline deck-directory-delete-btn" type="button" data-delete-deck="${BX.esc(d.id)}" title="Excluir deck">${BX.ic('trash', 14)}<span>Excluir</span></button>` : ''}
-            </article>`).join('')
+            </article>`).join('') + (pages > 1 ? `<nav class="deck-pagination">${Array.from({ length: pages }, (_, i) => `<button class="btn secondary ${page === i + 1 ? 'active' : ''}" data-deck-page="${i + 1}">${i + 1}</button>`).join('')}</nav>` : '')
           : '<div class="empty-state">Nenhum deck publicado ainda — seja a primeira pessoa!</div>';
         document.querySelectorAll('[data-copy-text]').forEach((button) => button.addEventListener('click', async () => {
           const deck = decks.find((d) => d.id === button.dataset.copyText);
           try { await BX.copyDeckText(deck?.beys); BX.toast('Lista das Beys copiada!'); }
           catch (e) { BX.toast(e.message); }
         }));
-        document.querySelectorAll('[data-delete-deck]').forEach((button) => button.addEventListener('click', async () => {
-          const deck = decks.find((d) => d.id === button.dataset.deleteDeck);
-          if (!deck || !confirm(`Excluir definitivamente o deck “${deck.title}”?`)) return;
-          button.disabled = true;
-          try { await BX.api(`/api/decks/${deck.id}`, { method: 'DELETE' }); BX.toast('Deck excluído.'); load(); }
-          catch (error) { BX.toast(error.message); button.disabled = false; }
-        }));
+        document.querySelectorAll('[data-deck-page]').forEach((button) => button.addEventListener('click', () => { page = Number(button.dataset.deckPage); load(); window.scrollTo({ top: 0, behavior: 'smooth' }); }));
       }
-      document.getElementById('q').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(load, 300); });
-      document.getElementById('filter').addEventListener('change', load);
+      document.getElementById('q').addEventListener('input', () => { page = 1; clearTimeout(timer); timer = setTimeout(load, 300); });
+      document.getElementById('filter').addEventListener('change', () => { page = 1; load(); });
       load();
     })();
   </script>

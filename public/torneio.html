@@ -510,13 +510,24 @@
           try {
             const player = data.players.find((p) => p.id === b.dataset.pickDeck);
             const { decks } = await BX.api('/api/decks?sort=updated');
-            const choices = decks.slice(0, 30);
-            const pick = await BX.promptDialog({ title: `Escolher deck para ${player.user.name}`, text: choices.map((deck, i) => `${i + 1}. ${deck.title} — ${deck.author?.name || 'BeyXLab'}`).join('\n'), placeholder: 'Digite o número do deck', okLabel: 'Usar deck' });
-            const deck = choices[Number(pick) - 1];
-            if (pick === null) return;
-            if (!deck) return BX.toast('Escolha um número válido da lista.');
-            await BX.api(`/api/tournaments/${slug}/players/${player.id}/deck`, { method: 'POST', body: { deckId: deck.id } });
-            BX.toast('Deck público definido para o jogador.'); load();
+            const modal = box.querySelector('#manageDeckModal'); let page = 1;
+            const render = () => {
+              const pages = Math.max(1, Math.ceil(decks.length / 5));
+              page = Math.min(page, pages);
+              const visible = decks.slice((page - 1) * 5, page * 5);
+              modal.hidden = false;
+              modal.querySelector('.modal').innerHTML = `<button class="modal-close" data-close-picker>×</button><p class="eyebrow">DECKS DA COMUNIDADE</p><h2>Escolher para ${BX.esc(player.user.name)}</h2><div class="deck-picker-list">${visible.length ? visible.map((deck) => `<button data-use-deck="${BX.esc(deck.id)}">${BX.deckPreview(deck.beys, { u: 34 })}<span><b>${BX.esc(deck.title)}</b><small>por ${BX.esc(deck.author?.name || 'BeyXLab')}</small></span></button>`).join('') : '<div class="empty-state">Nenhum deck publicado ainda.</div>'}</div>${pages > 1 ? `<nav class="deck-pagination">${Array.from({ length: pages }, (_, i) => `<button class="btn secondary ${page === i + 1 ? 'active' : ''}" data-picker-page="${i + 1}">${i + 1}</button>`).join('')}</nav>` : ''}`;
+              modal.querySelector('[data-close-picker]').onclick = () => { modal.hidden = true; };
+              modal.querySelectorAll('[data-picker-page]').forEach((x) => x.onclick = () => { page = +x.dataset.pickerPage; render(); });
+              modal.querySelectorAll('[data-use-deck]').forEach((x) => x.onclick = async () => {
+                x.disabled = true;
+                try {
+                  await BX.api(`/api/tournaments/${slug}/players/${player.id}/deck`, { method: 'POST', body: { deckId: x.dataset.useDeck } });
+                  BX.toast('Deck público definido para o jogador.'); modal.hidden = true; load();
+                } catch (error) { BX.toast(error.message); x.disabled = false; }
+              });
+            };
+            render();
           } catch (error) { BX.toast(error.message); }
         }));
         document.getElementById('copyLink')?.addEventListener('click', async () => {

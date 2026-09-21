@@ -144,8 +144,8 @@
     const cls = frameObj?.styleKey ? ` frame-${esc(frameObj.styleKey)}` : '';
     const frameImg = frameObj?.imageUrl ? `<img class="frame-img" src="${esc(frameObj.imageUrl)}" alt="" loading="lazy" decoding="async" width="${size}" height="${size}">` : '';
     const inner = user?.avatarUrl
-      ? `<img src="${esc(user.avatarUrl)}" alt="" loading="lazy" decoding="async" width="${size}" height="${size}">`
-      : `<img class="avatar-default" src="/assets/profiles/default-blader.png" alt="" loading="lazy" decoding="async" width="${size}" height="${size}">`;
+      ? `<span class="avatar-photo"><img src="${esc(user.avatarUrl)}" alt="" loading="lazy" decoding="async" width="${size}" height="${size}"></span>`
+      : `<span class="avatar-photo"><img class="avatar-default" src="/assets/profiles/default-blader.png" alt="" loading="lazy" decoding="async" width="${size}" height="${size}"></span>`;
     const badge = user?.verified ? `<i class="verified-badge" title="Verificado">${icon('check', 9)}</i>` : '';
     return `<span class="avatar${cls}" style="width:${size}px;height:${size}px">${inner}${frameImg}${badge}</span>`;
   }

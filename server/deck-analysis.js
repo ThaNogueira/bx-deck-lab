@@ -203,13 +203,34 @@ function physicalTendency(stats) {
   return values.slice(0, 2).map(([key]) => names[key]).filter(Boolean).join(' e ') || null;
 }
 
-let analysisQueue = Promise.resolve();
+const analysisQueue = [];
+let activeAnalysisJob = null;
 let lastLlmBatchAt = 0;
-let llmPending = 0;
 const pendingSignatures = new Map();
+let lastAnalysisSuccessAt = null;
+let lastAnalysisError = null;
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-export const isDeckAnalysisBusy = () => llmPending > 0;
+export const isDeckAnalysisBusy = () => !!activeAnalysisJob || analysisQueue.length > 0;
+export const getDeckAnalysisQueueStatus = () => ({
+  active: !!activeAnalysisJob,
+  queued: analysisQueue.length,
+  waiting: analysisQueue.length + (activeAnalysisJob ? 1 : 0),
+  activeSince: activeAnalysisJob?.startedAt || null,
+  lastSuccessAt: lastAnalysisSuccessAt,
+  lastError: lastAnalysisError,
+});
+
+/** Cancela apenas trabalhos que ainda não começaram. A chamada em curso é
+ * mantida para não deixar uma resposta da IA interrompida pela metade. */
+export function clearDeckAnalysisQueue() {
+  const cancelled = analysisQueue.splice(0);
+  for (const job of cancelled) {
+    pendingSignatures.delete(job.signature);
+    job.reject(new Error('Análise removida da fila pelo administrador.'));
+  }
+  return { cancelled: cancelled.length, active: !!activeAnalysisJob };
+}
 
 function compactCombo(combo) {
   return {
@@ -260,7 +281,14 @@ const analysisKey = (signature) => `${ANALYSIS_STORE_PREFIX}${createHash('sha256
 
 async function generateDeckAnalysis(beys, partsById) {
   const signature = JSON.stringify(beys || []);
-  const meta = await getExternalMeta();
+  // A indisponibilidade temporária de uma fonte externa não pode prender um
+  // deck indefinidamente em "preparação". Geramos e guardamos uma leitura
+  // física/IA mesmo sem o recorte de meta; a atualização manual pode refazer
+  // depois com a fonte disponível.
+  const meta = await getExternalMeta().catch((error) => {
+    console.warn('[deck analysis] meta indisponível:', error.message);
+    return { fetchedAt: new Date().toISOString(), source: { name: 'Beycrate Meta', url: SOURCE_URL, events: null, podiumDecks: null, updated: null }, blades: [], stale: true };
+  });
   const globalHistory = await getGlobalHistory();
   const rawCombos = (beys || []).filter(Array.isArray).map((ids) => ids.map((id) => partsById?.[id]).filter(Boolean));
   const histories = await Promise.all(rawCombos.map(async (combo) => {
@@ -294,6 +322,30 @@ export async function getStoredDeckAnalysis(beys) {
   return stored.value;
 }
 
+async function processAnalysisQueue() {
+  if (activeAnalysisJob || !analysisQueue.length) return;
+  const job = analysisQueue.shift();
+  activeAnalysisJob = job;
+  job.startedAt = new Date().toISOString();
+  try {
+    const remaining = 45_000 - (Date.now() - lastLlmBatchAt);
+    if (remaining > 0) await pause(remaining);
+    const analysis = await generateDeckAnalysis(job.beys, job.partsById);
+    lastLlmBatchAt = Date.now();
+    lastAnalysisSuccessAt = new Date().toISOString();
+    lastAnalysisError = null;
+    job.resolve(analysis);
+  } catch (error) {
+    lastLlmBatchAt = Date.now();
+    lastAnalysisError = String(error?.message || error).slice(0, 300);
+    job.reject(error);
+  } finally {
+    pendingSignatures.delete(job.signature);
+    activeAnalysisJob = null;
+    void processAnalysisQueue();
+  }
+}
+
 /** Uma única fila global evita estouro de cota. Decks idênticos compartilham
  * o mesmo trabalho, e a análise é salva antes de qualquer página poder lê-la. */
 export async function queueDeckAnalysis(beys, partsById, { force = false } = {}) {
@@ -302,17 +354,14 @@ export async function queueDeckAnalysis(beys, partsById, { force = false } = {})
     const stored = await getStoredDeckAnalysis(beys);
     if (stored) return stored;
   }
-  if (pendingSignatures.has(signature)) return pendingSignatures.get(signature);
-  llmPending++;
-  const job = analysisQueue.catch(() => null).then(async () => {
-    const remaining = 45_000 - (Date.now() - lastLlmBatchAt);
-    if (remaining > 0) await pause(remaining);
-    try { return await generateDeckAnalysis(beys, partsById); }
-    finally { lastLlmBatchAt = Date.now(); }
-  }).finally(() => { llmPending--; pendingSignatures.delete(signature); });
+  if (pendingSignatures.has(signature)) return pendingSignatures.get(signature).promise;
+  let resolve; let reject;
+  const promise = new Promise((done, fail) => { resolve = done; reject = fail; });
+  const job = { signature, beys, partsById, promise, resolve, reject, startedAt: null };
   pendingSignatures.set(signature, job);
-  analysisQueue = job.catch(() => null);
-  return job;
+  analysisQueue.push(job);
+  void processAnalysisQueue();
+  return promise;
 }
 
 // Compatibilidade para rotinas internas de manutenção já existentes.

@@ -628,12 +628,22 @@
 
     // ----------------------------------------------------- 2.8 Home & meta
     async home() {
-      const [{ decks }, { logs }, { announcements }] = await Promise.all([
+      const [{ decks }, { logs }, { announcements }, { queue }] = await Promise.all([
         BX.api('/api/decks?all=1'),
         BX.api('/api/admin/sync/logs'),
         BX.api('/api/admin/announcements'),
+        BX.api('/api/admin/deck-analysis/queue'),
       ]);
       box.innerHTML = `
+        <div class="panel-card" style="margin-bottom:14px">
+          <div class="section-title-row"><div><p class="eyebrow">ANÁLISES DE IA DOS DECKS</p><h2 style="font-size:20px">Fila de processamento</h2></div><button class="btn danger-outline" id="clearDeckAnalysisQueue" ${queue.queued ? '' : 'disabled'}>Limpar fila</button></div>
+          <div class="stat-tiles" style="margin-top:12px">
+            <div class="stat-tile"><b style="color:${queue.active ? 'var(--green)' : 'inherit'}">${queue.active ? 'EM ANDAMENTO' : 'LIVRE'}</b><small>análise atual</small></div>
+            <div class="stat-tile"><b>${queue.queued}</b><small>aguardando na fila</small></div>
+            <div class="stat-tile"><b>${queue.waiting}</b><small>total pendente</small></div>
+          </div>
+          <small style="display:block;color:var(--muted);margin-top:10px;font-size:10px">${queue.lastSuccessAt ? `Última análise concluída: ${BX.dateFmt(queue.lastSuccessAt)}.` : 'Ainda não houve análise concluída desde a inicialização.'}${queue.lastError ? ` Último erro: ${esc(queue.lastError)}` : ''} Limpar remove apenas as tarefas que ainda não começaram; a atual termina e fica salva normalmente.</small>
+        </div>
         <div class="panel-card" style="margin-bottom:14px">
           <div class="section-title-row"><div><p class="eyebrow">DESTAQUES DA HOME</p><h2 style="font-size:20px">Decks fixados</h2></div></div>
           <div style="margin-top:10px">${decks.map((d) => `
@@ -682,6 +692,10 @@
         </div>`;
       on('[data-feat]', 'click', act((el) => BX.api(`/api/admin/decks/${el.dataset.feat}/feature`, { method: 'POST', body: { order: Date.now() % 100000 } })));
       on('[data-unfeat]', 'click', act((el) => BX.api(`/api/admin/decks/${el.dataset.unfeat}/feature`, { method: 'POST', body: { order: null } })));
+      box.querySelector('#clearDeckAnalysisQueue').onclick = act(() => {
+        if (!confirm('Remover as análises que ainda estão aguardando na fila? A que estiver em andamento vai continuar.')) return Promise.resolve();
+        return BX.api('/api/admin/deck-analysis/queue/clear', { method: 'POST' });
+      });
       box.querySelector('#syncNow').onclick = act(async () => {
         BX.toast('Atualizando catálogo e imagens — pode levar ~1 min…');
         const r = await BX.api('/api/admin/sync/products', { method: 'POST' });

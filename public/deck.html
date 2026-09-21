@@ -36,6 +36,7 @@
       document.title = `${deck.title} — BX Deck Lab`;
       const me = await BX.me().catch(() => null);
       const mine = me && deck.author && me.id === deck.author.id;
+      const canDelete = mine || me?.role === 'ADMIN';
       const embed = BX.ytEmbed(deck.youtubeUrl);
       const medalName = (place) => ({ 1: 'Campeão', 2: 'Prata', 3: 'Bronze' })[place] || `${place}º lugar`;
       const podiumTags = (deck.achievements || []).map((achievement) => `<a class="deck-podium-tag p${achievement.place}" href="/torneio/${BX.esc(achievement.tournament.slug)}"><img src="/assets/achievements/trophy-neon-gold.png" alt="" /><span><b>${medalName(achievement.place)}</b> em ${BX.esc(achievement.tournament.name)}<small>${BX.dateFmt(achievement.tournament.startsAt, { day: '2-digit', month: 'long', year: 'numeric' })}</small></span></a>`).join('');
@@ -84,7 +85,8 @@
             ${mine ? `<button class="btn secondary" id="visBtn">${deck.isPublic === false ? `${BX.ic('globe', 14)} Tornar público` : `${BX.ic('lock', 14)} Tornar privado`}</button><a class="btn secondary" href="/deck/${deck.slug}/editar">Editar</a><a class="btn ghost" href="/meus-decks">Meus decks</a>` : ''}
             ${mine ? (deck.sharedPostId ? `<a class="btn secondary" href="/comunidade/p/${deck.sharedPostId}" style="text-decoration:none">${BX.ic('feed', 14)} Ver post na comunidade</a>` : `<button class="btn secondary" id="shareBtn">${BX.ic('feed', 14)} Compartilhar na comunidade</button>`) : ''}
             ${!mine && deck.isPublic !== false ? `<button class="btn primary" id="copyBtn" title="Salva uma cópia privada em Meus decks e conta no ranking do meta">${BX.ic('save', 14)} Copiar deck<small class="copy-count" id="copyCount">${deck.copyCount || 0}</small></button><a class="btn secondary" href="/?copiar=${deck.slug}#builder" style="text-decoration:none">${BX.ic('builder', 14)} Abrir no builder</a>` : ''}
-            ${mine ? `<button class="btn danger-outline" id="delBtn">Excluir</button>` : `<button class="btn ghost" id="reportBtn">${BX.ic('flag', 14)} Denunciar</button>`}
+            ${canDelete ? `<button class="btn danger-outline" id="delBtn">${BX.ic('trash', 14)} Excluir</button>` : ''}
+            ${!mine ? `<button class="btn ghost" id="reportBtn">${BX.ic('flag', 14)} Denunciar</button>` : ''}
           </div>
         </div>
         ${deck.description ? `<p class="deck-intro">${BX.esc(deck.description)}</p>` : ''}
