@@ -267,12 +267,14 @@ async function humanNarrative(combos) {
   const beys = [];
   for (const combo of combos) {
     const prompt = `Você é analista de Beyblade X em pt-BR. Responda APENAS JSON válido: {"summary":"texto","launch":"dica detalhada","favored":"arquétipo","favoredWhy":"explicação física","risk":"arquétipo","riskWhy":"explicação física","counterTip":"dica de resposta","why":[{"part":"nome","reason":"função no conjunto"}]}. Analise SOMENTE este combo. Seja específico e prático: summary até 28 palavras; launch, favoredWhy, riskWhy e counterTip até 22 palavras; why com uma frase útil por peça. Fale de linha, inclinação, contato, ritmo, rotação e comportamento na arena quando for relevante. Não mostre números, stats, meta, torneios ou percentuais; use-os apenas como raciocínio interno. Matchups são tendências, não garantias. Dados: ${JSON.stringify(compactCombo(combo))}`;
-    const result = await groqJson(apiKey, model, prompt, 220);
+    // A resposta tem cinco explicações e o detalhamento das três peças; 220
+    // tokens fazia o provedor interromper o JSON antes de fechá-lo.
+    const result = await groqJson(apiKey, model, prompt, 420);
     beys.push(result ? cleanBeyNarrative(result) : null);
     await pause(1_200);
   }
   const deckPrompt = `Você é analista de Beyblade X em pt-BR. Responda APENAS JSON válido: {"deckLabel":"rótulo curto de 2 a 6 palavras","deck":"análise de até 45 palavras"}. Crie uma identidade específica ao trio, explique a sinergia, o plano de jogo e o principal risco; nunca use "deck ofensivo", "equilibrado", "de stamina" ou "defensivo". Não mostre números, stats, meta, torneios ou percentuais. Dados: ${JSON.stringify({ combos: combos.map(compactCombo) })}`;
-  const overview = await groqJson(apiKey, model, deckPrompt, 160);
+  const overview = await groqJson(apiKey, model, deckPrompt, 240);
   if (!overview && !beys.some(Boolean)) return null;
   return { deckLabel: String(overview?.deckLabel || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 90), deck: String(overview?.deck || '').slice(0, 1400), beys };
 }
