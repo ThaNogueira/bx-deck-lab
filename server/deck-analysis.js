@@ -224,22 +224,23 @@ export async function analyzeDeck(beys, partsById, { force = false } = {}) {
   return value;
 }
 
-/** Recria e grava as leituras de todos os decks ativos para que a IA atualizada
- * apareça imediatamente, inclusive após reiniciar o servidor. */
-export async function refreshAllDeckAnalyses() {
+/** Utilitário pontual de manutenção. Não é chamado pelo site: depois desta
+ * migração, a leitura é reaproveitada e só muda se as peças do deck mudarem. */
+export async function refreshExistingDeckAnalysesOnce() {
   analysisCache.clear();
   const decks = await prisma.communityDeck.findMany({
     where: { status: 'VISIBLE' },
-    select: { id: true, beysJson: true },
+    select: { beysJson: true },
   });
+  const seen = new Set();
   let refreshed = 0;
-  let aiRefreshed = 0;
   let pendingRetry = 0;
-  let skipped = 0;
-  for (const [index, deck] of decks.entries()) {
+  for (const deck of decks) {
     const beys = json(deck.beysJson, []);
-    const ids = [...new Set(Array.isArray(beys) ? beys.flat() : [])];
-    if (!ids.length) { skipped++; continue; }
+    const signature = JSON.stringify(beys);
+    if (!Array.isArray(beys) || !beys.length || seen.has(signature)) continue;
+    seen.add(signature);
+    const ids = [...new Set(beys.flat())];
     const parts = await prisma.part.findMany({ where: { id: { in: ids } } });
     const partMap = Object.fromEntries(parts.map((part) => [part.id, {
       ...part,
@@ -247,13 +248,12 @@ export async function refreshAllDeckAnalyses() {
     }]));
     const analysis = await analyzeDeck(beys, partMap, { force: true });
     refreshed++;
-    if (analysis.generatedBy === 'LLM + dados de pódios') aiRefreshed++;
-    else pendingRetry++;
-    // O Qwen gratuito aceita 8k tokens/minuto. Espaçar os decks evita que um
-    // refresh manual de toda a comunidade esgote a janela de um minuto.
-    if (index < decks.length - 1) await new Promise((resolve) => setTimeout(resolve, 16_000));
+    if (analysis.generatedBy !== 'LLM + dados de pódios') pendingRetry++;
+    // Limite gratuito do modelo: 8k tokens por minuto. A pausa deixa espaço
+    // para prompts longos e também para quem estiver usando o site.
+    await new Promise((resolve) => setTimeout(resolve, 20_000));
   }
-  return { total: decks.length, refreshed, aiRefreshed, pendingRetry, skipped };
+  return { uniqueDecks: seen.size, refreshed, pendingRetry };
 }
 
 /** Atualiza o recorte competitivo todas as manhãs; peças sem cache continuam
