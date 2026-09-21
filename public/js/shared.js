@@ -145,7 +145,7 @@
     const frameImg = frameObj?.imageUrl ? `<img class="frame-img" src="${esc(frameObj.imageUrl)}" alt="" loading="lazy" decoding="async" width="${size}" height="${size}">` : '';
     const inner = user?.avatarUrl
       ? `<img src="${esc(user.avatarUrl)}" alt="" loading="lazy" decoding="async" width="${size}" height="${size}">`
-      : `<b>${esc((user?.name || '?').slice(0, 1).toUpperCase())}</b>`;
+      : `<img class="avatar-default" src="/assets/profiles/default-blader.png" alt="" loading="lazy" decoding="async" width="${size}" height="${size}">`;
     const badge = user?.verified ? `<i class="verified-badge" title="Verificado">${icon('check', 9)}</i>` : '';
     return `<span class="avatar${cls}" style="width:${size}px;height:${size}px">${inner}${frameImg}${badge}</span>`;
   }
