@@ -25,6 +25,52 @@ async function cached(key, ttlMs, fn) {
 }
 export const bustHomeCache = () => cache.clear();
 
+/** Ranking público: somente torneios concluídos, sem as arenas privadas de teste. */
+async function buildPlayerRanking({ limit = null } = {}) {
+  const finished = await prisma.tournament.findMany({
+    where: { status: 'FINISHED', NOT: { description: { startsWith: '[ADMIN TEST]' } } },
+    select: { slug: true }, orderBy: { startsAt: 'desc' }, take: 150,
+  });
+  const players = new Map();
+  const beys = new Map();
+  let matches = 0;
+  for (const event of finished) {
+    const full = await loadTournament(event.slug);
+    if (!full) continue;
+    matches += full.matches.filter((m) => m.status === 'DONE' && !!m.p2Id).length;
+    standingsOf(full).forEach((s, place) => {
+      const u = s.player.user;
+      const row = players.get(u.id) || { user: u, gold: 0, silver: 0, bronze: 0, titles: 0, top4: 0, wins: 0, losses: 0, events: 0, points: 0 };
+      row.events++; row.wins += s.wins; row.losses += s.losses;
+      if (place === 0) { row.gold++; row.titles++; }
+      if (place === 1) row.silver++;
+      if (place === 2) row.bronze++;
+      if (place < 4) row.top4++;
+      row.points += (place === 0 ? 10 : place < 4 ? 5 : 1) + s.wins;
+      players.set(u.id, row);
+
+      const enrolled = full.players.find((p) => p.id === s.player.id);
+      const deck = enrolled?.manualDeckJson ? json(enrolled.manualDeckJson, []) : json(enrolled?.deck?.beysJson, []);
+      deck.forEach((bey) => {
+        if (!Array.isArray(bey) || !bey.length) return;
+        const key = bey.join('|');
+        const item = beys.get(key) || { ids: bey, uses: 0 };
+        item.uses++; beys.set(key, item);
+      });
+    });
+  }
+  const ranking = [...players.values()].sort((a, b) => b.points - a.points || b.gold - a.gold || b.wins - a.wins || a.user.name.localeCompare(b.user.name));
+  const topBeys = [...beys.values()].sort((a, b) => b.uses - a.uses).slice(0, 12);
+  const partIds = [...new Set(topBeys.flatMap((b) => b.ids))];
+  const parts = partIds.length ? await prisma.part.findMany({ where: { id: { in: partIds } } }) : [];
+  return {
+    ranking: limit ? ranking.slice(0, limit) : ranking,
+    topBeys,
+    parts: Object.fromEntries(parts.map((p) => [p.id, partDto(p)])),
+    totals: { tournaments: finished.length, players: players.size, matches },
+  };
+}
+
 router.get('/api/home/meta', ah(async (_req, res) => {
   res.json(await cached('meta', 120_000, () => getMetaState(5)));
 }));
@@ -109,30 +155,17 @@ router.get('/api/home/side', ah(async (_req, res) => {
   const data = await cached('side', 120_000, async () => {
     const now = new Date();
     const upcoming = await prisma.tournament.findMany({ where: { status: { in: ['OPEN', 'RUNNING'] }, startsAt: { gte: new Date(now.getTime() - 864e5) } }, orderBy: { startsAt: 'asc' }, take: 5, include: { players: true } });
-    // Ranking de jogadores: títulos e vitórias em torneios encerrados nos últimos 180 dias
-    const since = new Date(Date.now() - 180 * 864e5);
-    const finished = await prisma.tournament.findMany({ where: { status: 'FINISHED', startsAt: { gt: since } }, select: { slug: true }, take: 60, orderBy: { startsAt: 'desc' } });
-    const players = new Map();
-    for (const t of finished) {
-      const full = await loadTournament(t.slug);
-      if (!full) continue;
-      standingsOf(full).forEach((s, i) => {
-        const u = s.player.user;
-        const r = players.get(u.id) || { user: u, titles: 0, top4: 0, wins: 0, events: 0, points: 0 };
-        r.events++; r.wins += s.wins;
-        if (i === 0) r.titles++;
-        if (i < 4) r.top4++;
-        r.points += (i === 0 ? 10 : i < 4 ? 5 : 1) + s.wins;
-        players.set(u.id, r);
-      });
-    }
-    const ranking = [...players.values()].sort((a, b) => b.points - a.points || b.titles - a.titles || b.wins - a.wins).slice(0, 10);
+    const { ranking } = await buildPlayerRanking({ limit: 10 });
     return {
       upcoming: upcoming.map((t) => ({ slug: t.slug, name: t.name, storeName: t.storeName, startsAt: t.startsAt, format: t.format, status: t.status, players: t.players.length })),
       ranking,
     };
   });
   res.json(data);
+}));
+
+router.get('/api/ranking', ah(async (_req, res) => {
+  res.json(await cached('ranking', 120_000, () => buildPlayerRanking()));
 }));
 
 export default router;

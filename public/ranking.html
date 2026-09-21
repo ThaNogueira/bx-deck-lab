@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="referrer" content="no-referrer" />
+  <meta name="theme-color" content="#090a0f" />
+  <title>Ranking de jogadores — BX Deck Lab</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;0,700;0,800;1,700&family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="/styles.css" /><link rel="stylesheet" href="/design-system.css" />
+</head>
+<body>
+  <div class="noise"></div><header id="topbar"></header>
+  <main>
+    <section class="hero compact ranking-hero">
+      <div><p class="eyebrow">CIRCUITO BX DECK LAB</p><h1>Ranking de <em>jogadores</em></h1><p>Resultados de torneios concluídos, pódios e as combinações que mais entram na arena.</p></div>
+      <div class="ranking-totals" id="rankingTotals"><span class="sk sk-line w60"></span></div>
+    </section>
+    <section class="ranking-beys panel-card">
+      <div class="section-title-row"><div><p class="eyebrow">META DE TORNEIO</p><h2>Beys mais usadas</h2></div><small class="muted">Baseado nos decks declarados pelos participantes</small></div>
+      <div class="ranking-bey-list" id="topBeys"><div class="empty-state">Carregando combinações…</div></div>
+    </section>
+    <section class="ranking-section">
+      <div class="section-title-row ranking-title"><div><p class="eyebrow">CLASSIFICAÇÃO GERAL</p><h2>Quem está no topo</h2></div><label class="ranking-search"><span aria-hidden="true"></span><input id="rankingSearch" type="search" placeholder="Buscar jogador…" autocomplete="off"></label></div>
+      <div class="ranking-table" id="rankingTable"><div class="empty-state">Carregando ranking…</div></div>
+    </section>
+  </main>
+  <script src="/js/shared.js"></script>
+  <script>
+    (async () => {
+      BX.renderTopbar('/ranking');
+      const esc = BX.esc;
+      const medal = (kind, n, label) => `<span class="ranking-medal ${kind}" title="${label}"><b>${n}</b><small>${label}</small></span>`;
+      const render = (data, query = '') => {
+        const q = query.trim().toLocaleLowerCase('pt-BR');
+        const rows = data.ranking.map((r, index) => ({ ...r, position: index + 1 })).filter((r) => !q || r.user.name.toLocaleLowerCase('pt-BR').includes(q) || r.user.slug.toLocaleLowerCase('pt-BR').includes(q));
+        document.getElementById('rankingTable').innerHTML = rows.length ? rows.map((r) => `<a class="ranking-row" href="/u/${esc(r.user.slug)}"><b class="ranking-place ${r.position < 4 ? 'podium p' + r.position : ''}">${r.position}</b>${BX.avatarHtml(r.user, { size: 42 })}<span class="ranking-player"><strong>${esc(r.user.name)}</strong><small>${r.events} torneio${r.events === 1 ? '' : 's'} · ${r.wins} vitória${r.wins === 1 ? '' : 's'} · ${r.losses} derrota${r.losses === 1 ? '' : 's'}</small></span><span class="ranking-medals">${medal('gold', r.gold, 'ouro')}${medal('silver', r.silver, 'prata')}${medal('bronze', r.bronze, 'bronze')}</span><strong class="ranking-points">${r.points}<small>pts</small></strong></a>`).join('') : '<div class="empty-state">Nenhum jogador encontrado.</div>';
+      };
+      try {
+        const data = await BX.api('/api/ranking');
+        document.getElementById('rankingTotals').innerHTML = `<b>${data.totals.tournaments}</b><span>torneios concluídos</span><b>${data.totals.players}</b><span>jogadores</span><b>${data.totals.matches}</b><span>partidas</span>`;
+        document.getElementById('topBeys').innerHTML = data.topBeys.length ? data.topBeys.map((b, i) => `<div class="ranking-bey"><b class="bey-rank">#${i + 1}</b>${BX.deckPreview([b.ids], { u: 54, parts: data.parts, link: true })}<span><strong>${b.ids.map((id) => data.parts[id]?.displayName || data.parts[id]?.name || 'Peça').join(' + ')}</strong><small>${b.uses} uso${b.uses === 1 ? '' : 's'} em torneios</small></span></div>`).join('') : '<div class="empty-state">Os decks declarados aparecerão aqui após os torneios terminarem.</div>';
+        render(data);
+        document.getElementById('rankingSearch').addEventListener('input', (e) => render(data, e.target.value));
+      } catch (e) { document.getElementById('rankingTable').innerHTML = `<div class="empty-state">${esc(e.message)}</div>`; document.getElementById('topBeys').innerHTML = ''; }
+    })();
+  </script>
+</body>
+</html>
