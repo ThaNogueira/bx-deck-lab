@@ -141,7 +141,11 @@ router.post('/api/decks/:id/analysis/refresh', requireUser, ah(async (req, res) 
   const ids = [...new Set(beys.flat())];
   const parts = ids.length ? await prisma.part.findMany({ where: { id: { in: ids } } }) : [];
   const partMap = Object.fromEntries(parts.map((part) => [part.id, partDto(part)]));
-  res.json({ analysis: await analyzeDeck(beys, partMap, { force: true }) });
+  const analysis = await analyzeDeck(beys, partMap, { force: true });
+  if (analysis.generatedBy !== 'LLM + dados de pódios') {
+    return res.status(503).json({ error: 'A IA está indisponível ou no limite agora. Tente novamente em instantes.' });
+  }
+  res.json({ analysis });
 }));
 
 router.post('/api/decks', requireUser, moderateFields('title', 'description', 'launchGuide'), ah(async (req, res) => {
