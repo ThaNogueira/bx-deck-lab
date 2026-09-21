@@ -12,7 +12,6 @@ const HISTORY_OVERVIEW_URL = 'https://bbxhub.net/';
 const HISTORY_OVERVIEW_KEY = 'external-bey-history-overview-v1';
 const HISTORY_TTL = 20 * 60 * 60 * 1000;
 const SOURCE_TTL = 24 * 60 * 60 * 1000;
-const ANALYSIS_TTL = 6 * 60 * 60 * 1000;
 const ANALYSIS_STORE_PREFIX = 'deck-ai-analysis-v3:';
 const analysisCache = new Map();
 
@@ -204,26 +203,11 @@ function physicalTendency(stats) {
   return values.slice(0, 2).map(([key]) => names[key]).filter(Boolean).join(' e ') || null;
 }
 
-let llmQueue = Promise.resolve();
+let analysisQueue = Promise.resolve();
 let lastLlmBatchAt = 0;
 let llmPending = 0;
+const pendingSignatures = new Map();
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-function queueLlmBatch(work) {
-  if (llmPending > 0) return null;
-  llmPending++;
-  const run = async () => {
-    // Uma análise completa reserva menos de 700 tokens de saída. Damos uma
-    // janela entre decks para não somar dois lotes no limite de 1k/minuto.
-    const remaining = 45_000 - (Date.now() - lastLlmBatchAt);
-    if (remaining > 0) await pause(remaining);
-    try { return await work(); }
-    finally { lastLlmBatchAt = Date.now(); llmPending--; }
-  };
-  const result = llmQueue.catch(() => null).then(run);
-  llmQueue = result.catch(() => null);
-  return result;
-}
 
 export const isDeckAnalysisBusy = () => llmPending > 0;
 
@@ -259,32 +243,23 @@ async function humanNarrative(combos) {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) return null;
   const model = process.env.GROQ_MODEL || 'qwen/qwen3.8-27b';
-  return queueLlmBatch(async () => {
-    const beys = [];
-    for (const combo of combos) {
-      const prompt = `Você é analista de Beyblade X em pt-BR. Responda APENAS JSON válido: {"summary":"texto","launch":"dica detalhada","favored":"arquétipo","favoredWhy":"explicação física","risk":"arquétipo","riskWhy":"explicação física","counterTip":"dica de resposta","why":[{"part":"nome","reason":"função no conjunto"}]}. Analise SOMENTE este combo. Seja específico e prático: summary até 28 palavras; launch, favoredWhy, riskWhy e counterTip até 22 palavras; why com uma frase útil por peça. Fale de linha, inclinação, contato, ritmo, rotação e comportamento na arena quando for relevante. Não mostre números, stats, meta, torneios ou percentuais; use-os apenas como raciocínio interno. Matchups são tendências, não garantias. Dados: ${JSON.stringify(compactCombo(combo))}`;
-      const result = await groqJson(apiKey, model, prompt, 220);
-      beys.push(result ? cleanBeyNarrative(result) : null);
-      await pause(1_200);
-    }
-    const deckPrompt = `Você é analista de Beyblade X em pt-BR. Responda APENAS JSON válido: {"deckLabel":"rótulo curto de 2 a 6 palavras","deck":"análise de até 45 palavras"}. Crie uma identidade específica ao trio, explique a sinergia, o plano de jogo e o principal risco; nunca use "deck ofensivo", "equilibrado", "de stamina" ou "defensivo". Não mostre números, stats, meta, torneios ou percentuais. Dados: ${JSON.stringify({ combos: combos.map(compactCombo) })}`;
-    const overview = await groqJson(apiKey, model, deckPrompt, 160);
-    if (!overview && !beys.some(Boolean)) return null;
-    return { deckLabel: String(overview?.deckLabel || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 90), deck: String(overview?.deck || '').slice(0, 1400), beys };
-  });
+  const beys = [];
+  for (const combo of combos) {
+    const prompt = `Você é analista de Beyblade X em pt-BR. Responda APENAS JSON válido: {"summary":"texto","launch":"dica detalhada","favored":"arquétipo","favoredWhy":"explicação física","risk":"arquétipo","riskWhy":"explicação física","counterTip":"dica de resposta","why":[{"part":"nome","reason":"função no conjunto"}]}. Analise SOMENTE este combo. Seja específico e prático: summary até 28 palavras; launch, favoredWhy, riskWhy e counterTip até 22 palavras; why com uma frase útil por peça. Fale de linha, inclinação, contato, ritmo, rotação e comportamento na arena quando for relevante. Não mostre números, stats, meta, torneios ou percentuais; use-os apenas como raciocínio interno. Matchups são tendências, não garantias. Dados: ${JSON.stringify(compactCombo(combo))}`;
+    const result = await groqJson(apiKey, model, prompt, 220);
+    beys.push(result ? cleanBeyNarrative(result) : null);
+    await pause(1_200);
+  }
+  const deckPrompt = `Você é analista de Beyblade X em pt-BR. Responda APENAS JSON válido: {"deckLabel":"rótulo curto de 2 a 6 palavras","deck":"análise de até 45 palavras"}. Crie uma identidade específica ao trio, explique a sinergia, o plano de jogo e o principal risco; nunca use "deck ofensivo", "equilibrado", "de stamina" ou "defensivo". Não mostre números, stats, meta, torneios ou percentuais. Dados: ${JSON.stringify({ combos: combos.map(compactCombo) })}`;
+  const overview = await groqJson(apiKey, model, deckPrompt, 160);
+  if (!overview && !beys.some(Boolean)) return null;
+  return { deckLabel: String(overview?.deckLabel || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 90), deck: String(overview?.deck || '').slice(0, 1400), beys };
 }
 
 const analysisKey = (signature) => `${ANALYSIS_STORE_PREFIX}${createHash('sha256').update(signature).digest('hex')}`;
 
-export async function analyzeDeck(beys, partsById, { force = false } = {}) {
+async function generateDeckAnalysis(beys, partsById) {
   const signature = JSON.stringify(beys || []);
-  const hit = analysisCache.get(signature);
-  if (!force && hit && Date.now() - hit.at < ANALYSIS_TTL) return hit.value;
-  const stored = !force ? await getSetting(analysisKey(signature)) : null;
-  if (stored?.signature === signature && stored?.value?.generatedBy === 'LLM + dados de pódios') {
-    analysisCache.set(signature, { at: Date.now(), value: stored.value });
-    return stored.value;
-  }
   const meta = await getExternalMeta();
   const globalHistory = await getGlobalHistory();
   const rawCombos = (beys || []).filter(Array.isArray).map((ids) => ids.map((id) => partsById?.[id]).filter(Boolean));
@@ -302,13 +277,46 @@ export async function analyzeDeck(beys, partsById, { force = false } = {}) {
     individual: combos.map((combo, index) => aiNarrative?.beys?.[index] || fallbackIndividual(combo)),
     generatedBy: aiNarrative ? 'LLM + dados de pódios' : 'dados de pódios',
   };
-  analysisCache.set(signature, { at: Date.now(), value });
-  // Só uma resposta completa da IA entra no cache persistente. Se a cota
-  // externa estiver temporariamente indisponível, uma visita posterior pode
-  // tentar novamente em vez de congelar o fallback genérico no deck.
-  if (aiNarrative) await setSetting(analysisKey(signature), { signature, generatedAt: new Date().toISOString(), value });
+  analysisCache.set(signature, value);
+  // Mesmo um fallback é definitivo para esta versão do deck: uma simples
+  // abertura nunca pode disparar nova pesquisa ou nova chamada à IA.
+  await setSetting(analysisKey(signature), { signature, generatedAt: new Date().toISOString(), value });
   return value;
 }
+
+/** Leitura pura para a página pública. Nunca gera, pesquisa fontes ou chama IA. */
+export async function getStoredDeckAnalysis(beys) {
+  const signature = JSON.stringify(beys || []);
+  if (analysisCache.has(signature)) return analysisCache.get(signature);
+  const stored = await getSetting(analysisKey(signature));
+  if (stored?.signature !== signature || !stored?.value) return null;
+  analysisCache.set(signature, stored.value);
+  return stored.value;
+}
+
+/** Uma única fila global evita estouro de cota. Decks idênticos compartilham
+ * o mesmo trabalho, e a análise é salva antes de qualquer página poder lê-la. */
+export async function queueDeckAnalysis(beys, partsById, { force = false } = {}) {
+  const signature = JSON.stringify(beys || []);
+  if (!force) {
+    const stored = await getStoredDeckAnalysis(beys);
+    if (stored) return stored;
+  }
+  if (pendingSignatures.has(signature)) return pendingSignatures.get(signature);
+  llmPending++;
+  const job = analysisQueue.catch(() => null).then(async () => {
+    const remaining = 45_000 - (Date.now() - lastLlmBatchAt);
+    if (remaining > 0) await pause(remaining);
+    try { return await generateDeckAnalysis(beys, partsById); }
+    finally { lastLlmBatchAt = Date.now(); }
+  }).finally(() => { llmPending--; pendingSignatures.delete(signature); });
+  pendingSignatures.set(signature, job);
+  analysisQueue = job.catch(() => null);
+  return job;
+}
+
+// Compatibilidade para rotinas internas de manutenção já existentes.
+export const analyzeDeck = queueDeckAnalysis;
 
 /** Utilitário pontual de manutenção. Não é chamado pelo site: depois desta
  * migração, a leitura é reaproveitada e só muda se as peças do deck mudarem. */

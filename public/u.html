@@ -40,6 +40,8 @@
       const userPosts = postsRes.posts || [];
       const userTours = tourRes.tournaments || [];
       const titles = tourRes.titles || 0;
+      const medals = [1, 2, 3].map((place) => userTours.filter((t) => t.status === 'FINISHED' && t.placement === place).length);
+      const medalTags = medals.map((count, index) => count ? `<span class="profile-podium-tag p${index + 1}"><img src="/assets/achievements/trophy-neon-gold.png" alt="" /><b>${count}</b><span>${index === 0 ? 'ouro' : index === 1 ? 'prata' : 'bronze'}</span></span>` : '').join('');
       const T_STATUS = { OPEN: 'Inscrições', RUNNING: 'Em andamento', FINISHED: 'Encerrado' };
       const tourRow = (t) => `<a class="t-row ${t.champion ? 'champ' : ''}" href="/torneio/${BX.esc(t.slug)}">
         <span class="t-ic">${BX.icon(t.champion ? 'trophy' : t.status === 'RUNNING' ? 'live' : t.status === 'OPEN' ? 'calendar' : 'medal', 18)}</span>
@@ -116,6 +118,7 @@
           <div class="profile-id">
             <h1>${BX.esc(user.name)} ${user.role !== 'USER' ? `<span class="role-chip ${user.role}">${user.role}</span>` : ''}</h1>
             <p>@${BX.esc(user.slug)}${user.bio ? ` — ${BX.esc(user.bio)}` : ''}</p>
+            ${medalTags ? `<div class="profile-podium-tags">${medalTags}</div>` : ''}
             ${stickers.length ? `<div class="sticker-row" style="margin-top:8px">${stickers.map((s) => `<span class="sticker" title="${BX.esc(s.name)}">${s.imageUrl ? `<img src="${BX.esc(s.imageUrl)}">` : BX.esc(s.styleKey || '') || BX.icon('star', 14)}</span>`).join('')}</div>` : ''}
           </div>
           <div class="profile-head-actions">

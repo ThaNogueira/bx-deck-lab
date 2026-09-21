@@ -26,6 +26,7 @@
       const slug = BX.pathPart(1);
       const app = document.getElementById('app');
       let deck;
+      let analysisPoll;
       try {
         deck = (await BX.api(`/api/decks/${encodeURIComponent(slug)}`)).deck;
       } catch (e) {
@@ -113,7 +114,16 @@
       });
       const renderAnalysis = async (freshAnalysis = null) => {
         try {
-          const analysis = freshAnalysis || (await BX.api(`/api/decks/${encodeURIComponent(deck.slug)}/analysis`)).analysis;
+          const response = freshAnalysis ? { analysis: freshAnalysis } : await BX.api(`/api/decks/${encodeURIComponent(deck.slug)}/analysis`);
+          const analysis = response.analysis;
+          if (!analysis) {
+            document.querySelectorAll('.deck-analysis-loading').forEach((el) => { el.textContent = 'Análise do deck em preparação.'; });
+            document.getElementById('deckAnalysis').innerHTML = `<div class="deck-analysis-pending">${BX.ic('sparkle', 18)}<span><b>Carregando análise do deck</b><small>Aguarde e volte daqui a alguns minutos.</small></span></div>`;
+            clearTimeout(analysisPoll);
+            analysisPoll = setTimeout(() => renderAnalysis(), 30000);
+            return;
+          }
+          clearTimeout(analysisPoll);
           analysis.combos.forEach((combo, i) => {
             const card = document.getElementById(`deckBey-${i}`);
             if (!card) return;

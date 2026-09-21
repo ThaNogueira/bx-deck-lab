@@ -5,7 +5,7 @@ import { moderateFields, getSetting } from '../settings.js';
 import { json, uniqueSlug } from '../util.js';
 import { partDto } from './catalog.js';
 import { audit } from '../audit.js';
-import { analyzeDeck, isDeckAnalysisBusy } from '../deck-analysis.js';
+import { getStoredDeckAnalysis, queueDeckAnalysis, isDeckAnalysisBusy } from '../deck-analysis.js';
 import { standingsOf } from './tournaments.js';
 
 const router = Router();
@@ -80,6 +80,13 @@ async function validateBeys(beysInput) {
   const found = await prisma.part.count({ where: { id: { in: ids } } });
   if (found !== ids.length) return null;
   return beys;
+}
+
+async function enqueueAnalysis(beys) {
+  const ids = [...new Set((beys || []).flat())];
+  const parts = ids.length ? await prisma.part.findMany({ where: { id: { in: ids } } }) : [];
+  const partMap = Object.fromEntries(parts.map((part) => [part.id, partDto(part)]));
+  return queueDeckAnalysis(beys, partMap);
 }
 
 router.get('/api/decks', ah(async (req, res) => {
@@ -159,10 +166,8 @@ router.get('/api/decks/:slug/analysis', ah(async (req, res) => {
   const restricted = deck && (deck.status !== 'VISIBLE' || !deck.isPublic);
   if (!deck || (restricted && !isOwner && !isStaff(req.user))) return res.status(404).json({ error: 'Deck não encontrado.' });
   const beys = json(deck.beysJson, []);
-  const ids = [...new Set(beys.flat())];
-  const parts = ids.length ? await prisma.part.findMany({ where: { id: { in: ids } } }) : [];
-  const partMap = Object.fromEntries(parts.map((part) => [part.id, partDto(part)]));
-  res.json({ analysis: await analyzeDeck(beys, partMap) });
+  const analysis = await getStoredDeckAnalysis(beys);
+  res.json({ analysis, pending: !analysis });
 }));
 
 /** Releitura manual reservada ao administrador. A chave de IA permanece no
@@ -176,10 +181,7 @@ router.post('/api/decks/:id/analysis/refresh', requireUser, ah(async (req, res) 
   const ids = [...new Set(beys.flat())];
   const parts = ids.length ? await prisma.part.findMany({ where: { id: { in: ids } } }) : [];
   const partMap = Object.fromEntries(parts.map((part) => [part.id, partDto(part)]));
-  const analysis = await analyzeDeck(beys, partMap, { force: true });
-  if (analysis.generatedBy !== 'LLM + dados de pódios') {
-    return res.status(503).json({ error: 'A IA está indisponível ou no limite agora. Tente novamente em instantes.' });
-  }
+  const analysis = await queueDeckAnalysis(beys, partMap, { force: true });
   res.json({ analysis });
 }));
 
@@ -207,6 +209,9 @@ router.post('/api/decks', requireUser, moderateFields('title', 'description', 'l
       folder: String(b.folder || '').trim().slice(0, 40) || null,
     },
   });
+  // Não bloqueia o salvamento: a fila gera uma vez e a página apenas lê o
+  // resultado persistido quando estiver pronto.
+  void enqueueAnalysis(beys).catch((error) => console.warn('[deck analysis] criação:', error.message));
   res.json({ deck: await deckDto(deck) });
 }));
 
@@ -236,6 +241,9 @@ router.patch('/api/decks/:id', requireUser, moderateFields('title', 'description
     if (!data.isPublic) data.featuredOrder = null;
   }
   const updated = await prisma.communityDeck.update({ where: { id: deck.id }, data, include: { author: true } });
+  if (data.beysJson && data.beysJson !== deck.beysJson) {
+    void enqueueAnalysis(json(data.beysJson, [])).catch((error) => console.warn('[deck analysis] edição:', error.message));
+  }
   res.json({ deck: await deckDto(updated) });
 }));
 
