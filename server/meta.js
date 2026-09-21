@@ -50,7 +50,8 @@ export async function computeMeta() {
   };
 
   // 1) Decks em torneios (colocação pesa): campeão 4, top 4 = 2.5, resto 1.2; torneio em andamento 1
-  const tours = await prisma.tournament.findMany({ where: { status: { in: ['RUNNING', 'FINISHED'] }, startsAt: { gt: since } }, select: { slug: true, status: true } });
+  // Arenas internas de admin nunca alimentam o meta/ranking público.
+  const tours = await prisma.tournament.findMany({ where: { status: { in: ['RUNNING', 'FINISHED'] }, startsAt: { gt: since }, NOT: { description: { startsWith: '[ADMIN TEST]' } } }, select: { slug: true, status: true } });
   for (const t of tours) {
     const full = await loadTournament(t.slug);
     if (!full) continue;
