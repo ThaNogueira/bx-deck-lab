@@ -95,9 +95,9 @@
         try { await BX.copyDeckText(deck.beys, { parts: deck.parts }); BX.toast('Lista das Beys copiada!'); }
         catch (e) { BX.toast(e.message); }
       });
-      const renderAnalysis = async () => {
+      const renderAnalysis = async (freshAnalysis = null) => {
         try {
-          const { analysis } = await BX.api(`/api/decks/${encodeURIComponent(deck.slug)}/analysis`);
+          const analysis = freshAnalysis || (await BX.api(`/api/decks/${encodeURIComponent(deck.slug)}/analysis`)).analysis;
           analysis.combos.forEach((combo, i) => {
             const card = document.getElementById(`deckBey-${i}`);
             if (!card) return;
@@ -106,7 +106,8 @@
             const exact = presence != null ? `<div class="top3-presence" title="Presença baseada em decks de Top 3"><span>Presença no Top 3</span><div><i style="width:${Math.max(3, Math.min(100, presence))}%"></i></div><b>${presence}%</b></div>` : '';
             const why = individual?.why?.length ? `<details class="deck-why"><summary>Por quê?</summary>${individual.why.map((item) => `<p><b>${BX.esc(item.part)}:</b> ${BX.esc(item.reason)}</p>`).join('')}</details>` : '';
             const play = individual ? `<details class="deck-more"><summary>Ver mais</summary><div><p><small>SUGESTÃO DE LANÇAMENTO</small>${BX.esc(individual.launch)}</p><p><small>VANTAGEM · ${BX.esc(individual.favored)}</small>${BX.esc(individual.favoredWhy)}</p><p><small>FRAQUEZA · ${BX.esc(individual.risk)}</small>${BX.esc(individual.riskWhy)}</p><p class="counter-tip"><small>COMO RESPONDER</small>${BX.esc(individual.counterTip)}</p></div></details>` : '';
-            card.querySelector('.deck-analysis-loading').outerHTML = `<div class="deck-bey-status"><b>${BX.esc(combo.type)}</b><p>${BX.esc(individual?.summary || combo.physical?.map((part) => part.behavior).filter(Boolean)[0] || 'Perfil calculado a partir das peças do conjunto.')}</p>${physicalBars(deck.beys[i])}${play}${exact}${why}</div>`;
+            const previous = card.querySelector('.deck-analysis-loading, .deck-bey-status');
+            if (previous) previous.outerHTML = `<div class="deck-bey-status"><b>${BX.esc(combo.type)}</b><p>${BX.esc(individual?.summary || combo.physical?.map((part) => part.behavior).filter(Boolean)[0] || 'Perfil calculado a partir das peças do conjunto.')}</p>${physicalBars(deck.beys[i])}${play}${exact}${why}</div>`;
           });
           document.getElementById('deckAnalysis').innerHTML = `
             <div class="section-title-row deck-analysis-heading">
@@ -124,9 +125,9 @@
         const button = event.currentTarget;
         button.disabled = true;
         try {
-          await BX.api(`/api/decks/${deck.id}/analysis/refresh`, { method: 'POST' });
+          const { analysis } = await BX.api(`/api/decks/${deck.id}/analysis/refresh`, { method: 'POST' });
           BX.toast('Análise da IA atualizada.');
-          await renderAnalysis();
+          await renderAnalysis(analysis);
         } catch (error) { BX.toast(error.message); }
         finally { button.disabled = false; }
       });
