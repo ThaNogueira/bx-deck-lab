@@ -58,12 +58,41 @@ async function buildPlayerRanking({ limit = null } = {}) {
       });
     });
   }
+  const allPartIds = [...new Set([...players.values()].flatMap((player) => [...player.beyMap.values()].flatMap((bey) => bey.ids)))];
+  const allParts = allPartIds.length ? await prisma.part.findMany({ where: { id: { in: allPartIds } } }) : [];
+  const partById = new Map(allParts.map((part) => [part.id, part]));
+  const mostUsedPart = (entries, predicate) => {
+    const counts = new Map();
+    entries.forEach((entry) => entry.ids.forEach((id) => {
+      const part = partById.get(id);
+      if (part && predicate(part)) counts.set(id, (counts.get(id) || 0) + entry.uses);
+    }));
+    return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0] || null;
+  };
+  // Lê o histórico como o jogador realmente montou: Blade mais frequente,
+  // depois a Ratchet mais frequente com ela, depois o Bit desse par.
+  const favoriteBey = (beyMap) => {
+    const entries = [...beyMap.values()];
+    const blade = mostUsedPart(entries, (part) => part.kind === 'BLADE' || part.kind === 'MAIN_BLADE');
+    if (!blade) return null;
+    let narrowed = entries.filter((entry) => entry.ids.includes(blade[0]));
+    const ratchet = mostUsedPart(narrowed, (part) => part.kind === 'RATCHET');
+    if (ratchet) narrowed = narrowed.filter((entry) => entry.ids.includes(ratchet[0]));
+    const bit = mostUsedPart(narrowed, (part) => part.kind === 'BIT');
+    if (bit) narrowed = narrowed.filter((entry) => entry.ids.includes(bit[0]));
+    const exact = narrowed.sort((a, b) => b.uses - a.uses || a.ids.join('|').localeCompare(b.ids.join('|')))[0];
+    return {
+      ids: exact?.ids || [blade[0], ratchet?.[0], bit?.[0]].filter(Boolean),
+      uses: bit?.[1] || ratchet?.[1] || blade[1],
+      path: [blade, ratchet, bit].filter(Boolean).map(([id, uses]) => ({ id, uses })),
+    };
+  };
   const ranking = [...players.values()]
     .sort((a, b) => b.points - a.points || b.gold - a.gold || b.wins - a.wins || a.user.name.localeCompare(b.user.name))
-    .map(({ beyMap, ...row }) => ({ ...row, beys: [...beyMap.values()].sort((a, b) => b.uses - a.uses).slice(0, 3) }));
+    .map(({ beyMap, ...row }) => ({ ...row, favoriteBey: favoriteBey(beyMap) }));
   const publishedRanking = limit ? ranking.slice(0, limit) : ranking;
-  const partIds = [...new Set(publishedRanking.flatMap((player) => player.beys.flatMap((b) => b.ids)))];
-  const parts = partIds.length ? await prisma.part.findMany({ where: { id: { in: partIds } } }) : [];
+  const partIds = [...new Set(publishedRanking.flatMap((player) => player.favoriteBey?.ids || []))];
+  const parts = partIds.map((id) => partById.get(id)).filter(Boolean);
   return {
     ranking: publishedRanking,
     parts: Object.fromEntries(parts.map((p) => [p.id, partDto(p)])),
