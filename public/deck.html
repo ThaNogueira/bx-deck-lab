@@ -43,15 +43,6 @@
         const count = Math.max(1, parts.filter((part) => part.stats).length);
         return `<div class="physical-bars">${[['atk','ATK'],['def','DEF'],['sta','STA']].map(([key,label]) => { const value = Math.min(10, totals[key] / count); return `<div><small>${label}</small><span><i style="width:${Math.max(3, value * 10)}%"></i></span><b>${value.toFixed(1)}</b></div>`; }).join('')}</div>`;
       };
-      const deckProfile = () => {
-        const parts = deck.beys.flat().map((id) => deck.parts?.[id]).filter(Boolean);
-        const totals = { atk: 0, def: 0, sta: 0 };
-        parts.forEach((part) => ['atk', 'def', 'sta'].forEach((key) => { const value = Number(part.stats?.[key]) || 0; totals[key] += value > 10 ? value / 10 : value; }));
-        const top = Object.entries(totals).sort((a, b) => b[1] - a[1]);
-        const names = { atk: 'OFENSIVO', def: 'DEFENSIVO', sta: 'DE STAMINA' };
-        const title = top[0][1] - top[1][1] < 1.25 ? 'DECK EQUILIBRADO' : `DECK ${top[0][1] > 12 ? 'MUITO ' : ''}${names[top[0][0]]}`;
-        return { title, bars: physicalBars(deck.beys.flat()) };
-      };
 
       const beysHtml = deck.beys.map((bey, i) => `
         <div class="list-card deck-bey-card" id="deckBey-${i}">
@@ -116,14 +107,12 @@
             const play = individual ? `<details class="deck-more"><summary>Ver mais</summary><div><p><small>SUGESTÃO DE LANÇAMENTO</small>${BX.esc(individual.launch)}</p><p><small>VANTAGEM · ${BX.esc(individual.favored)}</small>${BX.esc(individual.favoredWhy)}</p><p><small>FRAQUEZA · ${BX.esc(individual.risk)}</small>${BX.esc(individual.riskWhy)}</p><p class="counter-tip"><small>COMO RESPONDER</small>${BX.esc(individual.counterTip)}</p></div></details>` : '';
             card.querySelector('.deck-analysis-loading').outerHTML = `<div class="deck-bey-status"><b>${BX.esc(combo.type)}</b><p>${BX.esc(individual?.summary || combo.physical?.map((part) => part.behavior).filter(Boolean)[0] || 'Perfil calculado a partir das peças do conjunto.')}</p>${physicalBars(deck.beys[i])}${play}${exact}${why}</div>`;
           });
-          const source = analysis.source;
-          const profile = deckProfile();
           document.getElementById('deckAnalysis').innerHTML = `
             <div class="section-title-row deck-analysis-heading">
               <div><p class="eyebrow">ANALISADOR COMPETITIVO</p><h2>Status geral do deck</h2></div>
               <span class="badge owned" title="Análise assistida por IA">${BX.ic('sparkle', 14)}</span>
             </div>
-            <div class="deck-overview"><div class="deck-overview-head"><h3>${BX.esc(profile.title)}</h3></div><p class="deck-analysis-summary">${BX.esc(analysis.deckSummary)}</p>${profile.bars}</div>
+            <div class="deck-overview"><div class="deck-overview-head"><h3>${BX.esc(analysis.deckLabel || 'IDENTIDADE DO TRIO')}</h3></div><p class="deck-analysis-summary">${BX.esc(analysis.deckSummary)}</p>${physicalBars(deck.beys.flat())}</div>
             `;
         } catch (e) {
           document.querySelectorAll('.deck-analysis-loading').forEach((el) => { el.textContent = 'Histórico competitivo indisponível agora.'; });

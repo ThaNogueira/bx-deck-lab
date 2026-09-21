@@ -1,5 +1,7 @@
 import { getSetting, setSetting } from './settings.js';
 import { prisma } from './db.js';
+import { createHash } from 'node:crypto';
+import { json } from './util.js';
 
 // A fonte publica agrega pódios de eventos WBO. Guardamos uma cópia curta por
 // um dia: evita depender da página externa a cada abertura de deck.
@@ -9,6 +11,7 @@ const HISTORY_URL = 'https://bbxhub.net/meta/';
 const HISTORY_TTL = 20 * 60 * 60 * 1000;
 const SOURCE_TTL = 24 * 60 * 60 * 1000;
 const ANALYSIS_TTL = 6 * 60 * 60 * 1000;
+const ANALYSIS_STORE_PREFIX = 'deck-ai-analysis-v2:';
 const analysisCache = new Map();
 
 const norm = (value) => String(value || '')
@@ -165,7 +168,7 @@ async function humanNarrative(combos, source) {
     source: { name: source.name, events: source.events, podiumDecks: source.podiumDecks, updated: source.updated },
     combos: combos.map((combo) => ({ label: combo.label, type: combo.type, status: combo.status, physical: combo.physical })),
   };
-  const prompt = `Você é um analista de Beyblade X e escreve em pt-BR. Responda APENAS JSON válido: {"deck":"texto","beys":[{"summary":"texto","launch":"instrução prática de lançamento com força, inclinação ou alvo","favored":"arquétipo favorecido","favoredWhy":"por que a física do combo pressiona esse arquétipo","risk":"arquétipo perigoso","riskWhy":"por que a física do combo sofre contra ele","counterTip":"dica curta e prática para enfrentar essa Bey","why":[{"part":"nome","reason":"função física"}]}]}. Use SOMENTE comportamento físico, tipo e stats das peças. Seja específico e útil, mas trate matchups como tendências de arquétipo, nunca como vitória garantida. A análise do deck explica sinergia e risco. Não cite meta, torneios, ranking, presença, percentuais, fontes, status nem dados externos. Sem markdown. Dados: ${JSON.stringify(payload)}`;
+  const prompt = `Você é um analista de Beyblade X e escreve em pt-BR. Responda APENAS JSON válido: {"deckLabel":"rótulo curto e marcante de 2 a 6 palavras","deck":"texto","beys":[{"summary":"texto","launch":"instrução prática de lançamento com força, inclinação ou alvo","favored":"arquétipo favorecido","favoredWhy":"por que a física do combo pressiona esse arquétipo","risk":"arquétipo perigoso","riskWhy":"por que a física do combo sofre contra ele","counterTip":"dica curta e prática para enfrentar essa Bey","why":[{"part":"nome","reason":"função física"}]}]}. O deckLabel deve descrever a identidade concreta do trio, ser interessante e específico às peças; nunca use rótulos genéricos como "Deck muito ofensivo", "Deck equilibrado", "Deck de stamina" ou "Deck defensivo". Use SOMENTE comportamento físico, tipo e stats das peças como raciocínio interno. Escreva para jogador: traduza números em comportamento prático e NUNCA exponha notas, valores, porcentagens, atributos numéricos ou frases como "ataque de 70"; identificadores oficiais de peças como "1-60" podem aparecer só como parte do nome. Seja específico e útil, mas trate matchups como tendências de arquétipo, nunca como vitória garantida. A análise do deck explica sinergia e risco. Não cite meta, torneios, ranking, presença, percentuais, fontes, status nem dados externos. Sem markdown. Dados: ${JSON.stringify(payload)}`;
   try {
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
@@ -179,17 +182,24 @@ async function humanNarrative(combos, source) {
     // Não deixa a redação da IA contradizer a evidência quando a amostra não
     // validou nenhum combo completo.
     if (!narrative?.deck || !Array.isArray(narrative.beys)) return null;
-    return { deck: String(narrative.deck).slice(0, 1400), beys: narrative.beys.slice(0, 3).map((bey) => ({ summary: String(bey?.summary || '').slice(0, 700), launch: String(bey?.launch || '').slice(0, 550), favored: String(bey?.favored || '').slice(0, 250), favoredWhy: String(bey?.favoredWhy || '').slice(0, 450), risk: String(bey?.risk || '').slice(0, 250), riskWhy: String(bey?.riskWhy || '').slice(0, 450), counterTip: String(bey?.counterTip || '').slice(0, 450), why: Array.isArray(bey?.why) ? bey.why.slice(0, 7).map((item) => ({ part: String(item?.part || '').slice(0, 100), reason: String(item?.reason || '').slice(0, 350) })) : [] })) };
+    return { deckLabel: String(narrative.deckLabel || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 90), deck: String(narrative.deck).slice(0, 1400), beys: narrative.beys.slice(0, 3).map((bey) => ({ summary: String(bey?.summary || '').slice(0, 700), launch: String(bey?.launch || '').slice(0, 550), favored: String(bey?.favored || '').slice(0, 250), favoredWhy: String(bey?.favoredWhy || '').slice(0, 450), risk: String(bey?.risk || '').slice(0, 250), riskWhy: String(bey?.riskWhy || '').slice(0, 450), counterTip: String(bey?.counterTip || '').slice(0, 450), why: Array.isArray(bey?.why) ? bey.why.slice(0, 7).map((item) => ({ part: String(item?.part || '').slice(0, 100), reason: String(item?.reason || '').slice(0, 350) })) : [] })) };
   } catch (error) {
     console.warn('[deck analysis] LLM:', error.message);
     return null;
   }
 }
 
-export async function analyzeDeck(beys, partsById) {
+const analysisKey = (signature) => `${ANALYSIS_STORE_PREFIX}${createHash('sha256').update(signature).digest('hex')}`;
+
+export async function analyzeDeck(beys, partsById, { force = false } = {}) {
   const signature = JSON.stringify(beys || []);
   const hit = analysisCache.get(signature);
-  if (hit && Date.now() - hit.at < ANALYSIS_TTL) return hit.value;
+  if (!force && hit && Date.now() - hit.at < ANALYSIS_TTL) return hit.value;
+  const stored = !force ? await getSetting(analysisKey(signature)) : null;
+  if (stored?.signature === signature && stored?.value?.deckLabel) {
+    analysisCache.set(signature, { at: Date.now(), value: stored.value });
+    return stored.value;
+  }
   const meta = await getExternalMeta();
   const rawCombos = (beys || []).filter(Array.isArray).map((ids) => ids.map((id) => partsById?.[id]).filter(Boolean));
   const histories = await Promise.all(rawCombos.map(async (combo) => {
@@ -201,12 +211,39 @@ export async function analyzeDeck(beys, partsById) {
   const value = {
     source: { ...meta.source, fetchedAt: meta.fetchedAt, stale: !!meta.stale, historyName: 'BBXHub', historyUrl: 'https://bbxhub.net/', historyEvents: 4034 },
     combos,
+    deckLabel: aiNarrative?.deckLabel || 'IDENTIDADE DO TRIO',
     deckSummary: aiNarrative?.deck || fallbackNarrative(combos, meta.source),
     individual: aiNarrative?.beys || [],
     generatedBy: aiNarrative ? 'LLM + dados de pódios' : 'dados de pódios',
   };
   analysisCache.set(signature, { at: Date.now(), value });
+  await setSetting(analysisKey(signature), { signature, generatedAt: new Date().toISOString(), value });
   return value;
+}
+
+/** Recria e grava as leituras de todos os decks ativos para que a IA atualizada
+ * apareça imediatamente, inclusive após reiniciar o servidor. */
+export async function refreshAllDeckAnalyses() {
+  analysisCache.clear();
+  const decks = await prisma.communityDeck.findMany({
+    where: { status: 'VISIBLE' },
+    select: { id: true, beysJson: true },
+  });
+  let refreshed = 0;
+  let skipped = 0;
+  for (const deck of decks) {
+    const beys = json(deck.beysJson, []);
+    const ids = [...new Set(Array.isArray(beys) ? beys.flat() : [])];
+    if (!ids.length) { skipped++; continue; }
+    const parts = await prisma.part.findMany({ where: { id: { in: ids } } });
+    const partMap = Object.fromEntries(parts.map((part) => [part.id, {
+      ...part,
+      stats: json(part.statsJson, null),
+    }]));
+    await analyzeDeck(beys, partMap, { force: true });
+    refreshed++;
+  }
+  return { total: decks.length, refreshed, skipped };
 }
 
 /** Atualiza o recorte competitivo todas as manhãs; peças sem cache continuam
