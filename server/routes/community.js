@@ -560,6 +560,7 @@ router.get('/api/users/:slug/tournaments', ah(async (req, res) => {
   for (const e of entries) {
     const t = e.tournament;
     if (t.status === 'CANCELED') continue;
+    if (t.visibility === 'PRIVATE') continue;
     let placement = null;
     let wins = null;
     let champion = false;

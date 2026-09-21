@@ -376,6 +376,19 @@
                 <div><label>Descrição</label><textarea id="eDesc">${BX.esc(t.description || '')}</textarea></div>
                 <div class="inline-actions"><button class="btn primary" id="saveT">Salvar</button></div>
               </div>
+              ${t.isAdmin ? `<div class="panel-card admin-tournament-control">
+                <p class="eyebrow">CONTROLE ADMINISTRATIVO</p>
+                <h3>Visibilidade e manutenção</h3>
+                <label for="tVisibility">Visibilidade do torneio</label>
+                <select id="tVisibility">
+                  <option value="PUBLIC" ${t.visibility === 'PUBLIC' ? 'selected' : ''}>Público — aparece nas listas</option>
+                  <option value="LINK_ONLY" ${t.visibility === 'LINK_ONLY' ? 'selected' : ''}>Apenas link — não aparece nas listas</option>
+                  <option value="PRIVATE" ${t.visibility === 'PRIVATE' ? 'selected' : ''}>Privado — fora de rankings e da home</option>
+                </select>
+                <small class="muted">Público e Apenas link contam nos dados gerais. Privado não aparece nem influencia rankings, home ou meta.</small>
+                <button class="btn secondary" id="saveVisibility">Salvar visibilidade</button>
+                <div class="admin-tournament-danger"><strong>Excluir definitivamente</strong><small>Remove o torneio, inscrições, partidas, resultados e posts automáticos. Não pode ser desfeito.</small><button class="btn danger-outline" id="deleteTournament">Excluir torneio</button></div>
+              </div>` : ''}
               ${t.status === 'FINISHED' ? `<div class="panel-card form-grid"><p class="eyebrow">FOTOS DO EVENTO</p><label for="eventPhotos">Adicionar fotos à galeria</label><input id="eventPhotos" type="file" accept="image/png,image/jpeg,image/webp" multiple /><small class="muted">Até 6 por envio, 30 no total, 10 MB por foto.</small><button class="btn secondary" id="uploadPhotos" type="button">Enviar fotos</button></div>` : ''}
             </div>
           </div>
@@ -511,6 +524,13 @@
             description: document.getElementById('eDesc').value,
           },
         })));
+        document.getElementById('saveVisibility')?.addEventListener('click', act(() => BX.api(`/api/tournaments/${slug}`, { method: 'PATCH', body: { visibility: document.getElementById('tVisibility').value } })));
+        document.getElementById('deleteTournament')?.addEventListener('click', async () => {
+          if (!confirm(`Excluir definitivamente o torneio “${t.name}”? Esta ação não pode ser desfeita.`)) return;
+          const typed = prompt('Para confirmar, digite EXCLUIR');
+          if (typed !== 'EXCLUIR') return BX.toast('Exclusão cancelada.');
+          try { await BX.api(`/api/tournaments/${slug}`, { method: 'DELETE' }); BX.toast('Torneio excluído definitivamente.'); location.href = '/torneios'; } catch (e) { BX.toast(e.message); }
+        });
       }
 
       await load();

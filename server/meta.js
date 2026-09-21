@@ -51,7 +51,7 @@ export async function computeMeta() {
 
   // 1) Decks em torneios (colocação pesa): campeão 4, top 4 = 2.5, resto 1.2; torneio em andamento 1
   // Arenas internas de admin nunca alimentam o meta/ranking público.
-  const tours = await prisma.tournament.findMany({ where: { status: { in: ['RUNNING', 'FINISHED'] }, startsAt: { gt: since }, NOT: { description: { startsWith: '[ADMIN TEST]' } } }, select: { slug: true, status: true } });
+  const tours = await prisma.tournament.findMany({ where: { status: { in: ['RUNNING', 'FINISHED'] }, visibility: { in: ['PUBLIC', 'LINK_ONLY'] }, startsAt: { gt: since }, NOT: { description: { startsWith: '[ADMIN TEST]' } } }, select: { slug: true, status: true } });
   for (const t of tours) {
     const full = await loadTournament(t.slug);
     if (!full) continue;
@@ -191,6 +191,7 @@ export async function ensureSystemPost(systemKey, { title, body = null, tag = 'R
 }
 
 export async function onTournamentCreated(t) {
+  if (t.description?.startsWith('[ADMIN TEST]') || (t.visibility || 'PUBLIC') !== 'PUBLIC') return;
   await ensureSystemPost(`t-open:${t.slug}`, {
     title: `Novo torneio aberto para inscrições: ${t.name}`,
     body: [t.storeName ? `Local: ${t.storeName}.` : null, `Formato ${t.format === 'POINTS4' ? 'partida única (4 pontos)' : 'melhor de 3'}.`, 'Garanta sua vaga pelo link de inscrição.'].filter(Boolean).join(' '),
@@ -202,6 +203,7 @@ export async function onTournamentCreated(t) {
 export async function onTournamentFinished(slug) {
   const full = await loadTournament(slug);
   if (!full || full.status !== 'FINISHED') return;
+  if (full.description?.startsWith('[ADMIN TEST]') || (full.visibility || 'PUBLIC') !== 'PUBLIC') return;
   const standings = standingsOf(full);
   const champ = standings[0];
   if (!champ) return;

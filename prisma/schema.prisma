@@ -238,6 +238,7 @@ model Tournament {
   description   String?
   coverUrl      String?
   entryFeeCents Int      @default(0)
+  visibility    String   @default("PUBLIC") // PUBLIC | LINK_ONLY | PRIVATE
   status        String   @default("OPEN") // OPEN | RUNNING | FINISHED | CANCELED
   currentRound  Int      @default(0)
   organizerId   String

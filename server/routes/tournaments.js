@@ -5,7 +5,7 @@ import path from 'node:path';
 import QRCode from 'qrcode';
 import sharp from 'sharp';
 import { prisma } from '../db.js';
-import { requireUser, publicUser, isStaff } from '../auth.js';
+import { requireUser, requireRole, publicUser, isStaff } from '../auth.js';
 import { moderateFields, getSetting } from '../settings.js';
 import { audit } from '../audit.js';
 import { siteUrl, uniqueSlug } from '../util.js';
@@ -16,6 +16,10 @@ const router = Router();
 const ah = (fn) => (req, res, next) => fn(req, res, next).catch(next);
 
 const canManage = (t, user) => !!user && (t.organizerId === user.id || isStaff(user));
+const isAdmin = (user) => user?.role === 'ADMIN';
+const visibilityOf = (t) => t.visibility || 'PUBLIC';
+const isTestTournament = (t) => t.description?.startsWith('[ADMIN TEST]');
+const canView = (t, user) => visibilityOf(t) !== 'PRIVATE' || canManage(t, user) || t.players?.some((p) => p.userId === user?.id);
 
 function tournamentDto(t, user) {
   return {
@@ -31,11 +35,13 @@ function tournamentDto(t, user) {
     description: t.description,
     coverUrl: t.coverUrl,
     entryFeeCents: t.entryFeeCents ?? 0,
+    visibility: visibilityOf(t),
     status: t.status,
     currentRound: t.currentRound,
     organizer: t.organizer ? publicUser(t.organizer) : undefined,
     playersCount: t.players?.length,
     canManage: canManage(t, user),
+    isAdmin: isAdmin(user),
     joinUrl: `${siteUrl()}/t/${t.slug}`,
     whatsappShareUrl: `https://wa.me/?text=${encodeURIComponent(
       `🌀 Torneio de Beyblade X: ${t.name}${t.storeName ? ` @ ${t.storeName}` : ''}!\nInscreva-se: ${siteUrl()}/t/${t.slug}`,
@@ -254,7 +260,7 @@ router.get('/api/tournaments', ah(async (req, res) => {
   const where = {};
   if (status) where.status = String(status);
   else where.status = { in: ['OPEN', 'RUNNING', 'FINISHED'] };
-  if (!isStaff(req.user)) where.NOT = { description: { startsWith: '[ADMIN TEST]' } };
+  if (!isStaff(req.user)) where.AND = [{ visibility: 'PUBLIC' }, { NOT: { description: { startsWith: '[ADMIN TEST]' } } }];
   let list = await prisma.tournament.findMany({
     where,
     include: { organizer: true, players: true },
@@ -309,7 +315,7 @@ router.post('/api/tournaments/admin-test', requireUser, ah(async (req, res) => {
   const users = await prisma.user.findMany({ where: { id: { not: req.user.id }, status: 'ACTIVE' }, take: 7, orderBy: { createdAt: 'asc' } });
   if (users.length < 7) return res.status(422).json({ error: 'São necessários ao menos 7 outros usuários para montar a mesa de teste.' });
   const name = `TESTE ADMIN • ${new Date().toLocaleString('pt-BR')}`;
-  const t = await prisma.tournament.create({ data: { slug: await uniqueSlug(prisma.tournament, `teste-admin-${Date.now()}`), name, startsAt: new Date(), format: 'MD3', roundsPlanned: 3, description: '[ADMIN TEST] Torneio oculto de teste.', organizerId: req.user.id, entryFeeCents: 0 } });
+  const t = await prisma.tournament.create({ data: { slug: await uniqueSlug(prisma.tournament, `teste-admin-${Date.now()}`), name, startsAt: new Date(), format: 'MD3', roundsPlanned: 3, description: '[ADMIN TEST] Torneio oculto de teste.', visibility: 'PRIVATE', organizerId: req.user.id, entryFeeCents: 0 } });
   await prisma.tournamentPlayer.createMany({ data: [req.user, ...users].map((u) => ({ tournamentId: t.id, userId: u.id })) });
   const full = await loadTournament(t.slug);
   await pairRound(full, 1);
@@ -336,7 +342,8 @@ router.post('/api/tournaments/:slug/my-deck', requireUser, ah(async (req, res) =
 router.get('/api/tournaments/:slug', ah(async (req, res) => {
   const t = await loadTournament(req.params.slug);
   if (!t) return res.status(404).json({ error: 'Torneio não encontrado.' });
-  if (t.description?.startsWith('[ADMIN TEST]') && !isStaff(req.user)) return res.status(404).json({ error: 'Torneio não encontrado.' });
+  if (isTestTournament(t) && !isStaff(req.user)) return res.status(404).json({ error: 'Torneio não encontrado.' });
+  if (!canView(t, req.user)) return res.status(404).json({ error: 'Torneio não encontrado.' });
   const me = req.user ? t.players.find((p) => p.userId === req.user.id) : null;
   const deckOptions = { showDeclaredDeck: (p) => t.status === 'FINISHED' || p.userId === req.user?.id };
   res.json({
@@ -352,6 +359,8 @@ router.get('/api/tournaments/:slug', ah(async (req, res) => {
 router.post('/api/tournaments/:slug/join', requireUser, ah(async (req, res) => {
   const t = await loadTournament(req.params.slug);
   if (!t) return res.status(404).json({ error: 'Torneio não encontrado.' });
+  if (isTestTournament(t) && !isStaff(req.user)) return res.status(404).json({ error: 'Torneio não encontrado.' });
+  if (!canView(t, req.user)) return res.status(404).json({ error: 'Torneio não encontrado.' });
   if (t.players.length >= 64) return res.status(403).json({ error: 'Torneio lotado (64 jogadores).' });
   const lateToken = String(req.body?.lateToken || '');
   if (t.status === 'RUNNING' && lateToken) {
@@ -616,9 +625,34 @@ router.patch('/api/tournaments/:slug', requireManage(bySlug), moderateFields('na
   }
   if (b.format) data.format = b.format === 'POINTS4' ? 'POINTS4' : 'MD3';
   if (b.roundsPlanned) data.roundsPlanned = Math.max(1, Math.min(12, parseInt(b.roundsPlanned, 10) || 4));
+  if ('visibility' in b) {
+    if (!isAdmin(req.user)) return res.status(403).json({ error: 'Somente admins podem alterar a visibilidade.' });
+    const visibility = String(b.visibility || 'PUBLIC');
+    if (!['PUBLIC', 'LINK_ONLY', 'PRIVATE'].includes(visibility)) return res.status(422).json({ error: 'Visibilidade inválida.' });
+    data.visibility = visibility;
+  }
   const t = await prisma.tournament.update({ where: { id: req.tournament.id }, data, include: { organizer: true, players: true } });
   await audit(req.user, 'tournament.update', 'TOURNAMENT', t.id);
+  if ('visibility' in data) {
+    if (data.visibility !== 'PUBLIC') await prisma.post.deleteMany({ where: { systemKey: { in: [`t-open:${t.slug}`, `t-finished:${t.slug}`] } } });
+    const [{ refreshMeta }, { bustHomeCache }] = await Promise.all([import('../meta.js'), import('./home.js')]);
+    bustHomeCache();
+    await refreshMeta({ reason: `visibilidade ${t.slug}` }).catch(() => {});
+  }
   res.json({ tournament: tournamentDto(t, req.user) });
+}));
+
+/** Exclusão definitiva é exclusiva de ADMIN; as relações do torneio saem por cascade. */
+router.delete('/api/tournaments/:slug', requireRole('ADMIN'), ah(async (req, res) => {
+  const t = await loadTournament(req.params.slug);
+  if (!t) return res.status(404).json({ error: 'Torneio não encontrado.' });
+  await prisma.post.deleteMany({ where: { systemKey: { in: [`t-open:${t.slug}`, `t-finished:${t.slug}`] } } });
+  await prisma.tournament.delete({ where: { id: t.id } });
+  await audit(req.user, 'tournament.delete', 'TOURNAMENT', t.id, { name: t.name });
+  const [{ refreshMeta }, { bustHomeCache }] = await Promise.all([import('../meta.js'), import('./home.js')]);
+  bustHomeCache();
+  await refreshMeta({ reason: `torneio removido ${t.slug}` }).catch(() => {});
+  res.json({ ok: true });
 }));
 
 router.post('/api/tournaments/:slug/cover', requireManage(bySlug), uploadTournamentImages.single('file'), ah(async (req, res) => {

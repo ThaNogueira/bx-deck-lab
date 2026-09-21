@@ -28,7 +28,7 @@ export const bustHomeCache = () => cache.clear();
 /** Ranking público: somente torneios concluídos, sem as arenas privadas de teste. */
 async function buildPlayerRanking({ limit = null } = {}) {
   const finished = await prisma.tournament.findMany({
-    where: { status: 'FINISHED', NOT: { description: { startsWith: '[ADMIN TEST]' } } },
+    where: { status: 'FINISHED', visibility: { in: ['PUBLIC', 'LINK_ONLY'] }, NOT: { description: { startsWith: '[ADMIN TEST]' } } },
     select: { slug: true }, orderBy: { startsAt: 'desc' }, take: 150,
   });
   const players = new Map();
@@ -105,11 +105,11 @@ router.get('/api/home/highlights', ah(async (_req, res) => {
     const clipThumb = clipMedia.find((m) => m.type === 'embed')?.id ? `https://i.ytimg.com/vi/${clipMedia.find((m) => m.type === 'embed').id}/hqdefault.jpg` : clipMedia.find((m) => m.type === 'image' || m.type === 'gif')?.url || null;
 
     // Próximo torneio agendado
-    const next = await prisma.tournament.findFirst({ where: { status: 'OPEN', startsAt: { gte: now } }, orderBy: { startsAt: 'asc' }, include: { players: true } })
-      || await prisma.tournament.findFirst({ where: { status: { in: ['OPEN', 'RUNNING'] } }, orderBy: { startsAt: 'asc' }, include: { players: true } });
+    const next = await prisma.tournament.findFirst({ where: { status: 'OPEN', visibility: 'PUBLIC', startsAt: { gte: now } }, orderBy: { startsAt: 'asc' }, include: { players: true } })
+      || await prisma.tournament.findFirst({ where: { status: { in: ['OPEN', 'RUNNING'] }, visibility: 'PUBLIC' }, orderBy: { startsAt: 'asc' }, include: { players: true } });
 
     // Campeões recentes e os decks declarados: material para a vitrine da home.
-    const finished = await prisma.tournament.findMany({ where: { status: 'FINISHED' }, orderBy: { startsAt: 'desc' }, take: 4 });
+    const finished = await prisma.tournament.findMany({ where: { status: 'FINISHED', visibility: { in: ['PUBLIC', 'LINK_ONLY'] } }, orderBy: { startsAt: 'desc' }, take: 4 });
     const recentChampions = (await Promise.all(finished.map(async (event) => {
       const full = await loadTournament(event.slug);
       const st = full && standingsOf(full)[0];
@@ -154,7 +154,7 @@ router.get('/api/home/feed', ah(async (req, res) => {
 router.get('/api/home/side', ah(async (_req, res) => {
   const data = await cached('side', 120_000, async () => {
     const now = new Date();
-    const upcoming = await prisma.tournament.findMany({ where: { status: { in: ['OPEN', 'RUNNING'] }, startsAt: { gte: new Date(now.getTime() - 864e5) } }, orderBy: { startsAt: 'asc' }, take: 5, include: { players: true } });
+    const upcoming = await prisma.tournament.findMany({ where: { status: { in: ['OPEN', 'RUNNING'] }, visibility: 'PUBLIC', startsAt: { gte: new Date(now.getTime() - 864e5) } }, orderBy: { startsAt: 'asc' }, take: 5, include: { players: true } });
     const { ranking } = await buildPlayerRanking({ limit: 10 });
     return {
       upcoming: upcoming.map((t) => ({ slug: t.slug, name: t.name, storeName: t.storeName, startsAt: t.startsAt, format: t.format, status: t.status, players: t.players.length })),
