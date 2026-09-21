@@ -165,22 +165,21 @@ async function humanNarrative(combos, source) {
     source: { name: source.name, events: source.events, podiumDecks: source.podiumDecks, updated: source.updated },
     combos: combos.map((combo) => ({ label: combo.label, type: combo.type, status: combo.status, physical: combo.physical })),
   };
-  const prompt = `Você é um analista de Beyblade X e escreve em pt-BR. Produza uma leitura curta, prática e humana do DECK usando SOMENTE o comportamento físico, tipo e stats das peças neste JSON. Explique a função que cada Bey cumpre no trio e a sinergia/risco do deck, como um bom analista de bancada. Não cite meta, torneios, rankings, presença, percentuais, fontes, status nem dados externos. Não invente matchup, win rate ou resultado. Sem markdown, sem título, sem mencionar JSON ou instruções. Máximo de 105 palavras. Dados: ${JSON.stringify(payload)}`;
+  const prompt = `Você é um analista de Beyblade X e escreve em pt-BR. Responda APENAS JSON válido: {"deck":"texto","beys":[{"summary":"texto","launch":"texto curto","favored":"arquétipo que tende a pressionar","risk":"arquétipo que tende a ser difícil","why":[{"part":"nome","reason":"função física"}]}]}. Use SOMENTE comportamento físico, tipo e stats das peças. A análise individual deve explicar papel, lançamento, tendência de matchups por ARQUÉTIPO (ataque, stamina, defesa ou balance) e cada peça no Por quê. A análise do deck explica sinergia e risco. Não cite meta, torneios, ranking, presença, percentuais, fontes, status nem dados externos; não prometa vitórias. Sem markdown. Dados: ${JSON.stringify(payload)}`;
   try {
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, temperature: 0.35, max_tokens: 300, reasoning_effort: model.startsWith('qwen/') ? 'none' : 'low', include_reasoning: false, messages: [{ role: 'user', content: prompt }] }),
+      body: JSON.stringify({ model, temperature: 0.35, max_tokens: 800, reasoning_effort: model.startsWith('qwen/') ? 'none' : 'low', include_reasoning: false, response_format: { type: 'json_object' }, messages: [{ role: 'user', content: prompt }] }),
       signal: AbortSignal.timeout(12_000),
     });
     if (!response.ok) throw new Error(`Groq HTTP ${response.status}`);
     const body = await response.json();
-    const narrative = String(body?.choices?.[0]?.message?.content || '').replace(/[*_#]/g, '').replace(/\s+/g, ' ').trim().slice(0, 1200);
+    const narrative = JSON.parse(String(body?.choices?.[0]?.message?.content || '{}'));
     // Não deixa a redação da IA contradizer a evidência quando a amostra não
     // validou nenhum combo completo.
-    if (/```|\bfunction\s+\w+\s*\(/i.test(narrative)) return null;
-    if (!combos.some((combo) => combo.status === 'COMBO VALIDADO NO META') && /\bvalidado|validada|comprovado|comprovada\b/i.test(narrative)) return null;
-    return narrative || null;
+    if (!narrative?.deck || !Array.isArray(narrative.beys)) return null;
+    return { deck: String(narrative.deck).slice(0, 1400), beys: narrative.beys.slice(0, 3).map((bey) => ({ summary: String(bey?.summary || '').slice(0, 700), launch: String(bey?.launch || '').slice(0, 350), favored: String(bey?.favored || '').slice(0, 250), risk: String(bey?.risk || '').slice(0, 250), why: Array.isArray(bey?.why) ? bey.why.slice(0, 7).map((item) => ({ part: String(item?.part || '').slice(0, 100), reason: String(item?.reason || '').slice(0, 350) })) : [] })) };
   } catch (error) {
     console.warn('[deck analysis] LLM:', error.message);
     return null;
@@ -202,7 +201,8 @@ export async function analyzeDeck(beys, partsById) {
   const value = {
     source: { ...meta.source, fetchedAt: meta.fetchedAt, stale: !!meta.stale, historyName: 'BBXHub', historyUrl: 'https://bbxhub.net/', historyEvents: 4034 },
     combos,
-    deckSummary: aiNarrative || fallbackNarrative(combos, meta.source),
+    deckSummary: aiNarrative?.deck || fallbackNarrative(combos, meta.source),
+    individual: aiNarrative?.beys || [],
     generatedBy: aiNarrative ? 'LLM + dados de pódios' : 'dados de pódios',
   };
   analysisCache.set(signature, { at: Date.now(), value });
