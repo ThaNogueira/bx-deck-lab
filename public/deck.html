@@ -66,6 +66,7 @@
           </div>
           <div class="hero-actions">
             <button class="btn secondary" id="copyTextBtn" title="Copiar somente a lista das Beys">${BX.ic('link', 14)} Copiar lista</button>
+            ${me?.role === 'ADMIN' ? `<button class="btn secondary" id="refreshLlmBtn">${BX.ic('refresh', 14)} Atualizar LLM</button>` : ''}
             ${mine ? `<button class="btn secondary" id="visBtn">${deck.isPublic === false ? `${BX.ic('globe', 14)} Tornar público` : `${BX.ic('lock', 14)} Tornar privado`}</button><a class="btn secondary" href="/deck/${deck.slug}/editar">Editar</a><a class="btn ghost" href="/meus-decks">Meus decks</a>` : ''}
             ${mine ? (deck.sharedPostId ? `<a class="btn secondary" href="/comunidade/p/${deck.sharedPostId}" style="text-decoration:none">${BX.ic('feed', 14)} Ver post na comunidade</a>` : `<button class="btn secondary" id="shareBtn">${BX.ic('feed', 14)} Compartilhar na comunidade</button>`) : ''}
             ${!mine && deck.isPublic !== false ? `<button class="btn primary" id="copyBtn" title="Salva uma cópia privada em Meus decks e conta no ranking do meta">${BX.ic('save', 14)} Copiar deck<small class="copy-count" id="copyCount">${deck.copyCount || 0}</small></button><a class="btn secondary" href="/?copiar=${deck.slug}#builder" style="text-decoration:none">${BX.ic('builder', 14)} Abrir no builder</a>` : ''}
@@ -119,6 +120,16 @@
         }
       };
       renderAnalysis();
+      document.getElementById('refreshLlmBtn')?.addEventListener('click', async (event) => {
+        const button = event.currentTarget;
+        button.disabled = true;
+        try {
+          await BX.api(`/api/decks/${deck.id}/analysis/refresh`, { method: 'POST' });
+          BX.toast('Análise da IA atualizada.');
+          await renderAnalysis();
+        } catch (error) { BX.toast(error.message); }
+        finally { button.disabled = false; }
+      });
       const shareNow = async () => {
         const text = await BX.promptDialog({ title: 'Compartilhar na comunidade', text: 'Descreva a build (opcional). O post nasce com a tag Deck e botões de abrir no builder e copiar.', placeholder: 'ex.: Deck de stamina com bit Ball…', multiline: true, okLabel: 'Publicar na comunidade' });
         if (text === null) return;

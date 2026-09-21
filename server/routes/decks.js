@@ -131,6 +131,19 @@ router.get('/api/decks/:slug/analysis', ah(async (req, res) => {
   res.json({ analysis: await analyzeDeck(beys, partMap) });
 }));
 
+/** Releitura manual reservada ao administrador. A chave de IA permanece no
+ * servidor; o resultado é gravado e passa a ser reutilizado por todos. */
+router.post('/api/decks/:id/analysis/refresh', requireUser, ah(async (req, res) => {
+  if (req.user.role !== 'ADMIN') return res.status(403).json({ error: 'Apenas administradores podem atualizar a análise.' });
+  const deck = await prisma.communityDeck.findUnique({ where: { id: req.params.id } });
+  if (!deck) return res.status(404).json({ error: 'Deck não encontrado.' });
+  const beys = json(deck.beysJson, []);
+  const ids = [...new Set(beys.flat())];
+  const parts = ids.length ? await prisma.part.findMany({ where: { id: { in: ids } } }) : [];
+  const partMap = Object.fromEntries(parts.map((part) => [part.id, partDto(part)]));
+  res.json({ analysis: await analyzeDeck(beys, partMap, { force: true }) });
+}));
+
 router.post('/api/decks', requireUser, moderateFields('title', 'description', 'launchGuide'), ah(async (req, res) => {
   const flags = await getSetting('flags');
   if (flags.decks === false) return res.status(403).json({ error: 'Publicação de decks está temporariamente desativada.' });
