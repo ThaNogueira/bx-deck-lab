@@ -194,7 +194,7 @@ async function humanNarrative(combos) {
       body: JSON.stringify({ model, temperature: 0.35, max_tokens: 1300, reasoning_effort: model.startsWith('qwen/') ? 'none' : 'low', include_reasoning: false, response_format: { type: 'json_object' }, messages: [{ role: 'user', content: prompt }] }),
       signal: AbortSignal.timeout(12_000),
     });
-    if (!response.ok) throw new Error(`Groq HTTP ${response.status}`);
+    if (!response.ok) throw new Error(`Groq HTTP ${response.status}: ${(await response.text()).slice(0, 500)}`);
     const body = await response.json();
     const narrative = JSON.parse(String(body?.choices?.[0]?.message?.content || '{}'));
     // Não deixa a redação da IA contradizer a evidência quando a amostra não
