@@ -160,14 +160,32 @@ function fallbackNarrative(combos, source) {
   return `${pieces.join('; ')}. Leitura baseada em ${source.events || 'eventos'} da janela pública do Beycrate Meta, não em uma tier list opinativa.`;
 }
 
-async function humanNarrative(combos, source) {
+function physicalTendency(stats) {
+  const values = Object.entries(stats || {})
+    .map(([key, raw]) => [key, Number(raw) > 10 ? Number(raw) / 10 : Number(raw)])
+    .filter(([, value]) => Number.isFinite(value) && value > 0)
+    .sort((a, b) => b[1] - a[1]);
+  const names = { atk: 'pressão de ataque', def: 'resistência a impacto', sta: 'retenção de rotação' };
+  return values.slice(0, 2).map(([key]) => names[key]).filter(Boolean).join(' e ') || null;
+}
+
+async function humanNarrative(combos) {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) return null;
   const model = process.env.GROQ_MODEL || 'qwen/qwen3.8-27b';
-  const payload = {
-    source: { name: source.name, events: source.events, podiumDecks: source.podiumDecks, updated: source.updated },
-    combos: combos.map((combo) => ({ label: combo.label, type: combo.type, status: combo.status, physical: combo.physical })),
-  };
+  // A IA recebe sinais físicos compactos, e não o objeto bruto do catálogo.
+  // Isso reduz muito o consumo de tokens e impede que ela despeje notas no texto.
+  const payload = { combos: combos.map((combo) => ({
+    label: combo.label,
+    type: combo.type,
+    physical: combo.physical.map((part) => ({
+      name: part.name,
+      kind: part.kind,
+      type: part.type,
+      behavior: part.behavior,
+      tendency: physicalTendency(part.stats),
+    })),
+  })) };
   const prompt = `Você é um analista de Beyblade X e escreve em pt-BR. Responda APENAS JSON válido: {"deckLabel":"rótulo curto e marcante de 2 a 6 palavras","deck":"texto","beys":[{"summary":"texto","launch":"instrução prática de lançamento com força, inclinação ou alvo","favored":"arquétipo favorecido","favoredWhy":"por que a física do combo pressiona esse arquétipo","risk":"arquétipo perigoso","riskWhy":"por que a física do combo sofre contra ele","counterTip":"dica curta e prática para enfrentar essa Bey","why":[{"part":"nome","reason":"função física"}]}]}. O deckLabel deve descrever a identidade concreta do trio, ser interessante e específico às peças; nunca use rótulos genéricos como "Deck muito ofensivo", "Deck equilibrado", "Deck de stamina" ou "Deck defensivo". Use SOMENTE comportamento físico, tipo e stats das peças como raciocínio interno. Escreva para jogador: traduza números em comportamento prático e NUNCA exponha notas, valores, porcentagens, atributos numéricos ou frases como "ataque de 70"; identificadores oficiais de peças como "1-60" podem aparecer só como parte do nome. Seja específico e útil, mas trate matchups como tendências de arquétipo, nunca como vitória garantida. A análise do deck explica sinergia e risco. Não cite meta, torneios, ranking, presença, percentuais, fontes, status nem dados externos. Sem markdown. Dados: ${JSON.stringify(payload)}`;
   try {
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -207,7 +225,7 @@ export async function analyzeDeck(beys, partsById, { force = false } = {}) {
     return getHistoricalBlade(partName(blade));
   }));
   const combos = rawCombos.map((combo, i) => describeSignal(combo, meta, histories[i]));
-  const aiNarrative = await humanNarrative(combos, meta.source);
+  const aiNarrative = await humanNarrative(combos);
   const value = {
     source: { ...meta.source, fetchedAt: meta.fetchedAt, stale: !!meta.stale, historyName: 'BBXHub', historyUrl: 'https://bbxhub.net/', historyEvents: 4034 },
     combos,
