@@ -233,8 +233,10 @@ export async function refreshAllDeckAnalyses() {
     select: { id: true, beysJson: true },
   });
   let refreshed = 0;
+  let aiRefreshed = 0;
+  let pendingRetry = 0;
   let skipped = 0;
-  for (const deck of decks) {
+  for (const [index, deck] of decks.entries()) {
     const beys = json(deck.beysJson, []);
     const ids = [...new Set(Array.isArray(beys) ? beys.flat() : [])];
     if (!ids.length) { skipped++; continue; }
@@ -243,10 +245,15 @@ export async function refreshAllDeckAnalyses() {
       ...part,
       stats: json(part.statsJson, null),
     }]));
-    await analyzeDeck(beys, partMap, { force: true });
+    const analysis = await analyzeDeck(beys, partMap, { force: true });
     refreshed++;
+    if (analysis.generatedBy === 'LLM + dados de pódios') aiRefreshed++;
+    else pendingRetry++;
+    // O Qwen gratuito aceita 8k tokens/minuto. Espaçar os decks evita que um
+    // refresh manual de toda a comunidade esgote a janela de um minuto.
+    if (index < decks.length - 1) await new Promise((resolve) => setTimeout(resolve, 16_000));
   }
-  return { total: decks.length, refreshed, skipped };
+  return { total: decks.length, refreshed, aiRefreshed, pendingRetry, skipped };
 }
 
 /** Atualiza o recorte competitivo todas as manhãs; peças sem cache continuam
