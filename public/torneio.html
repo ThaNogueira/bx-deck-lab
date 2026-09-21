@@ -303,11 +303,11 @@
           ${conflicts.length ? `<div class="conflict-banner" style="margin-bottom:14px">${BX.ic('warn', 14)} <b>${conflicts.length} conflito(s) de resultado</b> nesta rodada — verifique com os jogadores e escolha o vencedor abaixo antes de fechar a rodada.</div>` : ''}
           <div class="profile-grid">
             <div style="display:flex;flex-direction:column;gap:16px">
-              <div class="panel-card">
-                <p class="eyebrow">CONTROLE DO TORNEIO</p>
-                <div class="inline-actions" style="justify-content:flex-start;margin-top:12px">
+              <div class="panel-card tournament-control-card">
+                <div class="tournament-control-head"><div><p class="eyebrow">CENTRAL DO GESTOR</p><h2>${t.status === 'OPEN' ? 'Pronto para começar' : t.status === 'RUNNING' ? `Rodada ${t.currentRound} em andamento` : t.status === 'FINISHED' ? 'Torneio encerrado' : 'Torneio cancelado'}</h2><small>${t.status === 'OPEN' ? 'Confira os inscritos e inicie quando estiver tudo certo.' : t.status === 'RUNNING' ? `${roundMatches.filter((m) => m.status === 'DONE').length}/${roundMatches.length} mesas concluídas nesta rodada.` : 'Use as abas para consultar os resultados.'}</small></div><span class="status-chip ${t.status}">${STATUS_PT[t.status]}</span></div>
+                <div class="inline-actions tournament-control-actions" style="justify-content:flex-start;margin-top:16px">
                   ${t.status === 'OPEN' ? `<button class="btn primary" id="startBtn">${BX.ic('play', 14)} Começar (rodada 1)</button>` : ''}
-                  ${t.status === 'RUNNING' && t.currentRound < t.roundsPlanned ? `<button class="btn primary" id="nextBtn">Fechar rodada e parear a próxima</button>` : ''}
+                  ${t.status === 'RUNNING' && t.currentRound < t.roundsPlanned ? `<button class="btn primary" id="nextBtn">${BX.ic('chevron', 15)} Fechar rodada e gerar próxima</button>` : ''}
                   ${t.status === 'RUNNING' ? `<button class="btn secondary" id="lateInviteBtn">${BX.ic('link', 14)} Gerar convite de entrada tardia</button>` : ''}
                   ${t.status === 'RUNNING' ? `<button class="btn secondary" id="finishBtn">${BX.ic('finish', 14)} Encerrar torneio</button>` : ''}
                   ${t.status !== 'CANCELED' ? `<button class="btn ghost" id="tamerLeagueSyncBtn" title="Reenvia o estado atual do torneio ao TamerLeague">Sincronizar TamerLeague</button>` : ''}

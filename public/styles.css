@@ -687,6 +687,11 @@ a.list-card{text-decoration:none;color:inherit}
   .panel-card>.inline-actions .primary{grid-column:1 / -1}
 }
 
+/* Central do gestor: prioridade para decisões rápidas em uma mão. */
+.tournament-control-card{border-color:rgba(84,230,156,.34);background:linear-gradient(135deg,#142117,#101612)}
+.tournament-control-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}.tournament-control-head h2{margin:3px 0 4px;font:800 25px/1.05 var(--display)}.tournament-control-head small{color:var(--muted);font-size:12px}.tournament-control-actions .btn{min-height:48px;font-weight:800}.tournament-control-actions #nextBtn,.tournament-control-actions #startBtn{box-shadow:0 0 22px rgba(84,230,156,.16)}
+@media(max-width:600px){.tournament-control-card{padding:16px}.tournament-control-head{display:block}.tournament-control-head .status-chip{display:inline-flex;margin-top:11px}.tournament-control-head h2{font-size:27px}.tournament-control-actions{display:grid!important;grid-template-columns:1fr!important;gap:9px!important}.tournament-control-actions .btn{grid-column:auto!important;min-height:54px!important;font-size:14px!important}.tournament-control-actions #cancelBtn{margin-top:7px}.org-match-row{border-color:#304033;background:#101711}.org-match-row:has(.row-actions [data-win]){box-shadow:inset 3px 0 0 var(--green)}.org-match-row:has(.row-actions [data-accept]){box-shadow:inset 3px 0 0 var(--cyan)}}
+
 /* Cartaz de impressão (item 7) */
 .poster{max-width:760px;margin:0 auto;background:white;color:#0b0c11;border-radius:18px;padding:56px 42px;text-align:center}
 .poster .poster-logo{font:800 64px/1 var(--display);letter-spacing:.02em;text-transform:uppercase}
