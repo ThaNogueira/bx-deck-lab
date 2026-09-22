@@ -212,6 +212,7 @@ let lastAnalysisError = null;
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export const isDeckAnalysisBusy = () => !!activeAnalysisJob || analysisQueue.length > 0;
+export const isDeckAnalysisPending = (beys) => pendingSignatures.has(JSON.stringify(beys || []));
 export const getDeckAnalysisQueueStatus = () => ({
   active: !!activeAnalysisJob,
   queued: analysisQueue.length,
@@ -271,7 +272,10 @@ async function humanNarrative(combos) {
     // tokens fazia o provedor interromper o JSON antes de fechá-lo.
     const result = await groqJson(apiKey, model, prompt, 420);
     beys.push(result ? cleanBeyNarrative(result) : null);
-    await pause(1_200);
+    // O plano gratuito limita a saída a 1.000 tokens/minuto. Cada Bey recebe
+    // uma resposta completa; espaçar as chamadas evita que o resumo do trio
+    // seja recusado depois das três análises individuais.
+    await pause(35_000);
   }
   const deckPrompt = `Você é um analista competitivo de Beyblade X em pt-BR. Responda APENAS JSON válido: {"deckLabel":"rótulo curto de 2 a 6 palavras","deck":"análise"}. Dê ao trio uma identidade memorável e particular, nunca um rótulo genérico. Explique em até 70 palavras a ordem/variação de uso dos três combos, o plano de jogo que os conecta, qual matchup cada um cobre e qual lacuna ainda sobra. Mencione pelo menos duas Blades pelo nome e trate os conjuntos como escolhas com funções distintas. Nunca use "deck ofensivo", "equilibrado", "de stamina" ou "defensivo". Não mostre números, stats, meta, torneios ou percentuais. Dados: ${JSON.stringify({ combos: combos.map(compactCombo) })}`;
   const overview = await groqJson(apiKey, model, deckPrompt, 240);

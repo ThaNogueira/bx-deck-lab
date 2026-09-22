@@ -5,7 +5,7 @@ import { moderateFields, getSetting } from '../settings.js';
 import { json, uniqueSlug } from '../util.js';
 import { partDto } from './catalog.js';
 import { audit } from '../audit.js';
-import { getStoredDeckAnalysis, queueDeckAnalysis, isDeckAnalysisBusy } from '../deck-analysis.js';
+import { getStoredDeckAnalysis, queueDeckAnalysis, isDeckAnalysisPending } from '../deck-analysis.js';
 import { standingsOf } from './tournaments.js';
 
 const router = Router();
@@ -172,6 +172,7 @@ router.get('/api/decks/:slug/analysis', ah(async (req, res) => {
   const restricted = deck && (deck.status !== 'VISIBLE' || !deck.isPublic);
   if (!deck || (restricted && !isOwner && !isStaff(req.user))) return res.status(404).json({ error: 'Deck não encontrado.' });
   const beys = json(deck.beysJson, []);
+  if (isDeckAnalysisPending(beys)) return res.json({ analysis: null, pending: true });
   const analysis = await getStoredDeckAnalysis(beys);
   res.json({ analysis, pending: !analysis });
 }));
@@ -180,15 +181,16 @@ router.get('/api/decks/:slug/analysis', ah(async (req, res) => {
  * servidor; o resultado é gravado e passa a ser reutilizado por todos. */
 router.post('/api/decks/:id/analysis/refresh', requireUser, ah(async (req, res) => {
   if (req.user.role !== 'ADMIN') return res.status(403).json({ error: 'Apenas administradores podem atualizar a análise.' });
-  if (isDeckAnalysisBusy()) return res.status(409).json({ error: 'Outra análise está sendo atualizada. Aguarde ela terminar.' });
   const deck = await prisma.communityDeck.findUnique({ where: { id: req.params.id } });
   if (!deck) return res.status(404).json({ error: 'Deck não encontrado.' });
   const beys = json(deck.beysJson, []);
   const ids = [...new Set(beys.flat())];
   const parts = ids.length ? await prisma.part.findMany({ where: { id: { in: ids } } }) : [];
   const partMap = Object.fromEntries(parts.map((part) => [part.id, partDto(part)]));
-  const analysis = await queueDeckAnalysis(beys, partMap, { force: true });
-  res.json({ analysis });
+  // Não prende a requisição HTTP durante alguns minutos: a página acompanha a
+  // fila pelo endpoint de leitura e atualiza quando o resultado for salvo.
+  void queueDeckAnalysis(beys, partMap, { force: true }).catch((error) => console.warn('[deck analysis] atualização manual:', error.message));
+  res.status(202).json({ queued: true });
 }));
 
 router.post('/api/decks', requireUser, moderateFields('title', 'description', 'launchGuide'), ah(async (req, res) => {

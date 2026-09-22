@@ -167,9 +167,9 @@
         progress.innerHTML = `${BX.ic('sparkle', 15)} <span><b>Atualizando análise</b><small>Gerando cada Bey em sequência. Aguarde…</small></span>`;
         document.body.append(progress);
         try {
-          const { analysis } = await BX.api(`/api/decks/${deck.id}/analysis/refresh`, { method: 'POST' });
-          BX.toast('Análise da IA atualizada.');
-          await renderAnalysis(analysis);
+          await BX.api(`/api/decks/${deck.id}/analysis/refresh`, { method: 'POST' });
+          BX.toast('Análise entrou na fila. A página atualiza ao concluir.');
+          await renderAnalysis();
         } catch (error) { BX.toast(error.message); }
         finally { progress.remove(); button.disabled = false; button.innerHTML = `${BX.ic('refresh', 14)} Atualizar LLM`; }
       });
