@@ -84,6 +84,7 @@
             <button class="btn secondary icon-only" id="deckActionsBtn" type="button" title="Ações do deck" aria-label="Ações do deck" aria-expanded="false">${BX.ic('more', 18)}</button>
             <div class="deck-actions-popover" id="deckActionsPopover" hidden>
               <button class="btn secondary" id="copyTextBtn" title="Copiar somente a lista das Beys">${BX.ic('link', 14)} Copiar lista</button>
+              <button class="btn secondary" id="shareImageBtn">${BX.ic('image', 14)} Gerar imagem para compartilhar</button>
               ${me?.role === 'ADMIN' ? `<button class="btn secondary" id="refreshLlmBtn">${BX.ic('refresh', 14)} Atualizar LLM</button>` : ''}
               ${mine ? `<button class="btn secondary" id="visBtn">${deck.isPublic === false ? `${BX.ic('globe', 14)} Tornar público` : `${BX.ic('lock', 14)} Tornar privado`}</button><a class="btn secondary" href="/deck/${deck.slug}/editar">${BX.ic('edit', 14)} Editar</a><a class="btn secondary" href="/meus-decks">${BX.ic('decks', 14)} Meus decks</a>` : ''}
               ${mine ? (deck.sharedPostId ? `<a class="btn secondary" href="/comunidade/p/${deck.sharedPostId}">${BX.ic('feed', 14)} Ver post na comunidade</a>` : `<button class="btn secondary" id="shareBtn">${BX.ic('feed', 14)} Compartilhar na comunidade</button>`) : ''}
@@ -123,6 +124,9 @@
       document.getElementById('copyTextBtn')?.addEventListener('click', async () => {
         try { await BX.copyDeckText(deck.beys, { parts: deck.parts }); BX.toast('Lista das Beys copiada!'); }
         catch (e) { BX.toast(e.message); }
+      });
+      document.getElementById('shareImageBtn')?.addEventListener('click', () => {
+        location.href = `/api/decks/${encodeURIComponent(deck.slug)}/share-image.png`;
       });
       const renderAnalysis = async (freshAnalysis = null) => {
         try {

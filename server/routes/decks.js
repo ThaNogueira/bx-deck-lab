@@ -1,4 +1,7 @@
 import { Router } from 'express';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import sharp from 'sharp';
 import { prisma } from '../db.js';
 import { requireUser, publicUser, isStaff } from '../auth.js';
 import { moderateFields, getSetting } from '../settings.js';
@@ -7,11 +10,67 @@ import { partDto } from './catalog.js';
 import { audit } from '../audit.js';
 import { getStoredDeckAnalysis, queueDeckAnalysis, isDeckAnalysisPending } from '../deck-analysis.js';
 import { standingsOf } from './tournaments.js';
+import { UPLOADS_DIR } from '../uploads.js';
 
 const router = Router();
 const ah = (fn) => (req, res, next) => fn(req, res, next).catch(next);
 
 const YT_RE = /^(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|shorts\/|embed\/)|youtu\.be\/)[\w-]{6,}([&?#].*)?$/i;
+const xml = (value = '') => String(value).replace(/[&<>'"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&apos;', '"': '&quot;' }[ch]));
+const cut = (value, size) => String(value || '').length > size ? `${String(value).slice(0, size - 1)}…` : String(value || '');
+
+async function deckImageAsset(url, size, circle = false) {
+  try {
+    let source;
+    if (String(url || '').startsWith('/uploads/')) source = await fs.readFile(path.join(UPLOADS_DIR, path.basename(url)));
+    else if (String(url || '').startsWith('/assets/')) source = await fs.readFile(path.resolve('public', `.${url}`));
+    else if (/^https?:\/\//i.test(String(url || ''))) {
+      const response = await fetch(url, { signal: AbortSignal.timeout(5000), headers: { 'User-Agent': 'BeyXLab deck image/1.0' } });
+      if (!response.ok) return null;
+      source = Buffer.from(await response.arrayBuffer());
+    } else return null;
+    let image = sharp(source, { animated: false }).resize(size, size, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } }).png();
+    if (circle) image = image.composite([{ input: Buffer.from(`<svg width="${size}" height="${size}"><circle cx="${size / 2}" cy="${size / 2}" r="${size / 2 - 2}" fill="white"/></svg>`), blend: 'dest-in' }]);
+    return `data:image/png;base64,${(await image.toBuffer()).toString('base64')}`;
+  } catch { return null; }
+}
+
+function radarPoints(stats, cx, cy, radius) {
+  const keys = ['atk', 'def', 'sta', 'burst', 'dash'];
+  return keys.map((key, index) => {
+    const angle = -Math.PI / 2 + index * (Math.PI * 2 / keys.length);
+    const value = Math.min(1, Math.max(.05, Number(stats[key]) / 100));
+    return `${(cx + Math.cos(angle) * radius * value).toFixed(1)},${(cy + Math.sin(angle) * radius * value).toFixed(1)}`;
+  }).join(' ');
+}
+
+async function renderDeckShareImage(deck) {
+  const beys = json(deck.beysJson, []);
+  const ids = [...new Set(beys.flat())];
+  const parts = ids.length ? await prisma.part.findMany({ where: { id: { in: ids } } }) : [];
+  const byId = new Map(parts.map((part) => [part.id, partDto(part)]));
+  const combos = beys.map((ids) => ids.map((id) => byId.get(id)).filter(Boolean));
+  const urls = new Set([deck.author?.avatarUrl, ...combos.flatMap((combo) => combo.map((part) => part.imageUrl))].filter(Boolean));
+  const assets = new Map(await Promise.all([...urls].map(async (url) => [url, await deckImageAsset(url, 170, url === deck.author?.avatarUrl)])));
+  const allParts = combos.flat();
+  const stats = Object.fromEntries(['atk', 'def', 'sta', 'burst', 'dash'].map((key) => [key, Math.min(100, Math.round(allParts.reduce((sum, part) => sum + (Number(part.stats?.[key]) || 0), 0) / Math.max(1, beys.length)))]));
+  const cx = 1000; const cy = 425; const radarRadius = 128;
+  const labels = [['ATK', -90], ['DEF', -18], ['STA', 54], ['BURST', 126], ['X-DASH', 198]];
+  const radarGrid = [1, .75, .5, .25].map((scale) => `<polygon points="${radarPoints(Object.fromEntries(Object.keys(stats).map((key) => [key, 100 * scale])), cx, cy, radarRadius)}" class="radar-grid"/>`).join('');
+  const radarLabels = labels.map(([label, degrees]) => { const angle = Number(degrees) * Math.PI / 180; const x = cx + Math.cos(angle) * (radarRadius + 42); const y = cy + Math.sin(angle) * (radarRadius + 42); return `<text x="${x}" y="${y}" text-anchor="middle" class="radar-label">${label}<tspan x="${x}" dy="15" class="radar-value">${stats[label === 'ATK' ? 'atk' : label === 'DEF' ? 'def' : label === 'STA' ? 'sta' : label === 'BURST' ? 'burst' : 'dash']}</tspan></text>`; }).join('');
+  const comboArt = combos.map((combo, index) => {
+    const x = 62 + index * 282; const main = combo.find((part) => ['BLADE', 'MAIN_BLADE'].includes(part.kind)) || combo[0];
+    const rest = combo.filter((part) => part !== main);
+    const mainArt = main ? `<circle cx="${x + 102}" cy="300" r="78" class="main-ring"/>${assets.get(main.imageUrl) ? `<image href="${assets.get(main.imageUrl)}" x="${x + 24}" y="222" width="156" height="156" preserveAspectRatio="xMidYMid meet"/>` : `<text x="${x + 102}" y="306" text-anchor="middle" class="fallback">${xml(cut(main.displayName || main.name, 8))}</text>`}<text x="${x + 102}" y="400" text-anchor="middle" class="part-name">${xml(cut(main.displayName || main.name, 21))}</text>` : '';
+    const extras = rest.slice(0, 4).map((part, partIndex) => { const px = x + 32 + (partIndex % 2) * 140; const py = 462 + Math.floor(partIndex / 2) * 112; return `<circle cx="${px + 38}" cy="${py}" r="34" class="piece-ring"/>${assets.get(part.imageUrl) ? `<image href="${assets.get(part.imageUrl)}" x="${px + 4}" y="${py - 34}" width="68" height="68" preserveAspectRatio="xMidYMid meet"/>` : `<text x="${px + 38}" y="${py + 5}" text-anchor="middle" class="fallback small">${xml(cut(part.abbrev || part.displayName || part.name, 4))}</text>`}<text x="${px + 38}" y="${py + 54}" text-anchor="middle" class="part-name small-name">${xml(cut(part.displayName || part.name, 16))}</text>`; }).join('');
+    return `<g><rect x="${x - 18}" y="178" width="252" height="542" rx="20" class="combo-card"/><text x="${x + 18}" y="211" class="combo-head">BEY ${index + 1}</text>${mainArt}${extras}</g>`;
+  }).join('');
+  const deckLines = combos.map((combo, index) => `<text x="88" y="${834 + index * 25}" class="deck-line">${xml(`Bey ${index + 1}: ${combo.map((part) => part.displayName || part.name).join(' ')}`)}</text>`).join('');
+  const avatar = assets.get(deck.author?.avatarUrl);
+  const avatarMarkup = avatar ? `<image href="${avatar}" x="1006" y="62" width="58" height="58" preserveAspectRatio="xMidYMid meet"/>` : `<circle cx="1035" cy="91" r="28" class="avatar-ring"/><text x="1035" y="99" text-anchor="middle" class="avatar-letter">${xml((deck.author?.name || '?').slice(0, 1).toUpperCase())}</text>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1010" viewBox="0 0 1200 1010"><defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#122016"/><stop offset=".55" stop-color="#090d0b"/><stop offset="1" stop-color="#10151b"/></linearGradient><radialGradient id="glow"><stop stop-color="#a6ef70" stop-opacity=".18"/><stop offset="1" stop-color="#a6ef70" stop-opacity="0"/></radialGradient><style>.title{font-family:'Barlow Condensed','DejaVu Sans';font-weight:800;font-size:54px;fill:#f5faef}.intro{font-family:'DejaVu Sans';font-size:17px;fill:#acb8ac}.author{font-family:'DejaVu Sans';font-size:15px;fill:#d7e5d6}.brand{font-family:'Barlow Condensed','DejaVu Sans';font-weight:800;font-size:15px;letter-spacing:2px;fill:#a6ef70}.combo-card{fill:#111813;stroke:#314638;stroke-width:1}.combo-head{font-family:'Barlow Condensed','DejaVu Sans';font-weight:800;font-size:21px;letter-spacing:1px;fill:#a6ef70}.main-ring{fill:#18251b;stroke:#a6ef70;stroke-opacity:.68;stroke-width:2}.piece-ring{fill:#141d16;stroke:#526a58;stroke-width:1}.part-name{font-family:'Barlow Condensed','DejaVu Sans';font-weight:700;font-size:14px;fill:#e7efe5}.small-name{font-size:12px;fill:#c2cec2}.fallback{font-family:'Barlow Condensed','DejaVu Sans';font-weight:800;font-size:15px;fill:#e8f4e7}.small{font-size:10px}.radar-grid{fill:none;stroke:#36503d;stroke-width:1}.radar-shape{fill:#a6ef70;fill-opacity:.22;stroke:#baff72;stroke-width:3}.radar-label{font-family:'Barlow Condensed','DejaVu Sans';font-weight:800;font-size:13px;fill:#9da99e}.radar-value{font-size:16px;fill:#f1fbef}.deck-line{font-family:'DejaVu Sans';font-size:14px;fill:#d1dbd0}.footer{font-family:'DejaVu Sans';font-size:15px;fill:#d1dbd0}.avatar-ring{fill:#17221a;stroke:#a6ef70;stroke-width:2}.avatar-letter{font-family:'Barlow Condensed','DejaVu Sans';font-weight:800;font-size:27px;fill:#efffed}</style></defs><rect width="1200" height="1010" fill="url(#bg)"/><circle cx="820" cy="190" r="440" fill="url(#glow)"/><rect width="1200" height="8" fill="#a6ef70"/><text x="62" y="73" class="brand">BEYXLAB • DECK LIST</text><text x="62" y="132" class="title">${xml(cut(deck.title, 42))}</text>${deck.description ? `<text x="62" y="162" class="intro">${xml(cut(deck.description, 130))}</text>` : ''}${avatarMarkup}<text x="1080" y="86" class="author">Criado por</text><text x="1080" y="109" class="author">${xml(cut(deck.author?.name || 'BeyXLab', 18))}</text><text x="1000" y="194" text-anchor="middle" class="brand">PERFORMANCE</text>${radarGrid}<polygon points="${radarPoints(stats, cx, cy, radarRadius)}" class="radar-shape"/>${radarLabels}${comboArt}<rect x="62" y="756" width="1076" height="160" rx="18" fill="#0b110c" stroke="#314638"/><text x="88" y="794" class="brand">LISTA DO DECK</text>${deckLines}<text x="62" y="966" class="brand">BEYXLAB.COM.BR</text><text x="1138" y="966" text-anchor="end" class="footer">Compartilhe seu setup</text></svg>`;
+  return sharp(Buffer.from(svg)).png().toBuffer();
+}
 
 async function deckDto(d, { withParts = false, achievements = null } = {}) {
   const beys = json(d.beysJson, []);
@@ -146,6 +205,15 @@ router.get('/api/decks-featured', ah(async (_req, res) => {
       })
     : [];
   res.json({ decks: await Promise.all([...pinned, ...fill].map((d) => deckDto(d, { withParts: true }))) });
+}));
+
+router.get('/api/decks/:slug/share-image.png', ah(async (req, res) => {
+  const deck = await prisma.communityDeck.findUnique({ where: { slug: req.params.slug }, include: { author: true } });
+  const isOwner = deck && req.user && deck.authorId === req.user.id;
+  const restricted = deck && (deck.status !== 'VISIBLE' || !deck.isPublic);
+  if (!deck || (restricted && !isOwner && !isStaff(req.user))) return res.status(404).json({ error: 'Deck não encontrado.' });
+  const png = await renderDeckShareImage(deck);
+  res.type('png').set('Content-Disposition', `attachment; filename="${deck.slug}-beyxlab.png"`).send(png);
 }));
 
 router.get('/api/decks/:slug', ah(async (req, res) => {
