@@ -1874,23 +1874,25 @@ body.mesa .noise{display:none}
 .deck-pagination{display:flex;justify-content:center;gap:6px;margin:16px 0}.deck-pagination .active{border-color:var(--green);background:#1c3520;color:#d9ffbe}.deck-picker-list{display:grid;gap:8px;max-height:52vh;overflow:auto;margin-top:12px}.deck-picker-list>button{display:flex;align-items:center;gap:12px;width:100%;padding:10px;border:1px solid #29362c;border-radius:12px;background:#101510;color:inherit;text-align:left}.deck-picker-list>button:hover{border-color:var(--green);background:#152016}.deck-picker-list .deck-mini{width:126px;flex:none}.deck-picker-list b,.deck-picker-list small{display:block}.deck-picker-list small{margin-top:3px;color:var(--muted);font-size:11px}
 /* Página de deck: no celular o trio continua lado a lado; a leitura detalhada
    passa para um bloco abaixo, onde não fica espremida em três colunas. */
-.deck-mobile-combo-analysis{display:none}
+.deck-mobile-combo-analysis,.deck-swipe-cue{display:none}
 @media(max-width:620px){
   .deck-showcase{gap:14px;margin-bottom:16px}
-  .deck-showcase .deck-viewer{gap:6px}
-  .deck-showcase .deck-bey-card{padding:8px 4px 6px;border-radius:12px;min-width:0}
-  .deck-showcase .deck-bey-card h3{margin:0 0 2px;padding-left:5px;font-size:15px}
-  .deck-showcase .bey-visual.standalone.lg{height:144px;border:0;background:transparent}
-  .deck-showcase .bey-visual.lg .part-art.big{width:78px;height:78px}
-  .deck-showcase .bey-visual.lg .part-art.mini{width:34px;height:34px}
-  .deck-showcase .bey-visual.lg .main-piece{top:13px}
-  .deck-showcase .bey-visual.lg .ratchet-pos{left:calc(50% - 52px);bottom:8px}
-  .deck-showcase .bey-visual.lg .bit-pos{right:calc(50% - 52px);bottom:8px}
-  .deck-showcase .bey-visual.lg .chip-pos{left:5px;top:18px}
-  .deck-showcase .bey-visual.lg .assist-pos{right:5px;top:18px}
-  .deck-showcase .bey-visual.lg .over-pos{left:5px;bottom:8px}
-  .deck-showcase .bey-visual.lg .rings{inset:21px 15px 31px}
-  .deck-showcase .bey-visual.lg .visual-piece>span,.deck-showcase .bey-visual.lg .main-piece>span{display:none}
+  .deck-showcase .deck-viewer{display:flex;gap:10px;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding:0 2px 5px}
+  .deck-showcase .deck-viewer::-webkit-scrollbar{display:none}
+  .deck-showcase .deck-bey-card{position:relative;flex:0 0 calc(100% - 34px);scroll-snap-align:start;scroll-snap-stop:always;padding:10px;border-radius:14px;min-width:0}
+  .deck-showcase .deck-bey-card h3{margin:2px 0 0;padding-left:6px;font-size:18px}
+  .deck-swipe-cue{display:block;min-height:15px;text-align:center;color:rgba(183,196,188,.52);font-size:9px;font-weight:700;letter-spacing:.04em}
+  .deck-showcase .bey-visual.standalone.lg{height:238px;border:0;background:transparent}
+  .deck-showcase .bey-visual.lg .part-art.big{width:132px;height:132px}
+  .deck-showcase .bey-visual.lg .part-art.mini{width:56px;height:56px}
+  .deck-showcase .bey-visual.lg .main-piece{top:22px}
+  .deck-showcase .bey-visual.lg .ratchet-pos{left:calc(50% - 76px);bottom:12px}
+  .deck-showcase .bey-visual.lg .bit-pos{right:calc(50% - 76px);bottom:12px}
+  .deck-showcase .bey-visual.lg .chip-pos{left:18px;top:30px}
+  .deck-showcase .bey-visual.lg .assist-pos{right:18px;top:30px}
+  .deck-showcase .bey-visual.lg .over-pos{left:18px;bottom:14px}
+  .deck-showcase .bey-visual.lg .rings{inset:36px 35px 54px}
+  .deck-showcase .bey-visual.lg .visual-piece>span,.deck-showcase .bey-visual.lg .main-piece>span{font-size:8px}
   .deck-showcase .deck-bey-card>.deck-bey-status,.deck-showcase .deck-bey-card>.deck-analysis-loading{display:none}
   .deck-showcase .deck-performance-card{max-width:none;padding:12px}
   .deck-showcase .deck-performance-card .radar-wrap{max-width:210px}

@@ -60,6 +60,7 @@
 
       const beysHtml = deck.beys.map((bey, i) => `
         <div class="list-card deck-bey-card" id="deckBey-${i}">
+          <span class="deck-swipe-cue">${deck.beys.length < 2 ? '' : i === 0 ? 'Deslize para ver a próxima Bey ›››' : i === deck.beys.length - 1 ? '‹‹‹ Deslize para voltar' : '‹‹‹ Deslize ›››'}</span>
           <h3>Bey ${i + 1}</h3>
           ${BX.beyVisual(bey.map((id) => deck.parts?.[id] || id), { size: 'lg' })}
           <div class="deck-analysis-loading">Consultando histórico competitivo…</div>
