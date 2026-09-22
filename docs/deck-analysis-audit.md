@@ -36,4 +36,6 @@ Referências técnicas: [limites da Groq](https://console.groq.com/docs/rate-lim
 
 - Testes unitários: concorrência entre workers, deduplicação, cooldown global, reinicialização, checkpoint, worker expirado, cancelamento, retry limitado, JSON truncado, campos ausentes e fallback físico/CX.
 - Integração em container sem rede externa, banco SQLite descartável e provedor simulado: criar, editar, ler anonimamente sem gerar, atualizar como admin, impedir atualização por usuário comum, preservar resultado anterior, copiar/duplicar sem novas chamadas, privacidade, herança de recolor e recuperação.
-- A verificação com o provedor real e o estado da publicação são registrados na entrega da tarefa.
+- Produção: 30 trabalhos concluídos, nenhuma falha pendente e zero resultados salvos com “IDENTIDADE DO TRIO”. O primeiro trio concluiu as sete etapas em aproximadamente sete minutos, com 3.993 tokens de entrada e 1.482 de saída distribuídos entre as chamadas.
+- Conferência no navegador: resultado público carregado, “Ver mais” e “Por quê?” abrem os textos por Bey. Detectada e corrigida também a escala das barras locais: um atributo de catálogo 10/100 é 1/10, nunca 10/10.
+- A validação garante estrutura e cobertura, não infalibilidade factual do modelo. As instruções distinguem função física das peças, evitam tratar Ratchet como liberação de energia e orientam decisões de lançamento antes de soltar a Bey. Recomendações devem ser tratadas como hipóteses de teste.

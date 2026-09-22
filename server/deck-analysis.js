@@ -127,7 +127,8 @@ function compose(job, partial, base) {
 }
 const compactCombo = (combo) => ({ label: combo.label, physical: combo.physical.map((part) => ({
   name: part.name, kind: part.kind, type: part.type, behavior: part.behavior,
-  tendency: physicalTendency(part.stats), weightGrams: part.weightGrams,
+  tendency: ['BLADE', 'MAIN_BLADE', 'BIT'].includes(part.kind) ? physicalTendency(part.stats) : null,
+  assemblyRole: ({ RATCHET: 'Define altura de montagem e exposição dos pontos de contato; não libera energia, não é motor nem controla diretamente a duração do giro.', BIT: 'A ponta toca a arena e influencia apoio, atrito e deslocamento. Uma ponta baixa não é, por si, uma fraqueza contra ataques por baixo.', LOCK_CHIP: 'Parte central da montagem CX; massa e encaixe sem propriedades não documentadas.', MAIN_BLADE: 'Principal superfície de contato da montagem CX.', ASSIST_BLADE: 'Componente inferior da montagem CX; use apenas propriedades documentadas.', OVER_BLADE: 'Componente externo da montagem CX; use apenas propriedades documentadas.' })[part.kind] || 'Superfície de contato com o adversário; não invente formato ausente.',
 })) });
 async function runStep(job) {
   let base = job.base;
@@ -144,7 +145,7 @@ async function runStep(job) {
   const comboIndex = Math.floor(job.stage / 2);
   const combo = base.combos[comboIndex];
   let prompt; let validate; let tokens; let key;
-  const guidance = 'Use somente as propriedades fornecidas; trate o que falta como incerto. Sem números de status, percentuais ou estatísticas de torneios no texto. Escreva dicas práticas e específicas às peças, com tendências de confronto e maneiras de responder. Não repita nomes só para preencher texto.';
+  const guidance = 'Use somente as propriedades fornecidas; trate o que falta como incerto. Sem números de status, pesos, percentuais ou estatísticas de torneios no texto. Escreva dicas práticas e específicas às peças, com tendências de confronto e maneiras de responder. As decisões acontecem ANTES de soltar a Bey: é impossível manobrar, perseguir ou desviar manualmente depois. Alterar a força não altera a altura física do Bit. Use arquétipos em português, como atacantes móveis ou stamina central; não use Spin, Defensive, Attack como nomes de adversários. Não repita nomes só para preencher texto.';
   if (combo && job.stage % 2 === 0) {
     key = 'core' + comboIndex; tokens = 800; validate = validCore;
     prompt = guidance + ' Analise este combo. JSON com summary (35 palavras), launch (até 50 palavras com inclinação moderada, região de entrada, intensidade repetível e ajuste se der errado), favored (arquétipo), favoredWhy (até 35 palavras explicando o contato), risk (arquétipo), riskWhy (até 35 palavras explicando o risco) e counterTip (até 40 palavras com resposta). Relacione o apoio do Bit, a altura do Ratchet e o contato da Blade. Se não há descrição da Blade, não invente seu formato. Dados: ' + JSON.stringify(compactCombo(combo));

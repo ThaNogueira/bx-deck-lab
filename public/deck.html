@@ -43,7 +43,8 @@
       const physicalBars = (ids) => {
         const parts = ids.map((id) => deck.parts?.[id]).filter(Boolean);
         const totals = { atk: 0, def: 0, sta: 0 };
-        parts.forEach((part) => ['atk', 'def', 'sta'].forEach((key) => { const value = Number(part.stats?.[key]) || 0; totals[key] += value > 10 ? value / 10 : value; }));
+        // Catalog attributes use 0–100 throughout. A raw 10 is 1/10, not 10/10.
+        parts.forEach((part) => ['atk', 'def', 'sta'].forEach((key) => { const value = Number(part.stats?.[key]) || 0; totals[key] += Math.max(0, Math.min(100, value)) / 10; }));
         const count = Math.max(1, parts.filter((part) => part.stats).length);
         return `<div class="physical-bars">${[['atk','ATK'],['def','DEF'],['sta','STA']].map(([key,label]) => { const value = Math.min(10, totals[key] / count); return `<div><small>${label}</small><span><i style="width:${Math.max(3, value * 10)}%"></i></span><b>${value.toFixed(1)}</b></div>`; }).join('')}</div>`;
       };
