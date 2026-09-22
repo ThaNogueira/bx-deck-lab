@@ -145,14 +145,6 @@
               <span class="badge owned" title="Análise assistida por IA">${BX.ic('sparkle', 14)}</span>
             </div>
             <div class="deck-overview"><div class="deck-overview-head"><h3>${BX.esc(analysis.deckLabel || 'IDENTIDADE DO TRIO')}</h3></div><p class="deck-analysis-summary">${BX.esc(analysis.deckSummary)}</p>${physicalBars(deck.beys.flat())}</div>
-            <div class="deck-mobile-combo-analysis"><h3>Análise de cada Bey</h3>${analysis.combos.map((combo, i) => {
-              const individual = analysis.individual?.[i];
-              const presence = Number(combo.evidence.metaPresence || 0);
-              const presenceLabel = presence.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-              const play = individual ? `<details class="deck-more"><summary>Ver mais</summary><div><p><small>SUGESTÃO DE LANÇAMENTO</small>${BX.esc(individual.launch)}</p><p><small>VANTAGEM · ${BX.esc(individual.favored)}</small>${BX.esc(individual.favoredWhy)}</p><p><small>FRAQUEZA · ${BX.esc(individual.risk)}</small>${BX.esc(individual.riskWhy)}</p><p class="counter-tip"><small>COMO RESPONDER</small>${BX.esc(individual.counterTip)}</p></div></details>` : '';
-              const why = individual?.why?.length ? `<details class="deck-why"><summary>Por quê?</summary>${individual.why.map((item) => `<p><b>${BX.esc(item.part)}:</b> ${BX.esc(item.reason)}</p>`).join('')}</details>` : '';
-              return `<article class="mobile-deck-combo"><div class="mobile-deck-combo-head"><b>Bey ${i + 1}</b><span>${BX.esc(combo.type)}</span></div><p>${BX.esc(individual?.summary || combo.physical?.map((part) => part.behavior).filter(Boolean)[0] || 'Perfil calculado a partir das peças do conjunto.')}</p>${physicalBars(deck.beys[i])}${play}<div class="top3-presence"><span>Presença no meta</span><div><i style="width:${presence > 0 ? Math.max(1, Math.min(100, presence)) : 0}%"></i></div><b>${presenceLabel}%</b></div>${why}</article>`;
-            }).join('')}</div>
             `;
         } catch (e) {
           document.querySelectorAll('.deck-analysis-loading').forEach((el) => { el.textContent = 'Histórico competitivo indisponível agora.'; });

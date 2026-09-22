@@ -1872,9 +1872,8 @@ body.mesa .noise{display:none}
 .avatar .avatar-photo{position:absolute;inset:0;overflow:hidden;border-radius:inherit}.avatar .avatar-photo>img.avatar-default{object-fit:cover}.avatar .avatar-photo>img[src="/assets/profiles/beyxlab-avatar.png"]{transform:scale(1.28);object-fit:cover}
 .deck-directory-delete-btn{min-width:38px;padding:9px 10px}.deck-directory-delete-btn span{font-size:10px}@media(max-width:760px){.deck-directory-delete-btn span{display:none}}
 .deck-pagination{display:flex;justify-content:center;gap:6px;margin:16px 0}.deck-pagination .active{border-color:var(--green);background:#1c3520;color:#d9ffbe}.deck-picker-list{display:grid;gap:8px;max-height:52vh;overflow:auto;margin-top:12px}.deck-picker-list>button{display:flex;align-items:center;gap:12px;width:100%;padding:10px;border:1px solid #29362c;border-radius:12px;background:#101510;color:inherit;text-align:left}.deck-picker-list>button:hover{border-color:var(--green);background:#152016}.deck-picker-list .deck-mini{width:126px;flex:none}.deck-picker-list b,.deck-picker-list small{display:block}.deck-picker-list small{margin-top:3px;color:var(--muted);font-size:11px}
-/* Página de deck: no celular o trio continua lado a lado; a leitura detalhada
-   passa para um bloco abaixo, onde não fica espremida em três colunas. */
-.deck-mobile-combo-analysis,.deck-swipe-cue{display:none}
+/* Página de deck: no celular cada Bey abre no seu próprio slide. */
+.deck-swipe-cue{display:none}
 @media(max-width:620px){
   .deck-showcase{gap:14px;margin-bottom:16px}
   .deck-showcase .deck-viewer{display:flex;gap:10px;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding:0 2px 5px}
@@ -1893,21 +1892,15 @@ body.mesa .noise{display:none}
   .deck-showcase .bey-visual.lg .over-pos{left:18px;bottom:14px}
   .deck-showcase .bey-visual.lg .rings{inset:36px 35px 54px}
   .deck-showcase .bey-visual.lg .visual-piece>span,.deck-showcase .bey-visual.lg .main-piece>span{font-size:8px}
-  .deck-showcase .deck-bey-card>.deck-bey-status,.deck-showcase .deck-bey-card>.deck-analysis-loading{display:none}
+  .deck-showcase .deck-bey-card>.deck-analysis-loading{display:none}
+  .deck-showcase .deck-bey-card>.deck-bey-status{margin:2px 0 0;padding:10px}
+  .deck-showcase .deck-bey-card>.deck-bey-status>b{font-size:17px}
+  .deck-showcase .deck-bey-card>.deck-bey-status p{font-size:12px;line-height:1.52}
   .deck-showcase .deck-performance-card{max-width:none;padding:12px}
   .deck-showcase .deck-performance-card .radar-wrap{max-width:210px}
   .deck-analysis-card{padding:14px}
   .deck-overview h3{font-size:23px}
   .deck-analysis-summary{font-size:13px;line-height:1.6}
-  .deck-mobile-combo-analysis{display:grid;gap:10px;margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
-  .deck-mobile-combo-analysis>h3{margin:0;color:var(--green);font:800 17px var(--display);text-transform:uppercase;letter-spacing:.04em}
-  .mobile-deck-combo{padding:12px;border:1px solid #26382a;border-radius:13px;background:rgba(9,16,11,.72)}
-  .mobile-deck-combo-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
-  .mobile-deck-combo-head b{color:var(--cyan);font:800 15px var(--display);text-transform:uppercase}
-  .mobile-deck-combo-head span{border:1px solid #3c4a41;border-radius:999px;padding:3px 7px;color:#d4f6b7;font:800 9px var(--display);text-transform:uppercase}
-  .mobile-deck-combo>p{margin:8px 0 10px;color:#c2cad4;font-size:12px;line-height:1.55}
-  .mobile-deck-combo .deck-more,.mobile-deck-combo .deck-why{font-size:12px}
-  .mobile-deck-combo .physical-bars{margin-top:8px}
 }
 .meta-state{border:1px solid rgba(255,53,93,.35);border-radius:18px;background:linear-gradient(160deg,#171219,#0e1015);padding:16px 18px;position:relative;overflow:hidden}
 .meta-state::after{content:"";position:absolute;right:-60px;top:-60px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(255,53,93,.18),transparent 70%);pointer-events:none}
