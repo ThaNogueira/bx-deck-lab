@@ -32,6 +32,7 @@
     ['logs', I('scroll') + 'Logs', true],
   ];
   let section = location.hash.slice(1) || 'dash';
+  let queuePoll;
 
   app.innerHTML = `
     <div class="hero compact" style="margin-bottom:18px">
@@ -59,6 +60,7 @@
   };
 
   async function render() {
+    clearTimeout(queuePoll);
     box.innerHTML = '<div class="empty-state">Carregando…</div>';
     try { await RENDER[section](); } catch (e) { box.innerHTML = `<div class="empty-state">${esc(e.message)}</div>`; }
   }
@@ -627,7 +629,7 @@
     },
 
     // ----------------------------------------------------- 2.8 Home & meta
-    async home() {
+      async home() {
       const [{ decks }, { logs }, { announcements }, { queue }] = await Promise.all([
         BX.api('/api/decks?all=1'),
         BX.api('/api/admin/sync/logs'),
@@ -635,7 +637,7 @@
         BX.api('/api/admin/deck-analysis/queue'),
       ]);
       box.innerHTML = `
-        <div class="panel-card" style="margin-bottom:14px">
+          <div class="panel-card" id="deckQueuePanel" style="margin-bottom:14px">
           <div class="section-title-row"><div><p class="eyebrow">ANÁLISES DE IA DOS DECKS</p><h2 style="font-size:20px">Fila de processamento</h2></div><button class="btn danger-outline" id="clearDeckAnalysisQueue" ${queue.queued ? '' : 'disabled'}>Limpar fila</button></div>
           <div class="stat-tiles" style="margin-top:12px">
             <div class="stat-tile"><b style="color:${queue.active ? 'var(--green)' : 'inherit'}">${queue.active ? 'EM ANDAMENTO' : 'LIVRE'}</b><small>análise atual</small></div>
@@ -692,10 +694,28 @@
         </div>`;
       on('[data-feat]', 'click', act((el) => BX.api(`/api/admin/decks/${el.dataset.feat}/feature`, { method: 'POST', body: { order: Date.now() % 100000 } })));
       on('[data-unfeat]', 'click', act((el) => BX.api(`/api/admin/decks/${el.dataset.unfeat}/feature`, { method: 'POST', body: { order: null } })));
-      box.querySelector('#clearDeckAnalysisQueue').onclick = act(() => {
-        if (!confirm('Remover as análises que ainda estão aguardando na fila? A que estiver em andamento vai continuar.')) return Promise.resolve();
-        return BX.api('/api/admin/deck-analysis/queue/clear', { method: 'POST' });
-      });
+        const drawQueue = (state) => {
+          const panel = box.querySelector('#deckQueuePanel');
+          if (!panel || section !== 'home') return;
+          const names = { queued: 'Aguardando', running: 'Gerando', retry: 'Aguardando nova tentativa', failed: 'Precisa de atenção' };
+          panel.innerHTML = `<div class="section-title-row"><div><p class="eyebrow">ANÁLISES DOS DECKS</p><h2 style="font-size:20px">Fila de processamento</h2></div><div class="row-actions"><button class="btn secondary" id="retryDeckQueue" ${state.failed ? '' : 'disabled'}>Retomar falhas</button><button class="btn danger-outline" id="clearDeckAnalysisQueue" ${state.queued ? '' : 'disabled'}>Limpar espera</button></div></div>
+            <p style="color:var(--muted);font-size:12px">${state.configured ? `${state.waiting} pendentes · ${state.active ? 'Gerando uma etapa' : 'Fila respeitando o intervalo entre chamadas'} · ${state.failed} falhas` : 'Configure a chave da IA no servidor.'}</p>
+            ${state.lastSuccessAt ? `<small>Última conclusão: ${BX.dateFmt(state.lastSuccessAt)}</small>` : ''}
+            ${(state.jobs || []).map((job) => `<div style="padding:12px 0;border-top:1px solid var(--line);overflow-wrap:anywhere"><b>${esc(job.title)}</b><small style="display:block;color:var(--muted)">${names[job.status] || esc(job.status)} · ${job.completed}/${job.total} etapas · tentativa ${job.attempts}${job.nextAttemptAt > Date.now() && job.status !== 'failed' ? ` · próxima chamada a partir de ${new Date(job.nextAttemptAt).toLocaleTimeString('pt-BR')}` : ''}</small>${job.error ? `<small style="display:block;color:var(--yellow)">${esc(job.error)}</small>` : ''}</div>`).join('')}
+            <small style="display:block;color:var(--muted);margin-top:10px">A fila e as etapas ficam salvas após reiniciar. Limpar espera mantém a chamada atual e as análises já disponíveis.</small>`;
+          panel.querySelector('#clearDeckAnalysisQueue').onclick = act(() => {
+            if (!confirm('Remover as análises em espera? Os resultados salvos e a chamada em andamento serão mantidos.')) return Promise.resolve();
+            return BX.api('/api/admin/deck-analysis/queue/clear', { method: 'POST' });
+          });
+          panel.querySelector('#retryDeckQueue').onclick = act(() => BX.api('/api/admin/deck-analysis/queue/retry', { method: 'POST' }));
+        };
+        const pollQueue = async () => {
+          if (section !== 'home' || !box.querySelector('#deckQueuePanel')) return;
+          try { drawQueue((await BX.api('/api/admin/deck-analysis/queue')).queue); } catch { /* keep last known state */ }
+          if (section === 'home') queuePoll = setTimeout(pollQueue, 10000);
+        };
+        drawQueue(queue);
+        queuePoll = setTimeout(pollQueue, 10000);
       box.querySelector('#syncNow').onclick = act(async () => {
         BX.toast('Atualizando catálogo e imagens — pode levar ~1 min…');
         const r = await BX.api('/api/admin/sync/products', { method: 'POST' });

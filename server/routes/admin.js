@@ -7,7 +7,7 @@ import { upload, uploadedUrl } from '../uploads.js';
 import { syncAll } from '../sync.js';
 import { isValidKind, json, slugify, uniqueSlug } from '../util.js';
 import { invalidatePartsIndex, partDto, productDto } from './catalog.js';
-import { clearDeckAnalysisQueue, getDeckAnalysisQueueStatus } from '../deck-analysis.js';
+import { clearDeckAnalysisQueue, getDeckAnalysisQueueStatus, retryFailedDeckAnalyses } from '../deck-analysis.js';
 
 /**
  * Painel de admin (item 2). Moderação de conteúdo/denúncias exige MOD;
@@ -522,13 +522,19 @@ router.post('/api/admin/decks/:id/feature', ADMIN, ah(async (req, res) => {
 }));
 
 router.get('/api/admin/deck-analysis/queue', ADMIN, ah(async (_req, res) => {
-  res.json({ queue: getDeckAnalysisQueueStatus() });
+  res.set('Cache-Control', 'no-store').json({ queue: await getDeckAnalysisQueueStatus() });
 }));
 
 router.post('/api/admin/deck-analysis/queue/clear', ADMIN, ah(async (req, res) => {
-  const result = clearDeckAnalysisQueue();
+  const result = await clearDeckAnalysisQueue();
   await audit(req.user, 'admin.deck_analysis.queue.clear', null, null, result);
-  res.json({ ...result, queue: getDeckAnalysisQueueStatus() });
+  res.json({ ...result, queue: await getDeckAnalysisQueueStatus() });
+}));
+
+router.post('/api/admin/deck-analysis/queue/retry', ADMIN, ah(async (req, res) => {
+  const result = await retryFailedDeckAnalyses();
+  await audit(req.user, 'admin.deck_analysis.queue.retry', null, null, result);
+  res.json({ ...result, queue: await getDeckAnalysisQueueStatus() });
 }));
 
 router.post('/api/admin/sync/products', ADMIN, ah(async (req, res) => {

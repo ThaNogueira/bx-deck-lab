@@ -63,7 +63,7 @@
           <span class="deck-swipe-cue">${deck.beys.length < 2 ? '' : i === 0 ? 'Deslize para ver a próxima Bey ›››' : i === deck.beys.length - 1 ? '‹‹‹ Deslize para voltar' : '‹‹‹ Deslize ›››'}</span>
           <h3>Bey ${i + 1}</h3>
           ${BX.beyVisual(bey.map((id) => deck.parts?.[id] || id), { size: 'lg' })}
-          <div class="deck-analysis-loading">Consultando histórico competitivo…</div>
+          <div class="deck-analysis-loading">Carregando análise salva…</div>
         </div>`).join('');
 
       app.innerHTML = `
@@ -102,7 +102,7 @@
         <section class="panel-card deck-analysis-card" id="deckAnalysis">
           <div class="section-title-row">
             <div><p class="eyebrow">ANALISADOR COMPETITIVO</p><h2>Status do deck</h2></div>
-            <span class="deck-analysis-loading">Carregando dados de torneios…</span>
+            <span class="deck-analysis-loading">Carregando análise salva…</span>
           </div>
         </section>
         <div class="profile-grid">
@@ -128,9 +128,32 @@
       document.getElementById('shareImageBtn')?.addEventListener('click', () => {
         location.href = `/api/decks/${encodeURIComponent(deck.slug)}/share-image.png`;
       });
-      const renderAnalysis = async (freshAnalysis = null) => {
+      let analysisRequest = 0;
+      let lastAnalysisRender = '';
+      const updateProgress = (response) => {
+        const button = document.getElementById('refreshLlmBtn');
+        if (button) {
+          button.disabled = !!response.pending;
+          button.innerHTML = response.pending ? `${BX.ic('refresh', 14)} Na fila…` : `${BX.ic('refresh', 14)} Atualizar LLM`;
+        }
+        let notice = document.getElementById('analysisProgress');
+        if (!response.pending && !response.error) { notice?.remove(); return; }
+        if (!notice) {
+          notice = document.createElement('div'); notice.id = 'analysisProgress'; notice.className = 'llm-progress';
+          notice.setAttribute('role', 'status'); notice.setAttribute('aria-live', 'polite'); document.body.append(notice);
+        }
+        const waiting = response.position > 1 ? `Posição ${response.position} na fila. ` : '';
+        const stage = response.total ? `${response.completed}/${response.total} etapas concluídas. ` : '';
+        notice.innerHTML = `${BX.ic('sparkle', 15)}<span><b>${response.pending ? 'Carregando análise do deck' : 'Análise disponível'}</b><small>${BX.esc(response.pending ? waiting + stage + 'Aguarde; você pode voltar daqui a alguns minutos.' : response.error)}</small></span>`;
+      };
+      const renderAnalysis = async () => {
+        const request = ++analysisRequest;
+        clearTimeout(analysisPoll);
         try {
-          const response = freshAnalysis ? { analysis: freshAnalysis } : await BX.api(`/api/decks/${encodeURIComponent(deck.slug)}/analysis`);
+          const response = await BX.api(`/api/decks/${encodeURIComponent(deck.slug)}/analysis`, { signal: AbortSignal.timeout(20000) });
+          if (request !== analysisRequest) return;
+          updateProgress(response);
+          if (response.pending) analysisPoll = setTimeout(() => renderAnalysis(), 15000);
           const analysis = response.analysis;
           if (!analysis) {
             document.querySelectorAll('.deck-analysis-loading').forEach((el) => { el.textContent = 'Análise do deck em preparação.'; });
@@ -139,46 +162,51 @@
             analysisPoll = setTimeout(() => renderAnalysis(), 30000);
             return;
           }
-          clearTimeout(analysisPoll);
+          const renderKey = JSON.stringify(analysis);
+          if (renderKey === lastAnalysisRender) return;
+          lastAnalysisRender = renderKey;
           analysis.combos.forEach((combo, i) => {
             const card = document.getElementById(`deckBey-${i}`);
             if (!card) return;
             const individual = analysis.individual?.[i];
-            const presence = Number(combo.evidence.metaPresence || 0);
+            const presence = Number(combo.evidence?.metaPresence || 0);
             const presenceLabel = presence.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
             const exact = `<div class="top3-presence" title="Frequência da Blade na amostra de decks competitivos"><span>Presença no meta</span><div><i style="width:${presence > 0 ? Math.max(1, Math.min(100, presence)) : 0}%"></i></div><b>${presenceLabel}%</b></div>`;
             const why = individual?.why?.length ? `<details class="deck-why"><summary>Por quê?</summary>${individual.why.map((item) => `<p><b>${BX.esc(item.part)}:</b> ${BX.esc(item.reason)}</p>`).join('')}</details>` : '';
             const play = individual ? `<details class="deck-more"><summary>Ver mais</summary><div><p><small>SUGESTÃO DE LANÇAMENTO</small>${BX.esc(individual.launch)}</p><p><small>VANTAGEM · ${BX.esc(individual.favored)}</small>${BX.esc(individual.favoredWhy)}</p><p><small>FRAQUEZA · ${BX.esc(individual.risk)}</small>${BX.esc(individual.riskWhy)}</p><p class="counter-tip"><small>COMO RESPONDER</small>${BX.esc(individual.counterTip)}</p></div></details>` : '';
             const previous = card.querySelector('.deck-analysis-loading, .deck-bey-status');
+            const opened = [...card.querySelectorAll('details[open]')].map((details) => details.className);
             if (previous) previous.outerHTML = `<div class="deck-bey-status"><b>${BX.esc(combo.type)}</b><p>${BX.esc(individual?.summary || combo.physical?.map((part) => part.behavior).filter(Boolean)[0] || 'Perfil calculado a partir das peças do conjunto.')}</p>${physicalBars(deck.beys[i])}${play}${exact}${why}</div>`;
+            card.querySelectorAll('details').forEach((details) => { details.open = opened.includes(details.className); });
           });
           document.getElementById('deckAnalysis').innerHTML = `
             <div class="section-title-row deck-analysis-heading">
               <div><p class="eyebrow">ANALISADOR COMPETITIVO</p><h2>Status geral do deck</h2></div>
-              <span class="badge owned" title="Análise assistida por IA">${BX.ic('sparkle', 14)}</span>
+              <span class="badge owned" title="${analysis.quality === 'local' ? 'Leitura das peças do deck' : 'Análise assistida por IA'}">${BX.ic('sparkle', 14)}</span>
             </div>
-            <div class="deck-overview"><div class="deck-overview-head"><h3>${BX.esc(analysis.deckLabel || 'IDENTIDADE DO TRIO')}</h3></div><p class="deck-analysis-summary">${BX.esc(analysis.deckSummary)}</p>${physicalBars(deck.beys.flat())}</div>
+            <div class="deck-overview"><div class="deck-overview-head"><h3>${BX.esc(analysis.deckLabel || 'Plano de jogo')}</h3></div><p class="deck-analysis-summary">${BX.esc(analysis.deckSummary)}</p>${physicalBars(deck.beys.flat())}</div>
             `;
         } catch (e) {
-          document.querySelectorAll('.deck-analysis-loading').forEach((el) => { el.textContent = 'Histórico competitivo indisponível agora.'; });
+          if (request !== analysisRequest) return;
+          document.querySelectorAll('.deck-analysis-loading').forEach((el) => { el.textContent = 'Reconectando para carregar a análise salva…'; });
+          analysisPoll = setTimeout(() => renderAnalysis(), 30000);
         }
       };
       renderAnalysis();
       document.getElementById('refreshLlmBtn')?.addEventListener('click', async (event) => {
         const button = event.currentTarget;
+        analysisRequest++;
+        clearTimeout(analysisPoll);
         button.disabled = true;
         button.innerHTML = `${BX.ic('refresh', 14)} Atualizando…`;
-        const progress = document.createElement('div');
-        progress.className = 'llm-progress';
-        progress.innerHTML = `${BX.ic('sparkle', 15)} <span><b>Atualizando análise</b><small>Gerando cada Bey em sequência. Aguarde…</small></span>`;
-        document.body.append(progress);
         try {
-          await BX.api(`/api/decks/${deck.id}/analysis/refresh`, { method: 'POST' });
+          const result = await BX.api(`/api/decks/${deck.id}/analysis/refresh`, { method: 'POST', signal: AbortSignal.timeout(20000) });
+          updateProgress(result);
           BX.toast('Análise entrou na fila. A página atualiza ao concluir.');
           await renderAnalysis();
-        } catch (error) { BX.toast(error.message); }
-        finally { progress.remove(); button.disabled = false; button.innerHTML = `${BX.ic('refresh', 14)} Atualizar LLM`; }
+        } catch (error) { BX.toast(error.message); button.disabled = false; button.innerHTML = `${BX.ic('refresh', 14)} Atualizar LLM`; analysisPoll = setTimeout(() => renderAnalysis(), 1000); }
       });
+      window.addEventListener('pagehide', () => { analysisRequest++; clearTimeout(analysisPoll); });
       const shareNow = async () => {
         const text = await BX.promptDialog({ title: 'Compartilhar na comunidade', text: 'Descreva a build (opcional). O post nasce com a tag Deck e botões de abrir no builder e copiar.', placeholder: 'ex.: Deck de stamina com bit Ball…', multiline: true, okLabel: 'Publicar na comunidade' });
         if (text === null) return;

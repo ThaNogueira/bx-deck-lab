@@ -609,7 +609,7 @@ router.post('/api/tournaments/:slug/players/:playerId/manual-deck', requireManag
     beysJson: JSON.stringify(beys), isPublic: true, folder: 'Torneios',
   } });
   const partMap = Object.fromEntries(parts.map((part) => [part.id, { ...part, stats: parseDeck(part.statsJson || '{}') }]));
-  void queueDeckAnalysis(beys, partMap).catch((error) => console.warn('[deck analysis] torneio:', error.message));
+  await queueDeckAnalysis(beys, partMap, { title }).catch((error) => console.warn('[deck analysis] torneio:', error.message));
   const updated = await prisma.tournamentPlayer.update({
     where: { id: player.id },
     data: { deckId: deck.id, manualDeckJson: null, manualDeckTitle: null },

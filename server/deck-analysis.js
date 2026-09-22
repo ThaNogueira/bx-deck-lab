@@ -2,19 +2,17 @@ import { getSetting, setSetting } from './settings.js';
 import { prisma } from './db.js';
 import { createHash } from 'node:crypto';
 import { json } from './util.js';
+import { createAnalysisQueue, emptyQueue, pendingJob } from './deck-analysis-queue.js';
+import { groqJson } from './deck-analysis-provider.js';
+import { partName, physicalTendency, fallbackIndividual, fallbackOverview, repairAnalysis, validCore, validWhy, validOverview, sanitizeCore, sanitizeWhy } from './deck-analysis-physical.js';
 
-// A fonte publica agrega pódios de eventos WBO. Guardamos uma cópia curta por
-// um dia: evita depender da página externa a cada abertura de deck.
 const SOURCE_URL = 'https://meta.beycrate.com/?window=3m';
 const SOURCE_KEY = 'external-bey-meta-v2';
-const HISTORY_URL = 'https://bbxhub.net/meta/';
-const HISTORY_OVERVIEW_URL = 'https://bbxhub.net/';
-const HISTORY_OVERVIEW_KEY = 'external-bey-history-overview-v1';
-const HISTORY_TTL = 20 * 60 * 60 * 1000;
 const SOURCE_TTL = 24 * 60 * 60 * 1000;
 const ANALYSIS_STORE_PREFIX = 'deck-ai-analysis-v3:';
-const analysisCache = new Map();
-
+const QUEUE_KEY = 'deck-ai-queue-v4';
+const REPAIR_KEY = 'deck-ai-repair-v4';
+const VERSION = 4;
 const norm = (value) => String(value || '')
   .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
@@ -67,367 +65,222 @@ async function getExternalMeta({ force = false } = {}) {
   }
 }
 
-const historySlug = (name) => String(name || '').replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-const historyLines = (html) => decode(String(html || '').replace(/<\/(?:tr|li|p|h[1-6])>/gi, '\n').replace(/<[^>]+>/g, ' ')).split('\n').map((line) => line.replace(/\s+/g, ' ').trim()).filter(Boolean);
 
-async function getHistoricalBlade(name, { force = false } = {}) {
-  const slug = historySlug(name);
-  if (!slug) return null;
-  const key = `external-bey-history-v1:${slug}`;
-  const saved = await getSetting(key);
-  if (!force && saved?.fetchedAt && Date.now() - new Date(saved.fetchedAt).getTime() < HISTORY_TTL) return saved;
-  try {
-    const response = await fetch(`${HISTORY_URL}${slug}`, { headers: { 'User-Agent': 'BX-Deck-Lab meta reader/1.0 (+https://bxdecklab.com)' }, signal: AbortSignal.timeout(15_000) });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const html = await response.text();
-    const lines = historyLines(html);
-    const placement = lines.find((line) => /tracked top placements/i.test(line)) || '';
-    const total = Number((placement.match(/from\s+([\d,]+)\s+tracked/i) || [])[1]?.replace(',', '')) || null;
-    if (!total) return null;
-    const rank = Number((lines.find((line) => /^#\d+ of \d+$/i.test(line)) || '').match(/^#(\d+)/)?.[1]) || null;
-    const tier = lines.find((line) => /^[SABC]\s+/.test(line)) || null;
-    const wins = Number((lines[lines.findIndex((line) => line === 'Tournament wins') + 1] || '').replace(/,/g, '')) || null;
-    const builds = [...html.matchAll(/<tr class="border-t[^>]*>([\s\S]*?)<\/tr>/gi)].map((row) => {
-      const cells = [...row[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map((cell) => text(cell[1]));
-      const uses = Number((cells[1] || '').match(/\d+/)?.[0]);
-      const percent = Number((cells[2] || '').match(/\d+/)?.[0]);
-      return cells[0] && uses && percent ? { label: cells[0], uses, percent } : null;
-    }).filter(Boolean);
-    const fresh = { fetchedAt: new Date().toISOString(), name, url: `${HISTORY_URL}${slug}`, total, rank, tier, wins, builds };
-    await setSetting(key, fresh);
-    return fresh;
-  } catch (error) {
-    return saved || null;
-  }
-}
+const signatureOf = (beys) => JSON.stringify(beys || []);
+const analysisKey = (signature) => ANALYSIS_STORE_PREFIX + createHash('sha256').update(signature).digest('hex');
+const recordOf = (signature, value) => ({ key: analysisKey(signature), value: JSON.stringify({ signature, generatedAt: value.generatedAt, value }) });
 
-async function getGlobalHistory() {
-  const saved = await getSetting(HISTORY_OVERVIEW_KEY);
-  if (saved?.fetchedAt && Date.now() - new Date(saved.fetchedAt).getTime() < HISTORY_TTL && saved.comboCount) return saved;
-  try {
-    const response = await fetch(HISTORY_OVERVIEW_URL, { headers: { 'User-Agent': 'BX-Deck-Lab meta reader/1.0 (+https://bxdecklab.com)' }, signal: AbortSignal.timeout(15_000) });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const plain = text(await response.text());
-    const match = plain.match(/([\d,]+)\s+(?:winning\s+)?combos/i);
-    const eventMatch = plain.match(/([\d,]+)\s+events\s+scanned/i);
-    const fresh = {
-      fetchedAt: new Date().toISOString(),
-      comboCount: Number((match?.[1] || '').replace(/,/g, '')) || 40_709,
-      eventCount: Number((eventMatch?.[1] || '').replace(/,/g, '')) || 4_034,
-    };
-    await setSetting(HISTORY_OVERVIEW_KEY, fresh);
-    return fresh;
-  } catch { return saved?.comboCount ? saved : { comboCount: 40_709, eventCount: 4_034 }; }
-}
-
-function partName(part) { return part?.displayName || part?.name || ''; }
-function category(parts, kinds) { return parts.find((part) => kinds.includes(part?.kind)); }
-function describeSignal(combo, meta, history, globalHistory) {
-  const parts = combo.map(partName).filter(Boolean);
-  const blade = category(combo, ['BLADE', 'MAIN_BLADE', 'OVER_BLADE']);
-  const ratchet = category(combo, ['RATCHET']);
-  const bit = category(combo, ['BIT']);
-  const bladeRow = meta.blades.find((row) => compact(row.blade) === compact(partName(blade)))
-    || meta.blades.find((row) => compact(partName(blade)).includes(compact(row.blade)) || compact(row.blade).includes(compact(partName(blade))));
-  const exact = bladeRow?.builds.find((build) => {
-    return norm(build.label) === norm(parts.join(' '));
-  });
-  const historicExact = history?.builds?.find((build) => {
-    return norm(build.label) === norm(parts.join(' '));
-  });
-  const type = blade?.type || bit?.type || 'Balance';
-  let status = 'SEM AMOSTRA PÚBLICA';
-  let summary = 'Ainda não há dado de pódio suficiente nessa amostra pública para validar este conjunto completo.';
-  if (exact) {
-    status = 'COMBO VALIDADO NO META';
-    summary = `Setup de ${type} alinhado ao recorte competitivo atual.`;
-  } else if (bladeRow) {
-    status = 'BASE PRESENTE NO META';
-    summary = `A Blade tem presença no Top 3; este setup é uma variação fora dos builds mais recorrentes.`;
-  } else if (historicExact) {
-    status = 'COMBO VALIDADO NO HISTÓRICO';
-    summary = `Setup de ${type} com histórico global de Top 3.`;
-  } else if (history) {
-    status = 'BASE PRESENTE NO HISTÓRICO';
-    summary = `A Blade tem histórico global de Top 3; este setup ainda não está entre os mais recorrentes.`;
-  }
-  const behavior = [blade?.behavior, bit?.behavior, blade?.note, bit?.note].filter(Boolean)[0];
-  return {
-    label: parts.join(' '), type, status, summary,
-    evidence: {
-      blade: bladeRow?.blade || partName(blade) || null,
-      bladePodiumShare: bladeRow?.appearance || null,
-      exactBuild: exact?.label || null,
-      exactBuildShare: exact?.percent || null,
-      historicalBuild: historicExact?.label || null,
-      historicalUses: historicExact?.uses || null,
-      historicalShare: historicExact?.percent || null,
-      // Uso da Blade na amostra ampla de decks competitivos da janela atual.
-      // Não é taxa de vitória: cada deck que a inclui conta uma vez.
-      metaPresence: bladeRow?.appearance ?? 0,
-      historyUrl: history?.url || null,
-      partBehavior: behavior || null,
-    },
-    physical: combo.map((part) => ({ name: partName(part), kind: part?.kind, type: part?.type, behavior: part?.behavior || part?.note || null, stats: part?.stats || null })),
-  };
-}
-
-function fallbackIndividual(combo) {
-  const profiles = {
-    Attack: { summary: 'Combo de pressão que busca contato cedo e jogadas explosivas.', launch: 'Entre com inclinação baixa e acelere o movimento para buscar as linhas externas.', favored: 'stamina passiva', favoredWhy: 'A pressão constante força o oponente a gastar rotação antes de estabilizar.', risk: 'defesa pesada', riskWhy: 'Estruturas firmes absorvem o impacto inicial e podem devolver o contato.', counterTip: 'Varie a inclinação e evite insistir na mesma linha de entrada.' },
-    Defense: { summary: 'Combo de contenção, feito para absorver contato e controlar o ritmo.', launch: 'Use lançamento estável e centralizado, preservando a linha para receber o impacto.', favored: 'ataque sem controle', favoredWhy: 'Entradas previsíveis perdem energia ao bater em uma estrutura estável.', risk: 'stamina limpa', riskWhy: 'Um rival que evita contato pode vencer na rotação.', counterTip: 'Aproxime o ponto de contato aos poucos, sem abrir demais a defesa.' },
-    Stamina: { summary: 'Combo focado em manter rotação e sobreviver até o fim da rodada.', launch: 'Priorize um lançamento limpo no centro para reduzir atrito desnecessário.', favored: 'ataque que se expõe', favoredWhy: 'Após gastar energia em investidas, o rival tende a cair antes na rotação.', risk: 'ataque de impacto', riskWhy: 'Um contato muito forte pode tirar o combo da sua zona de estabilidade.', counterTip: 'Ajuste a inclinação para não entregar uma entrada direta na parede.' },
-    Balance: { summary: 'Combo versátil, capaz de alternar entre pressão e sobrevivência conforme a rodada.', launch: 'Comece com linha controlada e ajuste a inclinação conforme o adversário ocupa a arena.', favored: 'combos muito especializados', favoredWhy: 'A versatilidade permite responder sem depender de uma única condição de vitória.', risk: 'pressão muito bem direcionada', riskWhy: 'Um rival que impõe o ritmo pode impedir a adaptação do conjunto.', counterTip: 'Escolha uma entrada consciente e não deixe o rival definir o primeiro contato.' },
-  };
-  const profile = profiles[combo.type] || profiles.Balance;
-  return { ...profile, why: combo.physical.map((part) => ({ part: part.name, reason: part.behavior || physicalTendency(part.stats) || 'Contribui para a estrutura e o comportamento do conjunto.' })) };
-}
-
-function fallbackNarrative(combos, source) {
-  const verified = combos.filter((combo) => combo.status.startsWith('COMBO VALIDADO')).length;
-  const based = combos.filter((combo) => combo.status.startsWith('BASE PRESENTE')).length;
-  const missing = combos.length - verified - based;
-  const pieces = [];
-  if (verified) pieces.push(`${verified} combo${verified > 1 ? 's' : ''} tem histórico direto de pódio`);
-  if (based) pieces.push(`${based} usa uma Blade que já aparece no meta, mas com configuração diferente`);
-  if (missing) pieces.push(`${missing} ainda precisa de teste de mesa para ganhar evidência`);
-  return `${pieces.join('; ')}. Leitura baseada em ${source.events || 'eventos'} da janela pública do Beycrate Meta, não em uma tier list opinativa.`;
-}
-
-function physicalTendency(stats) {
-  const values = Object.entries(stats || {})
-    .map(([key, raw]) => [key, Number(raw) > 10 ? Number(raw) / 10 : Number(raw)])
-    .filter(([, value]) => Number.isFinite(value) && value > 0)
-    .sort((a, b) => b[1] - a[1]);
-  const names = { atk: 'pressão de ataque', def: 'resistência a impacto', sta: 'retenção de rotação' };
-  return values.slice(0, 2).map(([key]) => names[key]).filter(Boolean).join(' e ') || null;
-}
-
-const analysisQueue = [];
-let activeAnalysisJob = null;
-let lastLlmBatchAt = 0;
-const pendingSignatures = new Map();
-let lastAnalysisSuccessAt = null;
-let lastAnalysisError = null;
-const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-export const isDeckAnalysisBusy = () => !!activeAnalysisJob || analysisQueue.length > 0;
-export const isDeckAnalysisPending = (beys) => pendingSignatures.has(JSON.stringify(beys || []));
-export const getDeckAnalysisQueueStatus = () => ({
-  active: !!activeAnalysisJob,
-  queued: analysisQueue.length,
-  waiting: analysisQueue.length + (activeAnalysisJob ? 1 : 0),
-  activeSince: activeAnalysisJob?.startedAt || null,
-  lastSuccessAt: lastAnalysisSuccessAt,
-  lastError: lastAnalysisError,
-});
-
-/** Cancela apenas trabalhos que ainda não começaram. A chamada em curso é
- * mantida para não deixar uma resposta da IA interrompida pela metade. */
-export function clearDeckAnalysisQueue() {
-  const cancelled = analysisQueue.splice(0);
-  for (const job of cancelled) {
-    pendingSignatures.delete(job.signature);
-    job.reject(new Error('Análise removida da fila pelo administrador.'));
-  }
-  return { cancelled: cancelled.length, active: !!activeAnalysisJob };
-}
-
-function compactCombo(combo) {
-  return {
-    label: combo.label,
-    type: combo.type,
-    physical: combo.physical.map((part) => ({ name: part.name, kind: part.kind, type: part.type, behavior: part.behavior, tendency: physicalTendency(part.stats) })),
-  };
-}
-
-async function groqJson(apiKey, model, prompt, maxTokens) {
-  try {
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, temperature: 0.35, max_tokens: maxTokens, reasoning_effort: model.startsWith('qwen/') ? 'none' : 'low', include_reasoning: false, response_format: { type: 'json_object' }, messages: [{ role: 'user', content: prompt }] }),
-      signal: AbortSignal.timeout(12_000),
-    });
-    if (!response.ok) throw new Error(`Groq HTTP ${response.status}: ${(await response.text()).slice(0, 500)}`);
-    return JSON.parse(String((await response.json())?.choices?.[0]?.message?.content || '{}'));
-  } catch (error) {
-    console.warn('[deck analysis] LLM:', error.message);
-    return null;
-  }
-}
-
-function cleanBeyNarrative(bey) {
-  return { summary: String(bey?.summary || '').slice(0, 700), launch: String(bey?.launch || '').slice(0, 550), favored: String(bey?.favored || '').slice(0, 250), favoredWhy: String(bey?.favoredWhy || '').slice(0, 450), risk: String(bey?.risk || '').slice(0, 250), riskWhy: String(bey?.riskWhy || '').slice(0, 450), counterTip: String(bey?.counterTip || '').slice(0, 450), why: Array.isArray(bey?.why) ? bey.why.slice(0, 7).map((item) => ({ part: String(item?.part || '').slice(0, 100), reason: String(item?.reason || '').slice(0, 350) })) : [] };
-}
-
-async function humanNarrative(combos) {
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) return null;
-  const model = process.env.GROQ_MODEL || 'qwen/qwen3.8-27b';
-  const beys = [];
-  for (const combo of combos) {
-    const prompt = `Você é um analista competitivo experiente de Beyblade X em pt-BR. Responda APENAS JSON válido: {"summary":"texto","launch":"dica detalhada","favored":"arquétipo específico","favoredWhy":"explicação física","risk":"arquétipo específico","riskWhy":"explicação física","counterTip":"dica de resposta","why":[{"part":"nome","reason":"função no conjunto"}]}. Analise SOMENTE este combo. Antes de escrever, relacione internamente Blade, Ratchet e Bit: cada um precisa aparecer por nome na explicação ou em "why". Não entregue frases intercambiáveis como "combo versátil", "pressão constante", "lançamento controlado" ou "evite contato" sem dizer a linha, ângulo, região da arena e efeito físico que justificam a dica. Seja concreto: descreva condição de vitória, primeiro contato desejado, perda de rotação/estabilidade e como o adversário explora o ponto fraco. summary até 32 palavras; launch, favoredWhy, riskWhy e counterTip até 32 palavras; why com uma frase útil e específica por peça. Matchups são tendências, não garantias. Não mostre números, stats, meta, torneios ou percentuais; use-os apenas como raciocínio interno. Dados: ${JSON.stringify(compactCombo(combo))}`;
-    // A resposta tem cinco explicações e o detalhamento das três peças; 220
-    // tokens fazia o provedor interromper o JSON antes de fechá-lo.
-    const result = await groqJson(apiKey, model, prompt, 420);
-    beys.push(result ? cleanBeyNarrative(result) : null);
-    // O plano gratuito limita a saída a 1.000 tokens/minuto. Cada Bey recebe
-    // uma resposta completa; espaçar as chamadas evita que o resumo do trio
-    // seja recusado depois das três análises individuais.
-    await pause(35_000);
-  }
-  const deckPrompt = `Você é um analista competitivo de Beyblade X em pt-BR. Responda APENAS JSON válido: {"deckLabel":"rótulo curto de 2 a 6 palavras","deck":"análise"}. Dê ao trio uma identidade memorável e particular, nunca um rótulo genérico. Explique em até 70 palavras a ordem/variação de uso dos três combos, o plano de jogo que os conecta, qual matchup cada um cobre e qual lacuna ainda sobra. Mencione pelo menos duas Blades pelo nome e trate os conjuntos como escolhas com funções distintas. Nunca use "deck ofensivo", "equilibrado", "de stamina" ou "defensivo". Não mostre números, stats, meta, torneios ou percentuais. Dados: ${JSON.stringify({ combos: combos.map(compactCombo) })}`;
-  const overview = await groqJson(apiKey, model, deckPrompt, 240);
-  if (!overview && !beys.some(Boolean)) return null;
-  return { deckLabel: String(overview?.deckLabel || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 90), deck: String(overview?.deck || '').slice(0, 1400), beys };
-}
-
-const analysisKey = (signature) => `${ANALYSIS_STORE_PREFIX}${createHash('sha256').update(signature).digest('hex')}`;
-
-async function generateDeckAnalysis(beys, partsById) {
-  const signature = JSON.stringify(beys || []);
-  // A indisponibilidade temporária de uma fonte externa não pode prender um
-  // deck indefinidamente em "preparação". Geramos e guardamos uma leitura
-  // física/IA mesmo sem o recorte de meta; a atualização manual pode refazer
-  // depois com a fonte disponível.
-  const meta = await getExternalMeta().catch((error) => {
-    console.warn('[deck analysis] meta indisponível:', error.message);
-    return { fetchedAt: new Date().toISOString(), source: { name: 'Beycrate Meta', url: SOURCE_URL, events: null, podiumDecks: null, updated: null }, blades: [], stale: true };
-  });
-  const globalHistory = await getGlobalHistory();
-  const rawCombos = (beys || []).filter(Array.isArray).map((ids) => ids.map((id) => partsById?.[id]).filter(Boolean));
-  const histories = await Promise.all(rawCombos.map(async (combo) => {
-    const blade = category(combo, ['BLADE', 'MAIN_BLADE', 'OVER_BLADE']);
-    return getHistoricalBlade(partName(blade));
+async function loadParts(beys) {
+  const parts = await prisma.part.findMany({ where: { id: { in: [...new Set(beys.flat())] } } });
+  const parentIds = parts.map((p) => p.parentId).filter(Boolean);
+  const parents = parentIds.length ? await prisma.part.findMany({ where: { id: { in: parentIds } } }) : [];
+  return Object.fromEntries(parts.map((part) => {
+    const parent = parents.find((p) => p.id === part.parentId);
+    return [part.id, { ...part, type: part.type || parent?.type,
+      behavior: part.behavior || parent?.behavior || part.note || parent?.note || null,
+      stats: json(part.statsJson, null) || json(parent?.statsJson, null),
+      weightGrams: part.weightGrams ?? parent?.weightGrams ?? null }];
   }));
-  const combos = rawCombos.map((combo, i) => describeSignal(combo, meta, histories[i], globalHistory));
-  const aiNarrative = await humanNarrative(combos);
-  const value = {
-    source: { ...meta.source, fetchedAt: meta.fetchedAt, stale: !!meta.stale, historyName: 'BBXHub', historyUrl: 'https://bbxhub.net/', historyEvents: 4034 },
-    combos,
-    deckLabel: aiNarrative?.deckLabel || 'IDENTIDADE DO TRIO',
-    deckSummary: aiNarrative?.deck || fallbackNarrative(combos, meta.source),
-    individual: combos.map((combo, index) => aiNarrative?.beys?.[index] || fallbackIndividual(combo)),
-    generatedBy: aiNarrative ? 'LLM + dados de pódios' : 'dados de pódios',
-  };
-  analysisCache.set(signature, value);
-  // Mesmo um fallback é definitivo para esta versão do deck: uma simples
-  // abertura nunca pode disparar nova pesquisa ou nova chamada à IA.
-  await setSetting(analysisKey(signature), { signature, generatedAt: new Date().toISOString(), value });
-  return value;
 }
-
-/** Leitura pura para a página pública. Nunca gera, pesquisa fontes ou chama IA. */
-export async function getStoredDeckAnalysis(beys) {
-  const signature = JSON.stringify(beys || []);
-  if (analysisCache.has(signature)) return analysisCache.get(signature);
-  const stored = await getSetting(analysisKey(signature));
-  if (stored?.signature !== signature || !stored?.value) return null;
-  analysisCache.set(signature, stored.value);
-  return stored.value;
-}
-
-async function processAnalysisQueue() {
-  if (activeAnalysisJob || !analysisQueue.length) return;
-  const job = analysisQueue.shift();
-  activeAnalysisJob = job;
-  job.startedAt = new Date().toISOString();
-  try {
-    const remaining = 45_000 - (Date.now() - lastLlmBatchAt);
-    if (remaining > 0) await pause(remaining);
-    const analysis = await generateDeckAnalysis(job.beys, job.partsById);
-    lastLlmBatchAt = Date.now();
-    lastAnalysisSuccessAt = new Date().toISOString();
-    lastAnalysisError = null;
-    job.resolve(analysis);
-  } catch (error) {
-    lastLlmBatchAt = Date.now();
-    lastAnalysisError = String(error?.message || error).slice(0, 300);
-    job.reject(error);
-  } finally {
-    pendingSignatures.delete(job.signature);
-    activeAnalysisJob = null;
-    void processAnalysisQueue();
-  }
-}
-
-/** Uma única fila global evita estouro de cota. Decks idênticos compartilham
- * o mesmo trabalho, e a análise é salva antes de qualquer página poder lê-la. */
-export async function queueDeckAnalysis(beys, partsById, { force = false } = {}) {
-  const signature = JSON.stringify(beys || []);
-  if (!force) {
-    const stored = await getStoredDeckAnalysis(beys);
-    if (stored) return stored;
-  }
-  if (pendingSignatures.has(signature)) return pendingSignatures.get(signature).promise;
-  let resolve; let reject;
-  const promise = new Promise((done, fail) => { resolve = done; reject = fail; });
-  const job = { signature, beys, partsById, promise, resolve, reject, startedAt: null };
-  pendingSignatures.set(signature, job);
-  analysisQueue.push(job);
-  void processAnalysisQueue();
-  return promise;
-}
-
-// Compatibilidade para rotinas internas de manutenção já existentes.
-export const analyzeDeck = queueDeckAnalysis;
-
-/** Utilitário pontual de manutenção. Não é chamado pelo site: depois desta
- * migração, a leitura é reaproveitada e só muda se as peças do deck mudarem. */
-export async function refreshExistingDeckAnalysesOnce() {
-  analysisCache.clear();
-  const decks = await prisma.communityDeck.findMany({
-    where: { status: 'VISIBLE' },
-    select: { beysJson: true },
+function signals(beys, parts, meta = null) {
+  return beys.map((ids) => {
+    const physical = ids.map((id) => parts[id]).filter(Boolean).map((part) => ({
+      name: partName(part), kind: part.kind, subKind: part.subKind, type: part.type,
+      behavior: part.behavior || part.note || null, stats: part.stats || null, weightGrams: part.weightGrams ?? null,
+    }));
+    const blade = physical.find((p) => ['BLADE', 'MAIN_BLADE'].includes(p.kind));
+    const bit = physical.find((p) => p.kind === 'BIT');
+    const row = meta?.blades?.find((entry) => compact(entry.blade) === compact(blade?.name));
+    return { label: physical.map(partName).join(' '), type: bit?.type || blade?.type || 'Balance', physical,
+      evidence: { blade: blade?.name || null, metaPresence: row?.appearance || 0, sampleScope: 'podium-decks' } };
   });
-  const seen = new Set();
-  let refreshed = 0;
-  let pendingRetry = 0;
-  for (const deck of decks) {
-    const beys = json(deck.beysJson, []);
-    const signature = JSON.stringify(beys);
-    if (!Array.isArray(beys) || !beys.length || seen.has(signature)) continue;
-    seen.add(signature);
-    const ids = [...new Set(beys.flat())];
-    const parts = await prisma.part.findMany({ where: { id: { in: ids } } });
-    const partMap = Object.fromEntries(parts.map((part) => [part.id, {
-      ...part,
-      stats: json(part.statsJson, null),
-    }]));
-    const analysis = await analyzeDeck(beys, partMap, { force: true });
-    refreshed++;
-    if (analysis.generatedBy !== 'LLM + dados de pódios') pendingRetry++;
-    // Limite gratuito do modelo: 8k tokens por minuto. A pausa deixa espaço
-    // para prompts longos e também para quem estiver usando o site.
-    await new Promise((resolve) => setTimeout(resolve, 20_000));
-  }
-  return { uniqueDecks: seen.size, refreshed, pendingRetry };
 }
-
-/** Atualiza o recorte competitivo todas as manhãs; peças sem cache continuam
- * sendo pesquisadas sob demanda uma única vez e guardadas por 20 horas. */
+function localAnalysis(combos) {
+  const overview = fallbackOverview(combos);
+  return { version: VERSION, combos, deckLabel: overview.deckLabel, deckSummary: overview.deck,
+    individual: combos.map(fallbackIndividual), quality: 'local', generatedBy: 'local',
+    generatedAt: new Date().toISOString(), provenance: { overview: false, core: [], why: [] } };
+}
+async function storedValue(beys) {
+  const signature = signatureOf(beys);
+  const row = await prisma.setting.findUnique({ where: { key: analysisKey(signature) } });
+  const saved = json(row?.value, null);
+  return saved?.signature === signature ? saved.value : null;
+}
+/** Read-only: no queuing, provider calls or external requests. */
+export async function getStoredDeckAnalysis(beys) {
+  const saved = await storedValue(beys);
+  if (saved?.version === VERSION) return saved;
+  const combos = signals(beys, await loadParts(beys));
+  return saved ? repairAnalysis(saved, combos) : localAnalysis(combos);
+}
+function compose(job, partial, base) {
+  const old = repairAnalysis(base, base.combos);
+  const complete = base.combos.every((_, i) => partial['core' + i] && partial['why' + i]) && !!partial.overview;
+  return { ...old, version: VERSION,
+    individual: base.combos.map((combo, i) => ({ ...old.individual[i], ...(partial['core' + i] || {}),
+      why: partial['why' + i] || old.individual[i].why })),
+    deckLabel: partial.overview?.deckLabel || old.deckLabel, deckSummary: partial.overview?.deck || old.deckSummary,
+    quality: complete ? 'llm' : 'mixed', generatedBy: complete ? 'llm' : 'mixed',
+    generatedAt: new Date().toISOString(), jobId: job.id,
+    provenance: { overview: !!partial.overview, core: base.combos.map((_, i) => !!partial['core' + i]), why: base.combos.map((_, i) => !!partial['why' + i]) } };
+}
+const compactCombo = (combo) => ({ label: combo.label, physical: combo.physical.map((part) => ({
+  name: part.name, kind: part.kind, type: part.type, behavior: part.behavior,
+  tendency: physicalTendency(part.stats), weightGrams: part.weightGrams,
+})) });
+async function runStep(job) {
+  let base = job.base;
+  if (!job.stage) {
+    const meta = await getExternalMeta().catch(() => null);
+    if (meta) base = { ...base, source: { ...meta.source, fetchedAt: meta.fetchedAt, stale: !!meta.stale },
+      combos: base.combos.map((combo) => {
+        const blade = combo.physical.find((part) => ['BLADE', 'MAIN_BLADE'].includes(part.kind));
+        const row = meta.blades.find((entry) => compact(entry.blade) === compact(blade?.name));
+        return { ...combo, evidence: { ...combo.evidence, metaPresence: row?.appearance || 0, sampleScope: 'podium-decks' } };
+      }) };
+  }
+  const partial = { ...job.partial };
+  const comboIndex = Math.floor(job.stage / 2);
+  const combo = base.combos[comboIndex];
+  let prompt; let validate; let tokens; let key;
+  const guidance = 'Use somente as propriedades fornecidas; trate o que falta como incerto. Sem números de status, percentuais ou estatísticas de torneios no texto. Escreva dicas práticas e específicas às peças, com tendências de confronto e maneiras de responder. Não repita nomes só para preencher texto.';
+  if (combo && job.stage % 2 === 0) {
+    key = 'core' + comboIndex; tokens = 800; validate = validCore;
+    prompt = guidance + ' Analise este combo. JSON com summary (35 palavras), launch (até 50 palavras com inclinação moderada, região de entrada, intensidade repetível e ajuste se der errado), favored (arquétipo), favoredWhy (até 35 palavras explicando o contato), risk (arquétipo), riskWhy (até 35 palavras explicando o risco) e counterTip (até 40 palavras com resposta). Relacione o apoio do Bit, a altura do Ratchet e o contato da Blade. Se não há descrição da Blade, não invente seu formato. Dados: ' + JSON.stringify(compactCombo(combo));
+  } else if (combo) {
+    key = 'why' + comboIndex; tokens = 650; validate = (value) => validWhy(value, combo);
+    prompt = guidance + ' Explique cada peça deste combo, incluindo as peças CX. JSON {"why":[{"part":"nome exato","reason":"explicação"}]}. Inclua TODOS os nomes enviados. Por peça, até 30 palavras sobre sua função física e relação com outra peça; não atribua ao Ratchet a função do Bit. Dados: ' + JSON.stringify(compactCombo(combo));
+  } else {
+    key = 'overview'; tokens = 500; validate = validOverview;
+    prompt = guidance + ' JSON {"deckLabel":"título particular de 2 a 8 palavras","deck":"texto de 90 a 130 palavras"}. Analise a complementaridade do deck: função de cada Bey, situações para escolher cada uma e uma lacuna. Use pelo menos duas Blades por nome quando houver duas. Evite rótulos genéricos como identidade do trio, deck ofensivo e tripla sinergia. Não invente cobertura distinta quando os combos fazem a mesma coisa. Dados: ' + JSON.stringify(base.combos.map((combo, i) => ({ ...compactCombo(combo), analysis: partial['core' + i] })));
+  }
+  const result = await groqJson({ prompt, maxTokens: tokens, validate });
+  partial[key] = key.startsWith('core') ? sanitizeCore(result.value) : key.startsWith('why') ? sanitizeWhy(result.value, combo) : { deckLabel: result.value.deckLabel.trim().slice(0, 110), deck: result.value.deck.trim().slice(0, 1800) };
+  const value = compose(job, partial, base);
+  value.model = result.model;
+  const stage = job.stage + 1;
+  return { patch: { partial, base, stage, completed: stage, usage: { input: (job.usage?.input || 0) + (result.usage?.prompt_tokens || 0), output: (job.usage?.output || 0) + (result.usage?.completion_tokens || 0) } },
+    done: stage >= base.combos.length * 2 + 1, record: recordOf(job.signature, value) };
+}
+async function readQueue() {
+  const row = await prisma.setting.findUnique({ where: { key: QUEUE_KEY } });
+  return { raw: row?.value ?? null, state: row ? json(row.value, emptyQueue()) : emptyQueue() };
+}
+async function compareAndSwap(raw, state, record) {
+  try {
+    return await prisma.$transaction(async (tx) => {
+      if (raw === null) await tx.setting.create({ data: { key: QUEUE_KEY, value: JSON.stringify(state) } });
+      else {
+        const result = await tx.setting.updateMany({ where: { key: QUEUE_KEY, value: raw }, data: { value: JSON.stringify(state) } });
+        if (!result.count) return false;
+      }
+      if (record) await tx.setting.upsert({ where: { key: record.key }, create: record, update: { value: record.value } });
+      return true;
+    });
+  } catch (error) { if (['P2002', 'P2034', 'P1008'].includes(error.code)) return false; throw error; }
+}
+const worker = createAnalysisQueue({ read: readQueue, compareAndSwap, step: runStep });
+let workerTick = false;
+export async function processDeckAnalysisQueueOnce() {
+  if (workerTick) return;
+  workerTick = true;
+  try { await worker.tick(); } catch (error) { console.warn('[deck analysis] worker:', error.message); }
+  finally { workerTick = false; }
+}
+const tick = processDeckAnalysisQueueOnce;
+export async function getDeckAnalysisState(beys) {
+  const state = await worker.read();
+  const job = state.jobs.find((item) => item.signature === signatureOf(beys));
+  const pending = pendingJob(job);
+  return { pending, status: job?.status || 'idle', position: pending ? state.jobs.filter(pendingJob).findIndex((item) => item.id === job.id) + 1 : null,
+    completed: job?.completed || 0, total: job?.base?.combos?.length * 2 + 1 || 0,
+    nextAttemptAt: pending ? Math.max(job.nextAttemptAt || 0, state.nextCallAt || 0) : null,
+    error: job?.status === 'failed' ? 'A análise detalhada não pôde ser concluída. A leitura disponível foi preservada.' : null };
+}
+export const isDeckAnalysisPending = async (beys) => (await getDeckAnalysisState(beys)).pending;
+export const isDeckAnalysisBusy = async () => (await worker.read()).jobs.some(pendingJob);
+export async function getDeckAnalysisQueueStatus() {
+  const state = await worker.read();
+  const pending = state.jobs.filter(pendingJob);
+  const active = state.lease?.until > Date.now() ? state.jobs.find((job) => job.id === state.lease.jobId) : null;
+  return { active: !!active, queued: pending.length - (active ? 1 : 0), waiting: pending.length,
+    activeSince: active?.startedAt ? new Date(active.startedAt).toISOString() : null,
+    lastSuccessAt: state.lastSuccessAt, lastError: state.lastError, nextCallAt: state.nextCallAt,
+    configured: !!process.env.GROQ_API_KEY, model: process.env.GROQ_MODEL || 'qwen/qwen3.8-27b',
+    failed: state.jobs.filter((job) => job.status === 'failed').length,
+    jobs: state.jobs.filter((job) => pendingJob(job) || job.status === 'failed').map((job) => ({
+      id: job.id, title: job.title || job.base?.combos?.map((combo) => combo.label).join(' / '),
+      status: job.status, completed: job.completed, total: job.base.combos.length * 2 + 1,
+      attempts: job.attempts, error: job.error, queuedAt: job.queuedAt,
+      nextAttemptAt: Math.max(job.nextAttemptAt || 0, state.nextCallAt || 0),
+    })) };
+}
+export const clearDeckAnalysisQueue = () => worker.clear();
+export const retryFailedDeckAnalyses = async () => { const result = await worker.retryFailed(); void tick(); return result; };
+/** Durable acceptance only; never hold an HTTP request open for generation. */
+export async function queueDeckAnalysis(beys, _partsById, { force = false, title = null } = {}) {
+  if (!Array.isArray(beys) || !beys.length || beys.some((bey) => !Array.isArray(bey) || !bey.length)) throw new Error('Deck sem peças para analisar.');
+  const signature = signatureOf(beys);
+  const existing = await storedValue(beys);
+  if (!force && existing && ((existing.version === VERSION && existing.quality === 'llm') || (existing.version !== VERSION && !legacyBroken(existing)))) return { queued: false };
+  const combos = signals(beys, await loadParts(beys));
+  if (combos.some((combo, i) => combo.physical.length !== beys[i].length)) throw new Error('Uma peça do deck não existe no catálogo.');
+  const base = existing ? repairAnalysis(existing, combos) : localAnalysis(combos);
+  base.version = VERSION;
+  base.quality ||= 'mixed';
+  const previousJob = (await worker.read()).jobs.find((job) => job.signature === signature);
+  const job = await worker.enqueue({ signature, beys, base, title }, { force: force || ['failed', 'cancelled'].includes(previousJob?.status), record: recordOf(signature, base) });
+  void tick();
+  return { queued: pendingJob(job), jobId: job.id };
+}
+export const analyzeDeck = queueDeckAnalysis;
+export async function refreshExistingDeckAnalysesOnce() {
+  const decks = await prisma.communityDeck.findMany({ where: { status: 'VISIBLE' }, select: { beysJson: true, title: true } });
+  const seen = new Set(); let refreshed = 0;
+  for (const deck of decks) {
+    const beys = json(deck.beysJson, []); const signature = signatureOf(beys);
+    if (!beys.length || seen.has(signature)) continue;
+    seen.add(signature);
+    if ((await queueDeckAnalysis(beys, null, { force: true, title: deck.title })).queued) refreshed++;
+  }
+  return { uniqueDecks: seen.size, refreshed };
+}
+function legacyBroken(value) {
+  return !value || !validOverview({ deckLabel: value.deckLabel, deck: value.deckSummary })
+    || !value.combos?.length || value.combos.some((combo, i) => {
+      const item = value.individual?.[i];
+      return !validCore(item) || !validWhy(item, combo)
+        || /^Combo (de pressão|de contenção|focado em|versátil)/.test(item.summary);
+    });
+}
+/** One-time repair of broken old results. Public reads never call this. */
+export async function recoverDeckAnalyses() {
+  const migrated = await prisma.setting.findUnique({ where: { key: REPAIR_KEY } });
+  const decks = await prisma.communityDeck.findMany({ where: { status: 'VISIBLE' }, select: { beysJson: true, title: true } });
+  const seen = new Set(); let repaired = 0;
+  for (const deck of decks) {
+    const beys = json(deck.beysJson, []); const signature = signatureOf(beys);
+    if (!beys.length || seen.has(signature)) continue;
+    seen.add(signature);
+    const value = await storedValue(beys);
+    const hasJob = (await worker.read()).jobs.some((job) => job.signature === signature);
+    if (hasJob || (value && (migrated || !legacyBroken(value)))) continue;
+    await queueDeckAnalysis(beys, null, { title: deck.title });
+    repaired++;
+  }
+  if (!migrated) await prisma.setting.upsert({ where: { key: REPAIR_KEY }, create: { key: REPAIR_KEY, value: JSON.stringify({ at: new Date().toISOString(), repaired }) }, update: {} });
+  return { repaired };
+}
+let scheduled = false;
 export function scheduleDeckAnalysisJobs() {
-  // A fila em memória é reiniciada junto com o container. Recolocamos na fila
-  // toda composição sem resultado salvo para que uma publicação/redeploy no
-  // meio da geração nunca deixe um deck preso em "preparação".
-  const recover = async () => {
-    const decks = await prisma.communityDeck.findMany({ where: { status: 'VISIBLE' }, select: { beysJson: true } });
-    const seen = new Set();
-    for (const deck of decks) {
-      const beys = json(deck.beysJson, []); const signature = JSON.stringify(beys);
-      if (!beys.length || seen.has(signature) || await getStoredDeckAnalysis(beys)) continue;
-      seen.add(signature);
-      const ids = [...new Set(beys.flat())];
-      const parts = await prisma.part.findMany({ where: { id: { in: ids } } });
-      const partMap = Object.fromEntries(parts.map((part) => [part.id, { ...part, stats: json(part.statsJson, null) }]));
-      void queueDeckAnalysis(beys, partMap).catch((error) => console.warn('[deck analysis] recuperação:', error.message));
-    }
-  };
-  setTimeout(() => recover().catch((error) => console.warn('[deck analysis] recuperação:', error.message)), 15_000).unref();
-  const refresh = () => getExternalMeta({ force: true }).then(() => console.log('[deck analysis] meta diário atualizado')).catch((error) => console.warn('[deck analysis] meta diário:', error.message));
-  const next = new Date();
-  next.setHours(7, 15, 0, 0);
+  if (scheduled) return;
+  scheduled = true;
+  setInterval(() => void tick(), 3000).unref();
+  setTimeout(() => recoverDeckAnalyses().catch((error) => console.warn('[deck analysis] recuperação:', error.message)), 1500).unref();
+  setInterval(() => recoverDeckAnalyses().catch((error) => console.warn('[deck analysis] recuperação:', error.message)), 5 * 60_000).unref();
+  const refresh = () => getExternalMeta({ force: true }).catch((error) => console.warn('[deck analysis] meta diário:', error.message));
+  const next = new Date(); next.setHours(7, 15, 0, 0);
   if (next <= new Date()) next.setDate(next.getDate() + 1);
-  setTimeout(() => { refresh(); setInterval(refresh, 24 * 60 * 60 * 1000); }, next - new Date()).unref();
+  setTimeout(() => { void refresh(); setInterval(refresh, 24 * 60 * 60 * 1000).unref(); }, next - new Date()).unref();
 }

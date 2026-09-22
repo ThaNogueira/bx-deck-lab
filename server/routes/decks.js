@@ -8,7 +8,7 @@ import { moderateFields, getSetting } from '../settings.js';
 import { json, uniqueSlug } from '../util.js';
 import { partDto } from './catalog.js';
 import { audit } from '../audit.js';
-import { getStoredDeckAnalysis, queueDeckAnalysis, isDeckAnalysisPending } from '../deck-analysis.js';
+import { getStoredDeckAnalysis, queueDeckAnalysis, getDeckAnalysisState } from '../deck-analysis.js';
 import { standingsOf } from './tournaments.js';
 import { UPLOADS_DIR } from '../uploads.js';
 
@@ -158,11 +158,8 @@ async function validateBeys(beysInput) {
   return beys;
 }
 
-async function enqueueAnalysis(beys) {
-  const ids = [...new Set((beys || []).flat())];
-  const parts = ids.length ? await prisma.part.findMany({ where: { id: { in: ids } } }) : [];
-  const partMap = Object.fromEntries(parts.map((part) => [part.id, partDto(part)]));
-  return queueDeckAnalysis(beys, partMap);
+async function enqueueAnalysis(beys, title) {
+  return queueDeckAnalysis(beys, null, { title });
 }
 async function beyXLabAuthor() {
   const email = 'decks@beyxlab.local';
@@ -257,9 +254,8 @@ router.get('/api/decks/:slug/analysis', ah(async (req, res) => {
   const restricted = deck && (deck.status !== 'VISIBLE' || !deck.isPublic);
   if (!deck || (restricted && !isOwner && !isStaff(req.user))) return res.status(404).json({ error: 'Deck não encontrado.' });
   const beys = json(deck.beysJson, []);
-  if (isDeckAnalysisPending(beys)) return res.json({ analysis: null, pending: true });
-  const analysis = await getStoredDeckAnalysis(beys);
-  res.json({ analysis, pending: !analysis });
+  const [analysis, progress] = await Promise.all([getStoredDeckAnalysis(beys), getDeckAnalysisState(beys)]);
+  res.set('Cache-Control', 'no-store').json({ analysis, ...progress });
 }));
 
 /** Releitura manual reservada ao administrador. A chave de IA permanece no
@@ -274,8 +270,8 @@ router.post('/api/decks/:id/analysis/refresh', requireUser, ah(async (req, res) 
   const partMap = Object.fromEntries(parts.map((part) => [part.id, partDto(part)]));
   // Não prende a requisição HTTP durante alguns minutos: a página acompanha a
   // fila pelo endpoint de leitura e atualiza quando o resultado for salvo.
-  void queueDeckAnalysis(beys, partMap, { force: true }).catch((error) => console.warn('[deck analysis] atualização manual:', error.message));
-  res.status(202).json({ queued: true });
+  const result = await queueDeckAnalysis(beys, partMap, { force: true, title: deck.title });
+  res.status(202).json({ ...result, ...(await getDeckAnalysisState(beys)) });
 }));
 
 router.post('/api/decks', requireUser, moderateFields('title', 'description', 'launchGuide'), ah(async (req, res) => {
@@ -305,7 +301,7 @@ router.post('/api/decks', requireUser, moderateFields('title', 'description', 'l
   });
   // Não bloqueia o salvamento: a fila gera uma vez e a página apenas lê o
   // resultado persistido quando estiver pronto.
-  void enqueueAnalysis(beys).catch((error) => console.warn('[deck analysis] criação:', error.message));
+  await enqueueAnalysis(beys, title).catch((error) => console.warn('[deck analysis] criação:', error.message));
   res.json({ deck: await deckDto(deck) });
 }));
 
@@ -336,7 +332,7 @@ router.patch('/api/decks/:id', requireUser, moderateFields('title', 'description
   }
   const updated = await prisma.communityDeck.update({ where: { id: deck.id }, data, include: { author: true } });
   if (data.beysJson && data.beysJson !== deck.beysJson) {
-    void enqueueAnalysis(json(data.beysJson, [])).catch((error) => console.warn('[deck analysis] edição:', error.message));
+    await enqueueAnalysis(json(data.beysJson, []), updated.title).catch((error) => console.warn('[deck analysis] edição:', error.message));
   }
   res.json({ deck: await deckDto(updated) });
 }));
@@ -388,6 +384,7 @@ router.post('/api/decks/:id/copy', requireUser, ah(async (req, res) => {
       folder: own ? src.folder : 'Copiados', isPublic: false,
     },
   });
+  await enqueueAnalysis(json(deck.beysJson, []), deck.title).catch((error) => console.warn('[deck analysis] cópia:', error.message));
   const fresh = await prisma.communityDeck.findUnique({ where: { id: src.id } });
   res.json({ deck: await deckDto(deck), copyCount: fresh?.copyCount ?? src.copyCount, counted });
 }));
@@ -413,6 +410,7 @@ router.post('/api/decks/:id/duplicate', requireUser, ah(async (req, res) => {
       isPublic: false,
     },
   });
+  await enqueueAnalysis(json(deck.beysJson, []), deck.title).catch((error) => console.warn('[deck analysis] duplicação:', error.message));
   res.json({ deck: await deckDto(deck) });
 }));
 
