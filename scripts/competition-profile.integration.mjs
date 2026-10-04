@@ -77,6 +77,10 @@ try {
     await page.evaluate(()=>scrollTo(0,0));
     await page.screenshot({path:`artifacts/profile-competition/${width}.png`,fullPage:true});
     assert.equal(await page.locator('.pc-chart-event').count(),5);
+    await page.getByRole('button',{name:'Últimas 10',exact:true}).click();
+    assert.match(await page.locator('[data-score]').innerText(),/10 partidas · recentes/);
+    await page.getByRole('button',{name:'Geral',exact:true}).click();
+    assert.match(await page.locator('[data-score]').innerText(),/11 partidas · total/);
     assert.equal(await page.getByText('Passaporte de torneios').count(),0);
     await page.locator('.pc-chart-event').first().click();
     assert.equal(await page.locator('.pc-chart-event').first().getAttribute('aria-pressed'),'true');
@@ -88,10 +92,10 @@ try {
     await page.getByText('Mais estatísticas',{exact:true}).click();
     const layout=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,bg:getComputedStyle(document.body,'::before').backgroundImage,blur:getComputedStyle(document.body,'::before').filter,bodyFilter:getComputedStyle(document.body).filter,profileHeight:document.getElementById('competition').getBoundingClientRect().height}));
     assert.equal(layout.width,layout.scroll,`Overflow at ${width}`);
-    assert.match(layout.bg,/site-circuits/); assert.equal(layout.blur,'blur(1.3px)'); assert.equal(layout.bodyFilter,'none'); assert.ok(layout.profileHeight < 760); assert.deepEqual(errors,[]);
+    assert.match(layout.bg,/site-circuits/); assert.equal(layout.blur,'blur(1.3px)'); assert.equal(layout.bodyFilter,'none'); assert.ok(layout.profileHeight < 950); assert.deepEqual(errors,[]);
     await page.goto(base+'/u/novo-teste');
-    await page.locator('.pc-metric').first().waitFor();
-    assert.match(await page.locator('.pc-metric').first().innerText(),/—/);
+    await page.locator('.pc-donut').waitFor();
+    assert.match(await page.locator('.pc-donut').innerText(),/—/);
     assert.equal(await page.locator('.pc-chart-event').count(),0);
     await page.screenshot({path:`artifacts/profile-competition/empty-${width}.png`,fullPage:true});
     await page.close();
