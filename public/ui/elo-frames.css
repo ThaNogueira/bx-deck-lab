@@ -1,15 +1,25 @@
-/* Original vector silhouettes; only the ornament rotates. */
-.avatar .avatar-photo{z-index:2}.elo-avatar-frame{--elo:#a6afb9;--aura:rgba(188,210,220,.4);--glow:9px;--halo:18px;position:absolute;inset:-31%;border-radius:50%;pointer-events:none;z-index:3}.elo-frame-aura{position:absolute;inset:-20%;border-radius:50%;pointer-events:none;z-index:1;box-shadow:0 0 var(--glow) var(--aura),0 0 var(--halo) color-mix(in srgb,var(--aura) 68%,transparent);animation:elo-frame-aura 3.2s ease-in-out infinite}
-.elo-frame-spin{position:absolute;inset:0;background:center/contain no-repeat url('/assets/ranks/frame-ferro.png');will-change:auto}
-.elo-frame-bronze{--elo:#ff8a4c;--aura:rgba(255,107,54,.52);--glow:12px;--halo:24px}.elo-frame-bronze .elo-frame-spin{background-image:url('/assets/ranks/frame-bronze.png')}
-.elo-frame-prata{--elo:#d8e5ee;--aura:rgba(205,242,255,.58);--glow:15px;--halo:30px}.elo-frame-prata .elo-frame-spin{background-image:url('/assets/ranks/frame-prata.png')}
-.elo-frame-ouro{--elo:#f4d36a;--aura:rgba(255,205,57,.66);--glow:18px;--halo:36px}.elo-frame-ouro .elo-frame-spin{background-image:url('/assets/ranks/frame-ouro.png')}
-.elo-frame-platina{--elo:#17e6ef;--aura:rgba(20,231,242,.72);--glow:21px;--halo:42px}.elo-frame-platina .elo-frame-spin{background-image:url('/assets/ranks/frame-platina.png')}
-.elo-frame-diamante{--elo:#398cff;--aura:rgba(41,127,255,.78);--glow:25px;--halo:50px}.elo-frame-diamante .elo-frame-spin{background-image:url('/assets/ranks/frame-diamante.png')}
-.elo-frame-mestre{--elo:#bf62ff;--aura:rgba(180,70,255,.84);--glow:29px;--halo:58px}.elo-frame-mestre .elo-frame-spin{background-image:url('/assets/ranks/frame-mestre.png')}
-.elo-frame-lenda{--elo:#baff27;--aura:rgba(163,255,21,.92);--glow:34px;--halo:68px}.elo-frame-lenda .elo-frame-spin{background-image:url('/assets/ranks/frame-lenda.png')}
-@keyframes elo-frame-aura{0%,100%{opacity:.55;transform:scale(.96)}50%{opacity:1;transform:scale(1.05)}}
-.avatar.has-elo-frame .verified-badge{z-index:5}.elo-frame-hint{display:block;color:var(--muted);font-size:11px;line-height:1.6;margin-top:12px}.elo-frame-example{display:flex;align-items:center;justify-content:center;gap:16px;margin-top:16px;padding:18px 0 5px;border-top:1px solid var(--line);color:var(--muted);font-size:10px}.elo-frame-example .avatar{margin:7px}.elo-frame-example .avatar-photo{display:grid;place-items:center;color:#87907f;background:#20291b}.elo-frame-example svg{width:23px;height:23px}
-.elo-frame-example{flex-direction:column;gap:7px}
-.avatar.has-elo-frame{margin:4px}.profile-head>.avatar.has-elo-frame{margin:10px}.elo-frame-example .avatar.has-elo-frame{margin:20px}.profile-head:has(>.has-elo-frame){gap:26px}
-@media(prefers-reduced-motion:reduce){.elo-frame-aura{animation:none}}
+/* Each frame is anchored to its measured portrait aperture, not the PNG canvas. */
+.avatar.has-elo-frame{background:transparent;border-color:transparent;isolation:isolate;margin:5px}
+.elo-avatar-frame{position:absolute;pointer-events:none;z-index:3;width:var(--frame-size);height:var(--frame-size);left:var(--frame-left);top:var(--frame-top)}
+.elo-frame-spin,.elo-frame-aura,.elo-frame-portrait{position:absolute;inset:0}
+.elo-frame-spin,.elo-frame-aura{background:var(--frame-image) center/100% 100% no-repeat}
+.elo-frame-spin{z-index:3}
+.elo-frame-aura{z-index:1;filter:drop-shadow(0 0 var(--glow) var(--elo));animation:elo-outline-pulse 3.6s ease-in-out infinite;box-shadow:none;border-radius:0}
+.elo-frame-portrait{z-index:2;mask:var(--aperture) center/100% 100% no-repeat;-webkit-mask:var(--aperture) center/100% 100% no-repeat}
+.avatar .elo-portrait-image{inset:auto;left:var(--photo-left);top:var(--photo-top);width:var(--photo-size);height:var(--photo-size);border-radius:0;object-fit:cover;background:#101410}
+@keyframes elo-outline-pulse{0%,100%{opacity:.3}50%{opacity:.85}}
+.elo-frame-ferro{--elo:#a6afb9;--glow:2px;--frame-image:url('/assets/ranks/frame-ferro.png');--aperture:url('/assets/ranks/aperture-ferro.svg');--frame-size:128.4836%;--frame-left:-13.9344%;--frame-top:-13.5246%;--photo-size:77.8309%;--photo-left:10.8453%;--photo-top:10.5263%}
+.elo-frame-bronze{--elo:#ff8a4c;--glow:2.5px;--frame-image:url('/assets/ranks/frame-bronze.png');--aperture:url('/assets/ranks/aperture-bronze.svg');--frame-size:135.7143%;--frame-left:-20.1299%;--frame-top:-20.1299%;--photo-size:73.6842%;--photo-left:14.8325%;--photo-top:14.8325%}
+.elo-frame-prata{--elo:#d8e5ee;--glow:3px;--frame-image:url('/assets/ranks/frame-prata.png');--aperture:url('/assets/ranks/aperture-prata.svg');--frame-size:134.5494%;--frame-left:-17.1674%;--frame-top:-24.6781%;--photo-size:74.3222%;--photo-left:12.7592%;--photo-top:18.3413%}
+.elo-frame-ouro{--elo:#f4d36a;--glow:3.5px;--frame-image:url('/assets/ranks/frame-ouro.png');--aperture:url('/assets/ranks/aperture-ouro.svg');--frame-size:146.8384%;--frame-left:-23.3021%;--frame-top:-32.4356%;--photo-size:68.1021%;--photo-left:15.8692%;--photo-top:22.0893%}
+.elo-frame-platina{--elo:#17e6ef;--glow:4px;--frame-image:url('/assets/ranks/frame-platina.png');--aperture:url('/assets/ranks/aperture-platina.svg');--frame-size:132.2785%;--frame-left:-15.8228%;--frame-top:-18.3544%;--photo-size:75.5981%;--photo-left:11.9617%;--photo-top:13.8756%}
+.elo-frame-diamante{--elo:#398cff;--glow:4.5px;--frame-image:url('/assets/ranks/frame-diamante.png');--aperture:url('/assets/ranks/aperture-diamante.svg');--frame-size:155.9701%;--frame-left:-27.8607%;--frame-top:-28.3582%;--photo-size:64.1148%;--photo-left:17.8628%;--photo-top:18.1818%}
+.elo-frame-mestre{--elo:#bf62ff;--glow:5px;--frame-image:url('/assets/ranks/frame-mestre.png');--aperture:url('/assets/ranks/aperture-mestre.svg');--frame-size:137.1991%;--frame-left:-18.4902%;--frame-top:-21.5536%;--photo-size:72.8868%;--photo-left:13.4769%;--photo-top:15.7097%}
+.elo-frame-lenda{--elo:#baff27;--glow:6px;--frame-image:url('/assets/ranks/frame-lenda.png');--aperture:url('/assets/ranks/aperture-lenda.svg');--frame-size:150.0000%;--frame-left:-24.8804%;--frame-top:-26.0766%;--photo-size:66.6667%;--photo-left:16.5869%;--photo-top:17.3844%}
+.avatar.has-elo-frame .verified-badge{z-index:5}
+.elo-frame-hint{display:block;color:var(--muted);font-size:11px;line-height:1.6;margin-top:12px}
+.elo-frame-example{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;margin-top:16px;padding:18px 0 5px;border-top:1px solid var(--line);color:var(--muted);font-size:10px}
+.elo-frame-example .avatar.has-elo-frame{margin:24px}
+.profile-head>.avatar.has-elo-frame{margin:28px 22px}
+.profile-head:has(>.has-elo-frame){gap:26px}
+@media(prefers-reduced-motion:reduce){.elo-frame-aura{animation:none;opacity:.55}}
