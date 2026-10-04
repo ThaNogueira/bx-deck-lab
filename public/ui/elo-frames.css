@@ -1,5 +1,5 @@
 /* Original vector silhouettes; only the ornament rotates. */
-.elo-avatar-frame{--elo:#a6afb9;position:absolute;inset:-12%;border-radius:50%;pointer-events:none;z-index:3;filter:drop-shadow(0 0 3px color-mix(in srgb,var(--elo) 35%,transparent))}
+.elo-avatar-frame{--elo:#a6afb9;position:absolute;inset:-24%;border-radius:50%;pointer-events:none;z-index:3;filter:drop-shadow(0 0 3px color-mix(in srgb,var(--elo) 35%,transparent))}
 .elo-frame-spin{position:absolute;inset:0;background:center/contain no-repeat url('/assets/ranks/frame-ferro.svg');animation:elo-frame-orbit 65s linear infinite;will-change:transform}
 .elo-frame-bronze{--elo:#d39b69}.elo-frame-bronze .elo-frame-spin{background-image:url('/assets/ranks/frame-bronze.svg')}
 .elo-frame-prata{--elo:#d8e5ee}.elo-frame-prata .elo-frame-spin{background-image:url('/assets/ranks/frame-prata.svg')}
@@ -11,4 +11,5 @@
 .avatar.has-elo-frame .verified-badge{z-index:5}.elo-frame-hint{display:block;color:var(--muted);font-size:11px;line-height:1.6;margin-top:12px}.elo-frame-example{display:flex;align-items:center;justify-content:center;gap:16px;margin-top:16px;padding:18px 0 5px;border-top:1px solid var(--line);color:var(--muted);font-size:10px}.elo-frame-example .avatar{margin:7px}.elo-frame-example .avatar-photo{display:grid;place-items:center;color:#87907f;background:#20291b}.elo-frame-example svg{width:23px;height:23px}
 @keyframes elo-frame-orbit{to{transform:rotate(360deg)}}
 .elo-frame-example{flex-direction:column;gap:7px}
+.avatar.has-elo-frame{margin:4px}.profile-head>.avatar.has-elo-frame{margin:10px}.elo-frame-example .avatar.has-elo-frame{margin:20px}.profile-head:has(>.has-elo-frame){gap:26px}
 @media(prefers-reduced-motion:reduce){.elo-frame-spin{animation:none;will-change:auto}}
