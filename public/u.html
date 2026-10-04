@@ -121,7 +121,7 @@
             ${me && me.id === user.id ? '<a class="btn secondary" href="/perfil">Editar meu perfil</a>' : `<button class="btn ghost" id="reportBtn">${BX.icon('flag', 15)}Denunciar</button>`}
           </div>
         </div>
-        ${(medalTags || stickers.length) ? `<div class="profile-achievement-strip"><div class="profile-podium-tags">${medalTags}</div>${stickers.length ? `<div class="sticker-row">${stickers.map((s) => `<span class="sticker" title="${BX.esc(s.name)}">${s.imageUrl ? `<img src="${BX.esc(s.imageUrl)}">` : BX.esc(s.styleKey || '') || BX.icon('star', 14)}</span>`).join('')}</div>` : ''}</div>` : ''}
+        ${(medalTags || stickers.length) ? `<div class="profile-achievement-strip"><div class="profile-podium-tags">${medalTags}</div>${stickers.length ? `<div class="sticker-row">${stickers.map((s) => `<span class="sticker profile-sticker" tabindex="0" aria-label="Sticker: ${BX.esc(s.name)}">${s.imageUrl ? `<img src="${BX.esc(s.imageUrl)}" alt="">` : BX.esc(s.styleKey || '') || BX.icon('star', 14)}<span class="profile-sticker-preview" aria-hidden="true">${s.imageUrl ? `<img src="${BX.esc(s.imageUrl)}" alt="">` : `<span class="profile-sticker-preview-icon">${BX.esc(s.styleKey || '') || BX.icon('star', 26)}</span>`}<b>${BX.esc(s.name)}</b></span></span>`).join('')}</div>` : ''}</div>` : ''}
         <section class="profile-competition" id="competition" aria-label="Estatísticas de campeonatos"></section>
         <div class="profile-grid">
           <div style="display:flex;flex-direction:column;gap:16px">
