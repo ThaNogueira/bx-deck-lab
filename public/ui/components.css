@@ -1,5 +1,9 @@
 /* Compatibility components: retain existing DOM, event hooks and layout contracts. */
-body { background-color: var(--bg); background-image: linear-gradient(#10110f99, #10110f99), url('/assets/site-circuits.png'); background-size: auto, 1200px auto; background-position: center top; background-repeat: repeat; background-attachment: scroll; color: var(--text); font-size: 15px; line-height: 1.55; }
+body { isolation: isolate; background-color: var(--bg); background-image: none; color: var(--text); font-size: 15px; line-height: 1.55; }
+/* Blur only the decorative layer; the page and fixed navigation stay sharp. */
+body::before { content: ''; position: fixed; inset: -4px; z-index: -1; pointer-events: none; background-image: linear-gradient(#10110f99, #10110f99), url('/assets/site-circuits.png'); background-size: auto, 1200px auto; background-position: center top; background-repeat: repeat; filter: blur(1.3px); }
+body.mesa::before { display: none; }
+@media print { body::before { display: none; } }
 .noise { display: none; }
 ::selection { background: var(--accent); color: var(--accent-ink); }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
