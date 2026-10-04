@@ -776,6 +776,7 @@
       </nav>
       <div class="side-foot">
         <a class="side-item" data-key="rules" href="/#rules"><i>${icon('rules')}</i><span>Regras WBO</span></a>
+        <a class="side-item" data-key="elos" href="/elos"><i>${icon('rules')}</i><span>Elos da arena</span></a>
         <button class="side-item side-collapse" id="navCollapseBtn" title="Recolher menu"><i>${icon('collapse')}</i><span>Recolher</span></button>
       </div>
       <div class="side-backdrop" id="sideBackdrop"></div>`;
@@ -946,10 +947,16 @@
     return m ? `https://www.youtube.com/embed/${m[1]}` : null;
   };
 
+  function rankBadge(rating) {
+    if (!rating) return '';
+    const tier = rating.tier;
+    return `<span class="bx-rank-badge" style="--rank-color:${esc(tier?.color || '#aab5a0')}" title="${rating.provisional ? 'Complete 5 partidas em 2 torneios válidos para definir seu elo' : `${rating.points} pontos Elo`}">${tier ? `<img src="${esc(tier.icon)}" alt="" width="26" height="26">` : '<span class="bx-rank-unrated" aria-hidden="true">◇</span>'}<span>${esc(tier?.name || 'Em avaliação')}</span></span>`;
+  }
+
   window.BX = {
     api, me, site, esc, norm, toast, money, dateFmt, icon, ic, stickerIcon, ICON_NAMES, ICON_GROUPS, EMOJIS,
     partsIndex, partTagReady, partTag, comboTags, partThumb, KIND_PT, radar, beyVisual, beyMini, deckPreview, deckText, copyDeckText, colorDialog, itemDialog, confirmDialog, promptDialog, pickColor, collectionProgress, progressBarHtml, KIND_SORT,
-    avatarHtml, renderTopbar, renderShell, mountUserWidget, userChipHtml, setActiveNav,
+    avatarHtml, renderTopbar, renderShell, mountUserWidget, userChipHtml, setActiveNav, rankBadge,
     report, requireLogin, qs, pathPart, ytEmbed,
   };
 })();

@@ -4,6 +4,11 @@ import assert from 'node:assert/strict';
 // Migration-stage guard: only add the new stylesheet to existing entry points.
 let count = 0;
 for (const file of readdirSync('public').filter(name => name.endsWith('.html'))) {
+  if (['elos.html','ranking.html'].includes(file)) {
+    const html = readFileSync(`public/${file}`, 'utf8');
+    for (const hook of ['id="topbar"', '/js/shared.js', ...(file === 'elos.html' ? ['id="eloTiers"','id="eloGap"','/js/elos.js'] : ['id="rankingOrder"','id="rankingSearch"','id="rankingTable"','BX.rankBadge'])]) assert(html.includes(hook), `Missing ranking hook: ${hook}`);
+    continue;
+  }
   if (file === 'u.html') {
     const html = readFileSync(`public/${file}`, 'utf8');
     for (const hook of ['id="topbar"', 'id="app"', 'id="competition"', '/js/shared.js', '/js/profile-competition.js', '/ui/profile-competition.css', 'BX.renderCompetition', 'BX.avatarHtml', 'pcolGrid', 'reportBtn']) assert(html.includes(hook), `Missing public-profile hook: ${hook}`);

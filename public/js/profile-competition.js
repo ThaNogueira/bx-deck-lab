@@ -10,6 +10,8 @@ BX.renderCompetition = function (root, data) {
     return;
   }
   const s = data.summary;
+  const r = data.rating;
+  const rankPanel = r ? `<section class="bx-rank-panel" style="--rank-color:${e(r.tier?.color || '#c2f970')}"><div class="bx-rank-overview">${r.tier ? `<img class="bx-rank-emblem" src="${e(r.tier.icon)}" alt="">` : '<span class="bx-rank-emblem unrated" aria-hidden="true">◇</span>'}<div class="bx-rank-copy"><small>ELO COMPETITIVO</small><h3>${e(r.tier?.name || 'Em avaliação')}</h3><div class="bx-rank-progress" role="progressbar" aria-label="Progresso do elo" aria-valuenow="${r.progress}" aria-valuemin="0" aria-valuemax="100"><i style="width:${r.progress}%"></i></div><p>${r.provisional ? `${r.matches} partidas · ${r.events} torneios` : r.next ? `${r.pointsToNext} pontos para ${e(r.next.name)}` : 'No topo da arena'} · <a href="/elos">Conheça os elos ↗</a></p></div><div class="bx-rank-points"><b>${r.points}</b><small>pontos${r.provisional ? ' provisórios' : ''}</small>${r.lastChange != null ? `<span class="bx-rank-change ${r.lastChange < 0 ? 'negative' : ''}" title="Variação no último torneio">${r.lastChange > 0 ? '+' : ''}${r.lastChange} no último</span>` : ''}</div></div></section>` : '';
   const pct = n => n == null ? '—' : `${n.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`;
   const date = d => BX.dateFmt(d, { day: '2-digit', month: '2-digit' });
   const outcome = { W: 'Vitória', L: 'Derrota', D: 'Empate' };
@@ -21,6 +23,7 @@ BX.renderCompetition = function (root, data) {
   ];
   root.innerHTML = `
     <div class="pc-heading"><h2>Na arena</h2><span>Histórico competitivo</span></div>
+    ${rankPanel}
     <div class="pc-summary-panel">
       <section class="pc-score"><div class="pc-scope" role="group" aria-label="Período da taxa de vitória"><button type="button" data-scope="all" aria-pressed="true">Geral</button><button type="button" data-scope="recent" aria-pressed="false">Últimas ${data.recent.length || 10}</button></div><div class="pc-score-body" data-score aria-live="polite"></div></section>
       <div class="pc-metrics">${metrics.map(([value,label,hint]) => `<div class="pc-metric"><strong>${value}</strong><span>${label}</span><small>${hint}</small></div>`).join('')}</div>

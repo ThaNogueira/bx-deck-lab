@@ -113,6 +113,7 @@
           <div class="profile-id">
             <h1>${BX.esc(user.name)} ${user.role !== 'USER' ? `<span class="role-chip ${user.role}">${user.role}</span>` : ''}</h1>
             <p>@${BX.esc(user.slug)}${user.bio ? ` — ${BX.esc(user.bio)}` : ''}</p>
+            ${BX.rankBadge(tourRes?.rating)}
             ${medalTags ? `<div class="profile-podium-tags">${medalTags}</div>` : ''}
             ${stickers.length ? `<div class="sticker-row" style="margin-top:8px">${stickers.map((s) => `<span class="sticker" title="${BX.esc(s.name)}">${s.imageUrl ? `<img src="${BX.esc(s.imageUrl)}">` : BX.esc(s.styleKey || '') || BX.icon('star', 14)}</span>`).join('')}</div>` : ''}
           </div>

@@ -2,6 +2,7 @@
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { RANK_TIERS, RATING_RULES } from '../server/rating.js';
 const root = path.resolve('public');
 const types = { '.html':'text/html', '.css':'text/css', '.js':'text/javascript', '.svg':'image/svg+xml', '.png':'image/png', '.webp':'image/webp', '.json':'application/json' };
 const pages = { u:'u', deck:'deck', peca:'peca', produto:'produto', torneio:'torneio', t:'inscricao', mesa:'mesa' };
@@ -9,6 +10,7 @@ http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://localhost');
     if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405); return res.end('Read-only preview'); }
+    if (url.pathname === '/api/ranking/rules') { res.writeHead(200, {'Content-Type':'application/json'}); return res.end(JSON.stringify({tiers:RANK_TIERS,rules:RATING_RULES})); }
     if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/uploads/')) {
       const upstream = await fetch('https://beyxlab.com.br' + url.pathname + url.search);
       res.writeHead(upstream.status, { 'Content-Type':upstream.headers.get('content-type') || 'application/octet-stream', 'Cache-Control':'no-store' });

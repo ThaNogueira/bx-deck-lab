@@ -6,6 +6,8 @@ import { partDto } from './catalog.js';
 import { getMetaState } from '../meta.js';
 import { standingsOf, loadTournament } from './tournaments.js';
 import { HOME_TAGS, listPosts } from './community.js';
+import { getCompetitiveLadder } from '../competitive-ladder.js';
+import { ratingDto, RANK_TIERS, RATING_RULES } from '../rating.js';
 
 /**
  * Home híbrida: Estado do Meta + destaques da semana + feed curado (posts competitivos,
@@ -29,7 +31,7 @@ export const bustHomeCache = () => cache.clear();
 async function buildPlayerRanking({ limit = null } = {}) {
   const finished = await prisma.tournament.findMany({
     where: { status: 'FINISHED', visibility: { in: ['PUBLIC', 'LINK_ONLY'] }, OR: [{ description: null }, { NOT: { description: { startsWith: '[ADMIN TEST]' } } }] },
-    select: { slug: true }, orderBy: { startsAt: 'desc' }, take: 150,
+    select: { slug: true }, orderBy: { startsAt: 'desc' },
   });
   const players = new Map();
   let matches = 0;
@@ -102,11 +104,15 @@ async function buildPlayerRanking({ limit = null } = {}) {
   const ranking = [...players.values()]
     .sort((a, b) => b.points - a.points || b.gold - a.gold || b.wins - a.wins || a.user.name.localeCompare(b.user.name))
     .map(({ beyMap, ...row }) => ({ ...row, favoriteBeys: favoriteBeys(beyMap) }));
+  const ladder = await getCompetitiveLadder();
+  for (const row of ranking) row.rating = ladder.byUser.get(row.user.id) || ratingDto();
+  ranking.sort((a,b) => Number(a.rating.provisional) - Number(b.rating.provisional) || b.rating.points - a.rating.points || b.points - a.points || a.user.name.localeCompare(b.user.name));
   const publishedRanking = limit ? ranking.slice(0, limit) : ranking;
   const partIds = [...new Set(publishedRanking.flatMap((player) => player.favoriteBeys.flatMap((bey) => bey.ids)))];
   const parts = partIds.map((id) => partById.get(id)).filter(Boolean);
   return {
     ranking: publishedRanking,
+    rankTiers: ladder.tiers, ratingRules: ladder.rules,
     parts: Object.fromEntries(parts.map((p) => [p.id, partDto(p)])),
     totals: { tournaments: finished.length, players: players.size, matches },
   };
@@ -205,6 +211,7 @@ router.get('/api/home/side', ah(async (_req, res) => {
   res.json(data);
 }));
 
+router.get('/api/ranking/rules', (_req, res) => res.json({ tiers: RANK_TIERS, rules: RATING_RULES }));
 router.get('/api/ranking', ah(async (_req, res) => {
   res.json(await cached('ranking', 120_000, () => buildPlayerRanking()));
 }));

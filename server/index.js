@@ -126,6 +126,7 @@ const PAGES = {
   '/produtos': 'produtos.html',
   '/torneios': 'torneios.html',
   '/ranking': 'ranking.html',
+  '/elos': 'elos.html',
   '/torneios/novo': 'novo-torneio.html',
   '/comunidade': 'comunidade.html',
   '/comunidade/novo': 'comunidade.html',

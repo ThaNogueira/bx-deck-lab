@@ -531,9 +531,9 @@ select { height: 42px; padding: 0 10px; width: 100%; }
 /* Página de perfil (item 3/9) */
 .profile-banner{position:relative;height:210px;border-radius:var(--radius);overflow:hidden;border:1px solid var(--line);background:linear-gradient(120deg,#171b26,#0e1016 60%),radial-gradient(circle at 80% 20%,rgba(255,53,93,.25),transparent 50%)}
 .profile-banner img,.profile-banner video{width:100%;height:100%;object-fit:cover}
-.profile-head{display:flex;gap:20px;align-items:flex-end;margin:-46px 0 20px;padding:0 26px;position:relative;z-index:2}
+.profile-head{display:flex;gap:20px;align-items:center;margin:18px 0 20px;padding:0 10px;position:relative;z-index:2;min-width:0}
 .profile-head .avatar{border-width:3px;background:#171a22}
-.profile-id h1{margin:0;font:800 34px var(--display);text-transform:uppercase;display:flex;align-items:center;gap:10px}
+.profile-id{min-width:0;flex:1}.profile-id h1{margin:0;font:800 34px var(--display);text-transform:uppercase;display:flex;align-items:center;gap:10px;flex-wrap:wrap;overflow-wrap:anywhere}
 .profile-id p{margin:3px 0 0;color:var(--muted);font-size:12px;max-width:640px}
 .profile-head-actions{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
 .role-chip{font:800 10px var(--display);text-transform:uppercase;letter-spacing:.06em;border:1px solid #3a414d;border-radius:999px;padding:4px 8px;color:#9aa2b0}

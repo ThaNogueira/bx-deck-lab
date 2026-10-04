@@ -64,6 +64,11 @@ try {
   assert.equal((await fetch(base+'/api/users/missing/tournaments')).status,404);
   await prisma.user.update({where:{id:rival.id},data:{status:'BANNED'}});
   assert.equal((await fetch(base+'/api/users/oponente-teste/tournaments')).status,404);
+  assert.equal(stats.rating.provisional,true);
+  assert.equal(stats.rating.matches,0); // Two-player fixtures do not qualify for Elo.
+  assert.equal(empty.rating.points,1000);
+  assert.equal(stats.rankTiers.length,8);
+  if (!process.argv.includes('--api-only')) {
   browser=await chromium.launch({headless:true,channel:'msedge'});
   mkdirSync('artifacts/profile-competition',{recursive:true});
   for(const width of [1440,390,360]) {
@@ -100,7 +105,23 @@ try {
     await page.screenshot({path:`artifacts/profile-competition/empty-${width}.png`,fullPage:true});
     await page.close();
   }
-  console.log('PASS: API, privacy, empty profiles, responsive 1440/390/360, compact chart and selection, background-only blur, no browser errors.');
+  }
+  const opponents = [];
+  for (let i=0;i<3;i++) opponents.push(await prisma.user.create({data:{name:`Elo ${i}`,slug:`elo-${i}`,email:`elo-${i}@profile.invalid`}}));
+  const eloEvents=[];
+  for (let i=0;i<2;i++) {
+    const t=await prisma.tournament.create({data:{name:'Elo fixture',slug:`elo-event-${i}`,startsAt:new Date(2026,9,i+1),organizerId:user.id,status:'FINISHED',visibility:'LINK_ONLY'}});
+    eloEvents.push(t);
+    const ps=[];
+    for(const u of [user,...opponents]) ps.push(await prisma.tournamentPlayer.create({data:{tournamentId:t.id,userId:u.id}}));
+    for(let round=1;round<=3;round++) for(let table=0;table<2;table++) await prisma.tMatch.create({data:{tournamentId:t.id,round,tableNo:table+1,p1Id:ps[table*2].id,p2Id:ps[table*2+1].id,winnerId:ps[table*2].id,status:'DONE'}});
+  }
+  const qualified=await fetch(base+'/api/users/blader-teste/tournaments').then(r=>r.json());
+  assert.equal(qualified.rating.provisional,false);assert.equal(qualified.rating.matches,6);assert.equal(qualified.rating.tier.id,'prata');
+  await prisma.tournament.update({where:{id:eloEvents[0].id},data:{visibility:'PRIVATE'}});
+  const unqualified=await fetch(base+'/api/users/blader-teste/tournaments').then(r=>r.json());
+  assert.equal(unqualified.rating.provisional,true);assert.equal(unqualified.rating.matches,3);
+  console.log('PASS: profile API, privacy, placements, qualified Elo and immediate recalculation.');
 } finally {
   await browser?.close();
   await new Promise(resolve=>server?server.close(resolve):resolve());

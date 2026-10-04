@@ -10,6 +10,8 @@ import { uploadPost, uploadedUrl } from '../uploads.js';
 import { scanUploads } from '../moderation.js';
 import { standingsOf, loadTournament } from './tournaments.js';
 import { competitionWhere, tournamentBeys, buildCompetitionStats } from '../competition-stats.js';
+import { getCompetitiveLadder } from '../competitive-ladder.js';
+import { ratingDto } from '../rating.js';
 import { partDto } from './catalog.js';
 import { UPLOADS_DIR } from '../uploads.js';
 import path from 'node:path';
@@ -569,7 +571,9 @@ router.get('/api/users/:slug/tournaments', ah(async (req, res) => {
   const parentIds = [...new Set(parts.map(p => p.parentId).filter(id => id && !ids.includes(id)))];
   if (parentIds.length) parts.push(...await prisma.part.findMany({ where: { id: { in: parentIds } } }));
   const stats = buildCompetitionStats(user.id, tournaments, parts);
-  res.json({ ...stats, titles: stats.summary.gold, parts: Object.fromEntries(parts.map(p => [p.id, partDto(p)])) });
+  const ladder = await getCompetitiveLadder();
+  res.json({ ...stats, rating: ladder.byUser.get(user.id) || ratingDto(), rankTiers: ladder.tiers, ratingRules: ladder.rules,
+    titles: stats.summary.gold, parts: Object.fromEntries(parts.map(p => [p.id, partDto(p)])) });
 }));
 
 // ---------------------------------------------------------------------------

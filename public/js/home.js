@@ -235,7 +235,7 @@
     try {
       const s = await BX.api('/api/home/side');
       tEl.innerHTML = s.upcoming.length ? s.upcoming.map((t) => `<a class="side-row" href="/torneio/${esc(t.slug)}"><span class="side-ic">${BX.icon(t.status === 'RUNNING' ? 'live' : 'calendar', 16)}</span><span><b>${esc(t.name)}</b><small>${BX.dateFmt(t.startsAt, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })} · ${t.format === 'POINTS4' ? 'partida única' : 'MD3'}${t.storeName ? ` · ${esc(t.storeName)}` : ''}</small></span><small>${t.players}</small></a>`).join('') + `<a class="side-more" href="/torneios">Todos os torneios ${BX.icon('chevron', 12)}</a>` : '<div class="empty-state">Nenhum torneio agendado. <a href="/torneios" style="color:var(--cyan)">Criar um</a></div>';
-      rEl.innerHTML = s.ranking.length ? s.ranking.map((r, i) => `<a class="side-row" href="/u/${esc(r.user.slug)}"><b class="side-rank ${i < 3 ? 'top' : ''}">${i + 1}</b>${BX.avatarHtml(r.user, { size: 28 })}<span><b>${esc(r.user.name)}</b><small>${r.titles} título(s) · ${r.wins} vitória(s) · ${r.events} evento(s)</small></span></a>`).join('') : '<div class="empty-state">O ranking aparece quando o primeiro torneio encerrar.</div>';
+      rEl.innerHTML = s.ranking.length ? s.ranking.map((r, i) => `<a class="side-row" href="/u/${esc(r.user.slug)}"><b class="side-rank ${i < 3 ? 'top' : ''}">${i + 1}</b>${BX.avatarHtml(r.user, { size: 28 })}<span><b>${esc(r.user.name)}</b>${BX.rankBadge(r.rating)}<small>${r.rating.points} Elo · ${r.titles} título(s) · ${r.wins} vitória(s) · ${r.events} evento(s)</small></span></a>`).join('') : '<div class="empty-state">O ranking aparece quando o primeiro torneio encerrar.</div>';
     } catch { tEl.innerHTML = ''; rEl.innerHTML = ''; }
   }
 
