@@ -531,11 +531,15 @@ select { height: 42px; padding: 0 10px; width: 100%; }
 /* Página de perfil (item 3/9) */
 .profile-banner{position:relative;height:210px;border-radius:var(--radius);overflow:hidden;border:1px solid var(--line);background:linear-gradient(120deg,#171b26,#0e1016 60%),radial-gradient(circle at 80% 20%,rgba(255,53,93,.25),transparent 50%)}
 .profile-banner img,.profile-banner video{width:100%;height:100%;object-fit:cover}
-.profile-head{display:flex;gap:20px;align-items:center;margin:18px 0 20px;padding:0 10px;position:relative;z-index:2;min-width:0}
+.profile-head{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;gap:20px;align-items:center;margin:18px 0 10px;padding:0 10px;position:relative;z-index:2;min-width:0}
 .profile-head .avatar{border-width:3px;background:#171a22}
-.profile-id{min-width:0;flex:1}.profile-id h1{margin:0;font:800 34px var(--display);text-transform:uppercase;display:flex;align-items:center;gap:10px;flex-wrap:wrap;overflow-wrap:anywhere}
+.profile-id{min-width:0}.profile-id h1{margin:0;font:800 34px var(--display);text-transform:uppercase;display:flex;align-items:center;gap:8px;flex-wrap:wrap;overflow-wrap:anywhere}
 .profile-id p{margin:3px 0 0;color:var(--muted);font-size:12px;max-width:640px}
-.profile-head-actions{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+.profile-head-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.profile-verified{width:17px;height:17px;display:inline-grid;place-items:center;border-radius:50%;background:var(--cyan);color:#06222a;vertical-align:middle;flex:none}.profile-verified svg{width:11px;height:11px}
+.profile-favorite{display:grid;grid-template-columns:106px;justify-items:center;gap:3px;min-width:106px;text-align:center;text-decoration:none;color:inherit;align-self:center}.profile-favorite>span{font:700 9px/1 Inter,sans-serif;letter-spacing:.1em;color:var(--muted);white-space:nowrap}.profile-favorite-art{width:84px;height:84px;display:grid;place-items:center}.profile-favorite-art .ptag-thumb{width:84px!important;height:84px!important;background:transparent;border:0;animation:favorite-bey-spin 10s linear infinite}.profile-favorite-art .ptag-thumb img{object-fit:contain;filter:contrast(1.08) saturate(1.1) drop-shadow(0 1px 2px rgba(235,255,236,.28))}.profile-favorite>b{font:700 11px/1.15 var(--display);text-transform:uppercase;color:var(--text);max-width:112px}.profile-favorite small{font:700 8px/1 Inter,sans-serif;letter-spacing:.08em;color:var(--muted);text-transform:uppercase}.profile-favorite:hover>b{color:var(--accent)}
+.profile-achievement-strip{display:flex;align-items:center;gap:14px;min-height:42px;margin:0 10px 16px;padding-top:8px;border-top:1px solid rgba(194,249,112,.13)}.profile-achievement-strip .profile-podium-tags{margin-top:0}.profile-achievement-strip .sticker-row{margin-left:auto;align-items:center}.profile-achievement-strip .sticker{width:29px;height:29px;border-radius:8px}.profile-extra-items{color:var(--accent);font-size:10px;text-decoration:none;white-space:nowrap}.profile-extra-items:hover{text-decoration:underline}
+@keyframes favorite-bey-spin{to{transform:rotate(360deg)}}
 .role-chip{font:800 10px var(--display);text-transform:uppercase;letter-spacing:.06em;border:1px solid #3a414d;border-radius:999px;padding:4px 8px;color:#9aa2b0}
 .role-chip.ADMIN{color:#ff8098;border-color:rgba(255,53,93,.4)}
 .role-chip.MOD{color:#80edff;border-color:rgba(80,231,255,.35)}
@@ -543,8 +547,6 @@ select { height: 42px; padding: 0 10px; width: 100%; }
 .sticker-row{display:flex;gap:6px;flex-wrap:wrap}
 .sticker{width:34px;height:34px;display:grid;place-items:center;font-size:19px;border:1px solid #2d333e;border-radius:10px;background:#141821}
 .sticker img{width:80%;height:80%;object-fit:contain}
-.fav-bey-card{display:flex;gap:16px;align-items:center}
-.fav-bey-card .part-art{width:92px;height:92px}
 .profile-grid{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(300px,.75fr);gap:16px;align-items:start;margin-top:22px}
 .card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
 .tournament-section{border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin:0 0 18px;background:#10131b}
@@ -671,11 +673,12 @@ a.list-card{text-decoration:none;color:inherit}
 .login-btn:hover{transform:translateY(-1px)}
 
 @media (max-width:1180px){.admin-layout{grid-template-columns:1fr}.admin-nav{position:static;flex-direction:row;flex-wrap:wrap}}
-@media (max-width:820px){.profile-grid,.home-grid{grid-template-columns:1fr}.part-hero{grid-template-columns:96px 1fr}.part-hero .part-art{width:92px;height:92px}.profile-head{flex-wrap:wrap}.page-toolbar{grid-template-columns:1fr}}
+@media (max-width:820px){.profile-grid,.home-grid{grid-template-columns:1fr}.part-hero{grid-template-columns:96px 1fr}.part-hero .part-art{width:92px;height:92px}.profile-head{grid-template-columns:auto minmax(0,1fr);gap:14px;padding:0 4px}.profile-head .avatar{grid-row:1}.profile-id{grid-column:2}.profile-favorite{grid-column:1/-1;grid-row:2;justify-self:start;grid-template-columns:106px;min-width:106px;margin:4px 0 0}.profile-favorite-art,.profile-favorite-art .ptag-thumb{width:72px!important;height:72px!important}.profile-head-actions{grid-column:1/-1;grid-row:3;width:100%;justify-content:flex-end}.profile-achievement-strip{margin:0 4px 14px;flex-wrap:wrap;gap:9px}.profile-achievement-strip .sticker-row{margin-left:0;width:100%;order:2}.page-toolbar{grid-template-columns:1fr}}
 
 /* Gestão de torneio no celular: decisões de resultado precisam ser fáceis de tocar. */
 @media (max-width:600px){
   .profile-grid{margin-top:14px}
+  .profile-id h1{font-size:27px}.profile-id p{font-size:11px}.profile-head .avatar{width:96px!important;height:96px!important}.profile-favorite{justify-self:center;grid-column:1/-1;text-align:center}.profile-favorite-art,.profile-favorite-art .ptag-thumb{width:68px!important;height:68px!important}.profile-achievement-strip{justify-content:flex-start}.profile-achievement-strip .profile-podium-tags{width:100%}.profile-achievement-strip .sticker-row{flex-wrap:nowrap;overflow:hidden}.profile-extra-items{margin-left:2px}
   .org-match-row{grid-template-columns:42px minmax(0,1fr);gap:9px;padding:12px}
   .org-match-row .row-actions{grid-column:1 / -1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:3px}
   .org-match-row .row-actions .btn{min-height:44px;padding:8px 7px;font-size:11px;line-height:1.15;justify-content:center;text-align:center}

@@ -63,6 +63,8 @@
             : `<img src="${BX.esc(user.bannerUrl)}" alt="">`)
         : '';
       const stickers = (user.cosmetics?.stickers || []);
+      const visibleStickers = stickers.slice(0, 4);
+      const extraStickers = Math.max(0, stickers.length - visibleStickers.length);
       const forSale = collection.filter((i) => i.forSale);
       const shelf = collection.filter((i) => !i.forSale);
 
@@ -110,18 +112,18 @@
       app.innerHTML = `
         <div class="profile-banner">${bannerInner}</div>
         <div class="profile-head">
-          ${BX.avatarHtml(user, { size: 92 })}
+          ${BX.avatarHtml(user, { size: 108, showVerified: false })}
           <div class="profile-id">
-            <h1>${BX.esc(user.name)} ${user.role !== 'USER' ? `<span class="role-chip ${user.role}">${user.role}</span>` : ''}</h1>
+            <h1>${BX.esc(user.name)}${user.verified ? `<span class="profile-verified" title="Identidade verificada" aria-label="Identidade verificada">${BX.icon('check', 11)}</span>` : ''} ${user.role !== 'USER' ? `<span class="role-chip ${user.role}">${user.role}</span>` : ''}</h1>
             <p>@${BX.esc(user.slug)}${user.bio ? ` — ${BX.esc(user.bio)}` : ''}</p>
             ${BX.rankBadge(tourRes?.rating)}
-            ${medalTags ? `<div class="profile-podium-tags">${medalTags}</div>` : ''}
-            ${stickers.length ? `<div class="sticker-row" style="margin-top:8px">${stickers.map((s) => `<span class="sticker" title="${BX.esc(s.name)}">${s.imageUrl ? `<img src="${BX.esc(s.imageUrl)}">` : BX.esc(s.styleKey || '') || BX.icon('star', 14)}</span>`).join('')}</div>` : ''}
           </div>
+          ${favoritePart ? `<a class="profile-favorite" href="/peca/${BX.esc(favoritePart.slug)}" title="Ver ${BX.esc(favoritePart.displayName)}"><span>BEY FAVORITA</span><div class="profile-favorite-art">${BX.partThumb({ ...favoritePart, img: favoritePart.imageUrl }, 84)}</div><b>${BX.esc(favoritePart.displayName)}</b>${favoritePart.type ? `<small>${BX.esc(favoritePart.type)}</small>` : ''}</a>` : ''}
           <div class="profile-head-actions">
             ${me && me.id === user.id ? '<a class="btn secondary" href="/perfil">Editar meu perfil</a>' : `<button class="btn ghost" id="reportBtn">${BX.icon('flag', 15)}Denunciar</button>`}
           </div>
         </div>
+        ${(medalTags || visibleStickers.length) ? `<div class="profile-achievement-strip"><div class="profile-podium-tags">${medalTags}</div>${visibleStickers.length ? `<div class="sticker-row">${visibleStickers.map((s) => `<span class="sticker" title="${BX.esc(s.name)}">${s.imageUrl ? `<img src="${BX.esc(s.imageUrl)}">` : BX.esc(s.styleKey || '') || BX.icon('star', 14)}</span>`).join('')}${extraStickers ? `<a class="profile-extra-items" href="#colecao">+ ${extraStickers} na coleção</a>` : ''}</div>` : ''}</div>` : ''}
         <section class="profile-competition" id="competition" aria-label="Estatísticas de campeonatos"></section>
         <div class="profile-grid">
           <div style="display:flex;flex-direction:column;gap:16px">
@@ -144,7 +146,7 @@
                     </div>` : ''}
                   </div>`).join('')}</div>
               </div>` : ''}
-            <div class="panel-card">
+            <div class="panel-card" id="colecao">
               <div class="section-title-row" style="margin-bottom:8px">
                 <div><p class="eyebrow">COLEÇÃO</p><h2>Peças da coleção</h2></div>
                 <small>${shelf.reduce((n, i) => n + i.qty, 0)} unidade(s) • ${collection.length} item(ns)</small>
@@ -156,17 +158,6 @@
             </div>
           </div>
           <div style="display:flex;flex-direction:column;gap:16px">
-            ${favoritePart ? `
-              <div class="panel-card">
-                <p class="eyebrow">BEY FAVORITA</p>
-                <div class="fav-bey-card" style="margin-top:10px">
-                  ${BX.partThumb({ ...favoritePart, img: favoritePart.imageUrl }, 92)}
-                  <div>
-                    <strong style="font:800 22px var(--display);text-transform:uppercase"><a href="/peca/${favoritePart.slug}" style="text-decoration:none;color:inherit">${BX.esc(favoritePart.displayName)}</a></strong>
-                    ${favoritePart.type ? `<div style="margin-top:5px"><span class="badge ${favoritePart.type.toLowerCase()}">${favoritePart.type}</span></div>` : ''}
-                  </div>
-                </div>
-              </div>` : ''}
             <div class="panel-card">
               <p class="eyebrow">DECKS PUBLICADOS</p>
               <div style="margin-top:10px">

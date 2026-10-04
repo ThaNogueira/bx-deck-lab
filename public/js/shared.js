@@ -139,7 +139,7 @@
   // Avatar com moldura + stickers (item 3)
   // -------------------------------------------------------------------------
 
-  function avatarHtml(user, { size = 40, frame } = {}) {
+  function avatarHtml(user, { size = 40, frame, showVerified = true } = {}) {
     const frameObj = frame === undefined ? user?.cosmetics?.frame ?? null : frame;
     const tier = !frameObj && (!user?.frameId || frame === null) && !user?.rating?.provisional ? user?.rating?.tier : null;
     const rankFrame = tier && ['ferro','bronze','prata','ouro','platina','diamante','mestre','lenda'].includes(tier.id)
@@ -149,7 +149,7 @@
     const inner = user?.avatarUrl
       ? `<span class="avatar-photo"><img src="${esc(user.avatarUrl)}" alt="" loading="lazy" decoding="async" width="${size}" height="${size}"></span>`
       : `<span class="avatar-photo"><img class="avatar-default" src="/assets/profiles/default-blader.png" alt="" loading="lazy" decoding="async" width="${size}" height="${size}"></span>`;
-    const badge = user?.verified ? `<i class="verified-badge" title="Verificado">${icon('check', 9)}</i>` : '';
+    const badge = user?.verified && showVerified ? `<i class="verified-badge" title="Verificado">${icon('check', 9)}</i>` : '';
     return `<span class="avatar${cls}${rankFrame ? ' has-elo-frame' : ''}" style="width:${size}px;height:${size}px"${rankFrame ? ` title="Moldura ${esc(tier.name)}"` : ''}>${inner}${frameImg}${rankFrame}${badge}</span>`;
   }
 
