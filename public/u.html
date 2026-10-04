@@ -40,6 +40,7 @@
         BX.api(`/api/users/${encodeURIComponent(slug)}/tournaments`).catch(() => null),
       ]);
       const userPosts = postsRes.posts || [];
+      user.rating = tourRes?.rating;
       const userTours = tourRes?.tournaments || [];
       const medals = [1, 2, 3].map((place) => userTours.filter((t) => t.status === 'FINISHED' && t.placement === place).length);
       const medalTags = medals.map((count, index) => count ? `<span class="profile-podium-tag p${index + 1}"><img src="/assets/achievements/trophy-neon-gold.png" alt="" /><b>${count}</b><span>${index === 0 ? 'ouro' : index === 1 ? 'prata' : 'bronze'}</span></span>` : '').join('');

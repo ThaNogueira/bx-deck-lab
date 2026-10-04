@@ -30,18 +30,20 @@
       let cosmetics = { cosmetics: [] };
       let collection = { items: [] };
       let profile = null;
+      let competition = null;
       async function reload() {
-        [cosmetics, collection, profile] = await Promise.all([
+        [cosmetics, collection, profile, competition] = await Promise.all([
           BX.api('/api/cosmetics'),
           BX.api('/api/me/collection'),
           BX.api(`/api/users/${encodeURIComponent(me.slug)}`).catch(() => null),
+          BX.api(`/api/users/${encodeURIComponent(me.slug)}/tournaments`).catch(() => null),
         ]);
       }
       await reload();
 
       const frames = () => cosmetics.cosmetics.filter((c) => c.kind === 'FRAME');
       const stickers = () => cosmetics.cosmetics.filter((c) => c.kind === 'STICKER');
-      let current = { ...me };
+      let current = { ...me, rating: competition?.rating };
       // só pré-seleciona o que ainda está disponível (admin pode ter desativado/excluído)
       const availableIds = new Set(cosmetics.cosmetics.map((c) => c.id));
       let selStickers = [...(me.stickers || [])].filter((id) => availableIds.has(id));
@@ -93,13 +95,14 @@
                   <label>Moldura do avatar</label>
                   <div class="choice-row">
                     <div class="choice-item ${!current.frameId ? 'selected' : ''}" data-frame="">
-                      ${BX.avatarHtml(current, { size: 44, frame: null })}<small>Nenhuma</small>
+                      ${BX.avatarHtml(current, { size: 44, frame: null })}<small>Automática · elo</small>
                     </div>
                     ${frames().map((f) => `
                       <div class="choice-item ${current.frameId === f.id ? 'selected' : ''}" data-frame="${f.id}">
                         ${BX.avatarHtml(current, { size: 44, frame: f })}<small>${BX.esc(f.name)}</small>
                       </div>`).join('')}
                   </div>
+                  <small class="elo-frame-hint">Sem moldura escolhida, usamos a do seu elo. Ela acompanha sua evolução; jogadores em avaliação ficam sem moldura de elo.</small>
                 </div>
                 <div>
                   <label>Stickers do perfil (até 8)</label>
