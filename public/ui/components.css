@@ -1,5 +1,5 @@
 /* Compatibility components: retain existing DOM, event hooks and layout contracts. */
-body { background: var(--bg); color: var(--text); font-size: 15px; line-height: 1.55; }
+body { background-color: var(--bg); background-image: linear-gradient(#10110f99, #10110f99), url('/assets/site-circuits.png'); background-size: auto, 1200px auto; background-position: center top; background-repeat: repeat; background-attachment: scroll; color: var(--text); font-size: 15px; line-height: 1.55; }
 .noise { display: none; }
 ::selection { background: var(--accent); color: var(--accent-ink); }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }

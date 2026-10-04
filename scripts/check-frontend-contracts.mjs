@@ -4,6 +4,11 @@ import assert from 'node:assert/strict';
 // Migration-stage guard: only add the new stylesheet to existing entry points.
 let count = 0;
 for (const file of readdirSync('public').filter(name => name.endsWith('.html'))) {
+  if (file === 'u.html') {
+    const html = readFileSync(`public/${file}`, 'utf8');
+    for (const hook of ['id="topbar"', 'id="app"', 'id="competition"', '/js/shared.js', '/js/profile-competition.js', '/ui/profile-competition.css', 'BX.renderCompetition', 'BX.avatarHtml', 'pcolGrid', 'reportBtn']) assert(html.includes(hook), `Missing public-profile hook: ${hook}`);
+    continue; // API, pagination, empty state and responsive layout covered by competition-profile.integration.mjs.
+  }
   if (['icones.html','entrar.html','index.html'].includes(file)) {
     const html=readFileSync(`public/${file}`,'utf8');
     assert(html.includes('id="topbar"') && html.includes(file==='index.html'?'id="view-builder"':'id="app"'));

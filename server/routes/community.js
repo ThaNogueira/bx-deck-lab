@@ -9,6 +9,7 @@ import { siteUrl } from '../util.js';
 import { uploadPost, uploadedUrl } from '../uploads.js';
 import { scanUploads } from '../moderation.js';
 import { standingsOf, loadTournament } from './tournaments.js';
+import { competitionWhere, tournamentBeys, buildCompetitionStats } from '../competition-stats.js';
 import { partDto } from './catalog.js';
 import { UPLOADS_DIR } from '../uploads.js';
 import path from 'node:path';
@@ -554,25 +555,21 @@ router.get('/api/users/:slug/posts', ah(async (req, res) => {
 
 router.get('/api/users/:slug/tournaments', ah(async (req, res) => {
   const user = await prisma.user.findUnique({ where: { slug: req.params.slug } });
-  if (!user) return res.status(404).json({ error: 'Perfil não encontrado.' });
-  const entries = await prisma.tournamentPlayer.findMany({ where: { userId: user.id }, include: { tournament: true }, orderBy: { joinedAt: 'desc' }, take: 40 });
-  const out = [];
-  for (const e of entries) {
-    const t = e.tournament;
-    if (t.status === 'CANCELED') continue;
-    if (t.visibility === 'PRIVATE') continue;
-    let placement = null;
-    let wins = null;
-    let champion = false;
-    if (t.status !== 'OPEN') {
-      const full = await loadTournament(t.slug);
-      const standings = standingsOf(full);
-      const idx = standings.findIndex((s) => s.player.id === e.id);
-      if (idx >= 0) { placement = idx + 1; wins = standings[idx].wins; champion = t.status === 'FINISHED' && idx === 0; }
-    }
-    out.push({ slug: t.slug, name: t.name, storeName: t.storeName, startsAt: t.startsAt, status: t.status, format: t.format, players: undefined, placement, wins, champion, dropped: e.dropped });
+  if (!user || user.status === 'BANNED') return res.status(404).json({ error: 'Perfil não encontrado.' });
+  const tournaments = await prisma.tournament.findMany({
+    where: { ...competitionWhere, players: { some: { userId: user.id } } },
+    include: { players: { include: { user: { select: { id: true, name: true } }, deck: { select: { beysJson: true } } } }, matches: true },
+    orderBy: [{ startsAt: 'asc' }, { id: 'asc' }],
+  });
+  for (const t of tournaments) {
+    if (t.status !== 'OPEN') t.placement = standingsOf(t).findIndex(s => s.player.user.id === user.id) + 1;
   }
-  res.json({ tournaments: out, titles: out.filter((t) => t.champion).length });
+  const ids = [...new Set(tournaments.filter(t => t.status === 'FINISHED').flatMap(t => tournamentBeys(t.players.find(p => p.userId === user.id)).flat()))];
+  const parts = ids.length ? await prisma.part.findMany({ where: { id: { in: ids } } }) : [];
+  const parentIds = [...new Set(parts.map(p => p.parentId).filter(id => id && !ids.includes(id)))];
+  if (parentIds.length) parts.push(...await prisma.part.findMany({ where: { id: { in: parentIds } } }));
+  const stats = buildCompetitionStats(user.id, tournaments, parts);
+  res.json({ ...stats, titles: stats.summary.gold, parts: Object.fromEntries(parts.map(p => [p.id, partDto(p)])) });
 }));
 
 // ---------------------------------------------------------------------------

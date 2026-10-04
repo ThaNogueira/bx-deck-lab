@@ -13,12 +13,14 @@
   <title>Perfil — BX Deck Lab</title>
   <link rel="stylesheet" href="/styles.css" />
   <link rel="stylesheet" href="/design-system.css" />
+  <link rel="stylesheet" href="/ui/profile-competition.css" />
 </head>
 <body>
   <div class="noise"></div>
   <header id="topbar"></header>
   <main id="app"><div class="empty-state">Carregando perfil…</div></main>
   <script src="/js/shared.js"></script>
+  <script src="/js/profile-competition.js"></script>
   <script>
     (async () => {
       BX.renderTopbar(null);
@@ -35,19 +37,12 @@
       const { user, favoritePart, collection, combos, decks } = data;
       const [postsRes, tourRes] = await Promise.all([
         BX.api(`/api/users/${encodeURIComponent(slug)}/posts`).catch(() => ({ posts: [] })),
-        BX.api(`/api/users/${encodeURIComponent(slug)}/tournaments`).catch(() => ({ tournaments: [], titles: 0 })),
+        BX.api(`/api/users/${encodeURIComponent(slug)}/tournaments`).catch(() => null),
       ]);
       const userPosts = postsRes.posts || [];
-      const userTours = tourRes.tournaments || [];
-      const titles = tourRes.titles || 0;
+      const userTours = tourRes?.tournaments || [];
       const medals = [1, 2, 3].map((place) => userTours.filter((t) => t.status === 'FINISHED' && t.placement === place).length);
       const medalTags = medals.map((count, index) => count ? `<span class="profile-podium-tag p${index + 1}"><img src="/assets/achievements/trophy-neon-gold.png" alt="" /><b>${count}</b><span>${index === 0 ? 'ouro' : index === 1 ? 'prata' : 'bronze'}</span></span>` : '').join('');
-      const T_STATUS = { OPEN: 'Inscrições', RUNNING: 'Em andamento', FINISHED: 'Encerrado' };
-      const tourRow = (t) => `<a class="t-row ${t.champion ? 'champ' : ''}" href="/torneio/${BX.esc(t.slug)}">
-        <span class="t-ic">${BX.icon(t.champion ? 'trophy' : t.status === 'RUNNING' ? 'live' : t.status === 'OPEN' ? 'calendar' : 'medal', 18)}</span>
-        <span><b>${BX.esc(t.name)}</b><small>${BX.esc(t.storeName || '')}${t.storeName ? ' • ' : ''}${BX.dateFmt(t.startsAt, { day: '2-digit', month: 'short', year: 'numeric' })} • ${T_STATUS[t.status] || t.status}${t.dropped ? ' • desistiu' : ''}</small></span>
-        <small>${t.champion ? 'Campeão' : t.placement ? `${t.placement}º${t.wins != null ? ` • ${t.wins} V` : ''}` : ''}</small>
-      </a>`;
       document.title = `${user.name} — BX Deck Lab`;
       const me = await BX.me().catch(() => null);
       const idx = await BX.partTagReady();
@@ -125,6 +120,7 @@
             ${me && me.id === user.id ? '<a class="btn secondary" href="/perfil">Editar meu perfil</a>' : `<button class="btn ghost" id="reportBtn">${BX.icon('flag', 15)}Denunciar</button>`}
           </div>
         </div>
+        <section class="profile-competition" id="competition" aria-label="Estatísticas de campeonatos"></section>
         <div class="profile-grid">
           <div style="display:flex;flex-direction:column;gap:16px">
             ${forSale.length ? `
@@ -178,10 +174,6 @@
               </div>
             </div>
             <div class="panel-card">
-              <div class="section-title-row" style="margin-bottom:8px"><div><p class="eyebrow">TORNEIOS</p><h2 style="font-size:22px">Participações</h2></div>${titles ? `<span class="title-count">${BX.icon('trophy', 14)} ${titles} título${titles === 1 ? '' : 's'}</span>` : ''}</div>
-              <div style="display:grid;gap:6px">${userTours.length ? userTours.slice(0, 12).map(tourRow).join('') : '<div class="empty-state">Ainda não participou de torneios.</div>'}</div>
-            </div>
-            <div class="panel-card">
               <div class="section-title-row" style="margin-bottom:8px"><div><p class="eyebrow">COMUNIDADE</p><h2 style="font-size:22px">Posts</h2></div></div>
               <div class="profile-posts">${userPosts.length ? userPosts.slice(0, 10).map((p) => `<a class="mini-post" href="/comunidade/p/${p.id}"><span><b>${BX.esc(p.title)}</b><small>${BX.esc(p.tagLabel)} • ${BX.dateFmt(p.createdAt, { day: '2-digit', month: 'short' })}</small></span><small>${BX.icon('comment', 12)} ${p.commentCount} · ${BX.icon('fire', 12)} ${p.reactions?.total ?? 0}</small></a>`).join('') : '<div class="empty-state">Nenhum post ainda.</div>'}</div>
             </div>
@@ -192,6 +184,7 @@
           </div>
         </div>`;
 
+      BX.renderCompetition(document.getElementById('competition'), tourRes);
       document.getElementById('reportBtn')?.addEventListener('click', () => BX.report('USER', user.id, 'este perfil'));
     })();
   </script>
