@@ -63,8 +63,6 @@
             : `<img src="${BX.esc(user.bannerUrl)}" alt="">`)
         : '';
       const stickers = (user.cosmetics?.stickers || []);
-      const visibleStickers = stickers.slice(0, 4);
-      const extraStickers = Math.max(0, stickers.length - visibleStickers.length);
       const forSale = collection.filter((i) => i.forSale);
       const shelf = collection.filter((i) => !i.forSale);
 
@@ -110,7 +108,7 @@
         </div>`;
 
       app.innerHTML = `
-        <div class="profile-banner">${bannerInner}</div>
+        ${bannerInner ? `<div class="profile-banner">${bannerInner}</div>` : ''}
         <div class="profile-head">
           ${BX.avatarHtml(user, { size: 108, showVerified: false })}
           <div class="profile-id">
@@ -118,12 +116,12 @@
             <p>@${BX.esc(user.slug)}${user.bio ? ` — ${BX.esc(user.bio)}` : ''}</p>
             ${BX.rankBadge(tourRes?.rating)}
           </div>
-          ${favoritePart ? `<a class="profile-favorite" href="/peca/${BX.esc(favoritePart.slug)}" title="Ver ${BX.esc(favoritePart.displayName)}"><span>BEY FAVORITA</span><div class="profile-favorite-art">${BX.partThumb({ ...favoritePart, img: favoritePart.imageUrl }, 84)}</div><b>${BX.esc(favoritePart.displayName)}</b>${favoritePart.type ? `<small>${BX.esc(favoritePart.type)}</small>` : ''}</a>` : ''}
+          ${favoritePart ? `<a class="profile-favorite" href="/peca/${BX.esc(favoritePart.slug)}" title="Ver ${BX.esc(favoritePart.displayName)}"><span>BEY FAVORITA</span><div class="profile-favorite-art"><img class="profile-favorite-image" src="${BX.esc(favoritePart.imageUrl)}" alt="${BX.esc(favoritePart.displayName)}" loading="eager" decoding="async"></div><b>${BX.esc(favoritePart.displayName)}</b>${favoritePart.type ? `<small>${BX.esc(favoritePart.type)}</small>` : ''}</a>` : ''}
           <div class="profile-head-actions">
             ${me && me.id === user.id ? '<a class="btn secondary" href="/perfil">Editar meu perfil</a>' : `<button class="btn ghost" id="reportBtn">${BX.icon('flag', 15)}Denunciar</button>`}
           </div>
         </div>
-        ${(medalTags || visibleStickers.length) ? `<div class="profile-achievement-strip"><div class="profile-podium-tags">${medalTags}</div>${visibleStickers.length ? `<div class="sticker-row">${visibleStickers.map((s) => `<span class="sticker" title="${BX.esc(s.name)}">${s.imageUrl ? `<img src="${BX.esc(s.imageUrl)}">` : BX.esc(s.styleKey || '') || BX.icon('star', 14)}</span>`).join('')}${extraStickers ? `<a class="profile-extra-items" href="#colecao">+ ${extraStickers} na coleção</a>` : ''}</div>` : ''}</div>` : ''}
+        ${(medalTags || stickers.length) ? `<div class="profile-achievement-strip"><div class="profile-podium-tags">${medalTags}</div>${stickers.length ? `<div class="sticker-row">${stickers.map((s) => `<span class="sticker" title="${BX.esc(s.name)}">${s.imageUrl ? `<img src="${BX.esc(s.imageUrl)}">` : BX.esc(s.styleKey || '') || BX.icon('star', 14)}</span>`).join('')}</div>` : ''}</div>` : ''}
         <section class="profile-competition" id="competition" aria-label="Estatísticas de campeonatos"></section>
         <div class="profile-grid">
           <div style="display:flex;flex-direction:column;gap:16px">
