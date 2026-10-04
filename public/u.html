@@ -47,7 +47,7 @@
         if (!tours.length) return '';
         const placeLabel = index === 0 ? 'ouro' : index === 1 ? 'prata' : 'bronze';
         const tournaments = tours.map((t) => `<span class="profile-podium-event"><b>${BX.esc(t.name)}</b><small>${BX.dateFmt(t.startsAt, { day: '2-digit', month: 'short', year: 'numeric' })}</small></span>`).join('');
-        return `<span class="profile-podium-tag p${index + 1} profile-podium-hover" tabindex="0" aria-label="${tours.length} troféu${tours.length > 1 ? 's' : ''} de ${placeLabel}"><img class="profile-podium-icon" src="/assets/achievements/trophy-neon-gold.png" alt="" /><b>${tours.length}</b><span>${placeLabel}</span><span class="profile-podium-preview" aria-hidden="true"><img src="/assets/achievements/trophy-neon-gold.png" alt="" /><strong>${tours.length} ${placeLabel}${tours.length > 1 ? 's' : ''}</strong><span class="profile-podium-events">${tournaments}</span></span></span>`;
+        return `<span class="profile-podium-tag p${index + 1} profile-podium-hover" tabindex="0" aria-label="${tours.length} troféu${tours.length > 1 ? 's' : ''} de ${placeLabel}"><img class="profile-podium-icon" src="/assets/achievements/trophy-minimal.svg" alt="" /><b>${tours.length}</b><span>${placeLabel}</span><span class="profile-podium-preview" aria-hidden="true"><img src="/assets/achievements/trophy-minimal.svg" alt="" /><strong>${tours.length} ${placeLabel}${tours.length > 1 ? 's' : ''}</strong><span class="profile-podium-events">${tournaments}</span></span></span>`;
       }).join('');
       document.title = `${user.name} — BX Deck Lab`;
       const me = await BX.me().catch(() => null);
