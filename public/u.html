@@ -119,7 +119,6 @@
           <div class="profile-id">
             <h1>${BX.esc(user.name)}${user.verified ? `<span class="profile-verified" title="Identidade verificada" aria-label="Identidade verificada">${BX.icon('check', 11)}</span>` : ''}${user.role !== 'USER' ? `<span class="role-chip ${user.role}">${user.role}</span>` : ''}<span class="profile-handle">@${BX.esc(user.slug)}</span></h1>
             ${user.bio ? `<p class="profile-bio">${BX.esc(user.bio)}</p>` : ''}
-            ${BX.rankBadge(tourRes?.rating)}
           </div>
           ${favoritePart ? `<a class="profile-favorite" href="/peca/${BX.esc(favoritePart.slug)}" title="Ver ${BX.esc(favoritePart.displayName)}"><span>BEY FAVORITA</span><div class="profile-favorite-art"><img class="profile-favorite-image" src="${BX.esc(favoritePart.imageUrl)}" alt="${BX.esc(favoritePart.displayName)}" loading="eager" decoding="async"></div><b>${BX.esc(favoritePart.displayName)}</b>${favoritePart.type ? `<small>${BX.esc(favoritePart.type)}</small>` : ''}</a>` : ''}
           <div class="profile-head-actions">
