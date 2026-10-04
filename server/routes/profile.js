@@ -6,17 +6,36 @@ import { upload, uploadedUrl } from '../uploads.js';
 import { audit } from '../audit.js';
 import { json, waLink } from '../util.js';
 import { partDto } from './catalog.js';
+import { getCompetitiveLadder } from '../competitive-ladder.js';
+import { RANK_TIERS } from '../rating.js';
 
 const router = Router();
 const ah = (fn) => (req, res, next) => fn(req, res, next).catch(next);
 
+const rankFrameFromId = (id) => {
+  const tier = typeof id === 'string' && id.startsWith('elo:')
+    ? RANK_TIERS.find((item) => item.id === id.slice(4)) : null;
+  return tier ? { id: `elo:${tier.id}`, kind: 'FRAME', name: `Moldura ${tier.name}`, styleKey: `elo-${tier.id}`, active: true, isDefault: false } : null;
+};
+
+async function canUseRankFrame(user, frameId) {
+  const frame = rankFrameFromId(frameId);
+  if (!frame) return false;
+  if (user.role === 'ADMIN') return true;
+  const { byUser } = await getCompetitiveLadder();
+  const rating = byUser.get(user.id);
+  const tier = RANK_TIERS.find((item) => item.id === frame.styleKey.slice(4));
+  return !!tier && !rating?.provisional && Number(rating?.peak || 0) >= tier.min;
+}
+
 /** Cosmético pode ser usado se for padrão ativo ou concedido ao usuário. */
-async function canUseCosmetic(userId, cosmeticId) {
+async function canUseCosmetic(user, cosmeticId) {
+  if (rankFrameFromId(cosmeticId)) return canUseRankFrame(user, cosmeticId);
   const c = await prisma.cosmetic.findUnique({ where: { id: cosmeticId } });
   if (!c || !c.active) return false;
   if (c.isDefault) return true;
   return !!(await prisma.cosmeticGrant.findUnique({
-    where: { userId_cosmeticId: { userId, cosmeticId } },
+    where: { userId_cosmeticId: { userId: user.id, cosmeticId } },
   }));
 }
 
@@ -27,7 +46,12 @@ router.get('/api/cosmetics', requireUser, ah(async (req, res) => {
     where: { userId: req.user.id },
     include: { cosmetic: true },
   });
-  const all = [...defaults, ...granted.map((g) => g.cosmetic).filter((c) => c.active)];
+  const { byUser } = await getCompetitiveLadder();
+  const rating = byUser.get(req.user.id);
+  const rankFrames = RANK_TIERS
+    .filter((tier) => req.user.role === 'ADMIN' || (!rating?.provisional && Number(rating?.peak || 0) >= tier.min))
+    .map((tier) => rankFrameFromId(`elo:${tier.id}`));
+  const all = [...defaults, ...granted.map((g) => g.cosmetic).filter((c) => c.active), ...rankFrames];
   const unique = [...new Map(all.map((c) => [c.id, c])).values()];
   res.json({ cosmetics: unique });
 }));
@@ -49,13 +73,13 @@ router.patch('/api/me', requireUser, moderateFields('name', 'bio'), ah(async (re
   // excluídos no admin) são descartados em silêncio — nunca bloqueiam o salvamento.
   const dropped = [];
   if ('frameId' in b) {
-    if (b.frameId && (await canUseCosmetic(req.user.id, String(b.frameId)))) data.frameId = String(b.frameId);
+    if (b.frameId && (await canUseCosmetic(req.user, String(b.frameId)))) data.frameId = String(b.frameId);
     else { data.frameId = null; if (b.frameId) dropped.push('moldura'); }
   }
   if (Array.isArray(b.stickers)) {
     const ids = [];
     for (const id of [...new Set(b.stickers.map(String))].slice(0, 8)) {
-      if (await canUseCosmetic(req.user.id, id)) ids.push(id);
+      if (await canUseCosmetic(req.user, id)) ids.push(id);
       else dropped.push('sticker');
     }
     data.stickersJson = JSON.stringify(ids);
@@ -264,7 +288,7 @@ router.get('/api/users/:slug', ah(async (req, res) => {
     prisma.collectionItem.findMany({ where: { userId: user.id } }),
     prisma.combo.findMany({ where: { userId: user.id, status: 'VISIBLE' }, orderBy: { createdAt: 'desc' } }),
     prisma.communityDeck.findMany({ where: { authorId: user.id, status: 'VISIBLE', isPublic: true }, orderBy: { createdAt: 'desc' } }),
-    user.frameId ? prisma.cosmetic.findUnique({ where: { id: user.frameId } }) : null,
+    rankFrameFromId(user.frameId) || (user.frameId ? prisma.cosmetic.findUnique({ where: { id: user.frameId } }) : null),
   ]);
   const stickerIds = json(user.stickersJson, []);
   const stickers = stickerIds.length

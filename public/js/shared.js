@@ -141,7 +141,10 @@
 
   function avatarHtml(user, { size = 40, frame, showVerified = true } = {}) {
     const frameObj = frame === undefined ? user?.cosmetics?.frame ?? null : frame;
-    const tier = !frameObj && (!user?.frameId || frame === null) && !user?.rating?.provisional ? user?.rating?.tier : null;
+    const selectedTierId = frameObj?.styleKey?.startsWith('elo-') ? frameObj.styleKey.slice(4) : null;
+    const tier = selectedTierId
+      ? { id: selectedTierId, name: frameObj?.name?.replace(/^Moldura\s+/i, '') || selectedTierId }
+      : (!frameObj && (!user?.frameId || frame === null) && !user?.rating?.provisional ? user?.rating?.tier : null);
     const rankFrame = tier && ['ferro','bronze','prata','ouro','platina','diamante','mestre','lenda'].includes(tier.id)
       ? `<span class="elo-avatar-frame elo-frame-${tier.id}" aria-hidden="true"><span class="elo-frame-spin"></span></span>` : '';
     const cls = frameObj?.styleKey ? ` frame-${esc(frameObj.styleKey)}` : '';

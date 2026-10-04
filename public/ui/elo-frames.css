@@ -1,15 +1,13 @@
 /* Original vector silhouettes; only the ornament rotates. */
-.elo-avatar-frame{--elo:#a6afb9;position:absolute;inset:-24%;border-radius:50%;pointer-events:none;z-index:3;filter:drop-shadow(0 0 3px color-mix(in srgb,var(--elo) 35%,transparent))}
-.elo-frame-spin{position:absolute;inset:0;background:center/contain no-repeat url('/assets/ranks/frame-ferro.svg');animation:elo-frame-orbit 65s linear infinite;will-change:transform}
-.elo-frame-bronze{--elo:#d39b69}.elo-frame-bronze .elo-frame-spin{background-image:url('/assets/ranks/frame-bronze.svg')}
-.elo-frame-prata{--elo:#d8e5ee}.elo-frame-prata .elo-frame-spin{background-image:url('/assets/ranks/frame-prata.svg')}
-.elo-frame-ouro{--elo:#f4d36a}.elo-frame-ouro .elo-frame-spin{background-image:url('/assets/ranks/frame-ouro.svg')}
-.elo-frame-platina{--elo:#71dcd1}.elo-frame-platina .elo-frame-spin{background-image:url('/assets/ranks/frame-platina.svg')}
-.elo-frame-diamante{--elo:#83c6ff}.elo-frame-diamante .elo-frame-spin{background-image:url('/assets/ranks/frame-diamante.svg')}
-.elo-frame-mestre{--elo:#c4a0ff}.elo-frame-mestre .elo-frame-spin{background-image:url('/assets/ranks/frame-mestre.svg')}
-.elo-frame-lenda{--elo:#c2f970}.elo-frame-lenda .elo-frame-spin{background-image:url('/assets/ranks/frame-lenda.svg')}
+.elo-avatar-frame{--elo:#a6afb9;position:absolute;inset:-31%;border-radius:50%;pointer-events:none;z-index:3}
+.elo-frame-spin{position:absolute;inset:0;background:center/contain no-repeat url('/assets/ranks/frame-ferro.png');filter:drop-shadow(0 0 3px color-mix(in srgb,var(--elo) 45%,transparent));will-change:auto}
+.elo-frame-bronze{--elo:#ff8a4c}.elo-frame-bronze .elo-frame-spin{background-image:url('/assets/ranks/frame-bronze.png');filter:drop-shadow(0 0 5px rgba(255,112,55,.5))}
+.elo-frame-prata{--elo:#d8e5ee}.elo-frame-prata .elo-frame-spin{background-image:url('/assets/ranks/frame-prata.png');filter:drop-shadow(0 0 7px rgba(218,247,255,.55))}
+.elo-frame-ouro{--elo:#f4d36a}.elo-frame-ouro .elo-frame-spin{background-image:url('/assets/ranks/frame-ouro.png');filter:drop-shadow(0 0 10px rgba(255,205,60,.64))}
+.elo-frame-platina{--elo:#17e6ef}.elo-frame-platina .elo-frame-spin{background-image:url('/assets/ranks/frame-platina.png');filter:drop-shadow(0 0 12px rgba(32,231,245,.7))}
+.elo-frame-diamante{--elo:#398cff}.elo-frame-diamante .elo-frame-spin{background-image:url('/assets/ranks/frame-diamante.png');filter:drop-shadow(0 0 15px rgba(42,129,255,.78))}
+.elo-frame-mestre{--elo:#bf62ff}.elo-frame-mestre .elo-frame-spin{background-image:url('/assets/ranks/frame-mestre.png');filter:drop-shadow(0 0 18px rgba(180,73,255,.82))}
+.elo-frame-lenda{--elo:#baff27}.elo-frame-lenda .elo-frame-spin{background-image:url('/assets/ranks/frame-lenda.png');filter:drop-shadow(0 0 9px rgba(255,210,45,.9)) drop-shadow(0 0 23px rgba(159,255,25,.88))}
 .avatar.has-elo-frame .verified-badge{z-index:5}.elo-frame-hint{display:block;color:var(--muted);font-size:11px;line-height:1.6;margin-top:12px}.elo-frame-example{display:flex;align-items:center;justify-content:center;gap:16px;margin-top:16px;padding:18px 0 5px;border-top:1px solid var(--line);color:var(--muted);font-size:10px}.elo-frame-example .avatar{margin:7px}.elo-frame-example .avatar-photo{display:grid;place-items:center;color:#87907f;background:#20291b}.elo-frame-example svg{width:23px;height:23px}
-@keyframes elo-frame-orbit{to{transform:rotate(360deg)}}
 .elo-frame-example{flex-direction:column;gap:7px}
 .avatar.has-elo-frame{margin:4px}.profile-head>.avatar.has-elo-frame{margin:10px}.elo-frame-example .avatar.has-elo-frame{margin:20px}.profile-head:has(>.has-elo-frame){gap:26px}
-@media(prefers-reduced-motion:reduce){.elo-frame-spin{animation:none;will-change:auto}}
