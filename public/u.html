@@ -112,7 +112,7 @@
         <div class="profile-head">
           ${BX.avatarHtml(user, { size: 108, showVerified: false })}
           <div class="profile-id">
-            <h1>${BX.esc(user.name)}${user.verified ? `<span class="profile-verified" title="Identidade verificada" aria-label="Identidade verificada">${BX.icon('check', 11)}</span>` : ''}<span class="profile-handle">@${BX.esc(user.slug)}</span>${user.role !== 'USER' ? `<span class="role-chip ${user.role}">${user.role}</span>` : ''}</h1>
+            <h1>${BX.esc(user.name)}${user.verified ? `<span class="profile-verified" title="Identidade verificada" aria-label="Identidade verificada">${BX.icon('check', 11)}</span>` : ''}${user.role !== 'USER' ? `<span class="role-chip ${user.role}">${user.role}</span>` : ''}<span class="profile-handle">@${BX.esc(user.slug)}</span></h1>
             ${user.bio ? `<p class="profile-bio">${BX.esc(user.bio)}</p>` : ''}
             ${BX.rankBadge(tourRes?.rating)}
           </div>
