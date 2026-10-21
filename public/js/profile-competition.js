@@ -30,7 +30,7 @@ BX.renderCompetition = function (root, data) {
       <div class="pc-metrics">${metrics.map(([value,label,hint]) => `<div class="pc-metric"><strong>${value}</strong><span>${label}</span><small>${hint}</small></div>`).join('')}</div>
     </div>
     <div class="pc-medals" aria-label="Medalhas">${['Ouro','Prata','Bronze'].map((name,i) => `<span class="pc-medal p${i+1}"><img src="/assets/achievements/trophy-neon-gold.png" alt="" width="22" height="22"><b>${s[['gold','silver','bronze'][i]]}</b> ${name}</span>`).join('')}<small>${s.top4} Top 4</small></div>
-    <section class="pc-card pc-history" aria-labelledby="historyTitle"><div class="pc-card-heading"><h3 id="historyTitle">Histórico de torneios</h3><small>${historyEvents.length} resultados</small></div><div data-history-list></div><nav class="pc-history-pages" data-history-pages aria-label="Páginas do histórico"></nav></section>
+    <details class="pc-card pc-history"><summary class="pc-history-heading"><h3 id="historyTitle">Histórico de torneios</h3><small>${historyEvents.length} resultados · abrir lista</small></summary><div data-history-list></div><nav class="pc-history-pages" data-history-pages aria-label="Páginas do histórico"></nav></details>
     <div class="pc-columns">
       <section class="pc-card pc-performance"><div class="pc-card-heading"><h3>Vitórias por torneio</h3><small>Últimos ${events.length || 0}</small></div>
         ${events.length ? `<div class="pc-chart" aria-label="Taxa de vitória por torneio, do mais antigo ao mais recente">
