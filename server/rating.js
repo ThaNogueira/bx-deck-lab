@@ -2,7 +2,7 @@
 // A player's provisional rating is deliberately less influential as an opponent until
 // the player has a real sample. This prevents one upset by an unrated/new player from
 // dragging an established competitor down, while still rewarding the upset itself.
-export const RATING_RULES = Object.freeze({ version: 2, initial: 1000, k: 28, provisionalK: 36, scale: 400, maxGap: 250, provisionalOpponentWeight: 0.35, placementMatches: 10, placementEvents: 3, minimumPlayers: 4 });
+export const RATING_RULES = Object.freeze({ version: 2, initial: 1000, k: 28, provisionalK: 36, scale: 400, maxGap: 250, provisionalOpponentWeight: 0.35, leaderWinBonus: 3, placementMatches: 10, placementEvents: 3, minimumPlayers: 4 });
 export const RANK_TIERS = [
   { id: 'ferro', name: 'Ferro de Forja', min: 0, color: '#a6afb9' },
   { id: 'bronze', name: 'Bronze de Giro', min: 900, color: '#d39b69' },
@@ -44,6 +44,7 @@ const eventModifier = (a, b, score, records) => {
   const campaign = higherRecord.wins - higherRecord.losses;
   return campaign > 0 ? 1 : campaign < 0 ? upsetBonus * 1.08 : upsetBonus;
 };
+const established = state => state.matches >= RATING_RULES.placementMatches && state.events >= RATING_RULES.placementEvents;
 const fresh = userId => ({ userId, points: RATING_RULES.initial, peak: RATING_RULES.initial, matches: 0, events: 0, wins: 0, losses: 0, ties: 0, history: [] });
 const weekKey = value => { const d = new Date(value); d.setUTCHours(0, 0, 0, 0); const day = d.getUTCDay() || 7; d.setUTCDate(d.getUTCDate() - day + 1); return d.toISOString().slice(0, 10); };
 const weekDistance = (a, b) => Math.round((new Date(b) - new Date(a)) / 604800000);
@@ -106,7 +107,11 @@ export function calculateRatings(tournaments) {
         const fireBonusA = base > 0 && fireA ? Math.max(1, Math.round(base * 0.10)) : 0;
         const fireBonusB = base < 0 && fireB ? Math.max(1, Math.round(-base * 0.10)) : 0;
         const defeatedFireA = score === 1 && fireB ? 2 : 0, defeatedFireB = score === 0 && fireA ? 2 : 0;
-        changes.set(a, base + fireBonusA + defeatedFireA); changes.set(b, -base + fireBonusB + defeatedFireB);
+        const establishedStates = [...states.values()].filter(established), topPoints = establishedStates.length ? Math.max(...establishedStates.map(s => s.points)) : null;
+        const leaders = topPoints == null ? new Set() : new Set(establishedStates.filter(s => s.points === topPoints).map(s => s.userId));
+        const leaderBonusA = score === 1 && leaders.has(b) && !leaders.has(a) ? RATING_RULES.leaderWinBonus : 0;
+        const leaderBonusB = score === 0 && leaders.has(a) && !leaders.has(b) ? RATING_RULES.leaderWinBonus : 0;
+        changes.set(a, base + fireBonusA + defeatedFireA + leaderBonusA); changes.set(b, -base + fireBonusB + defeatedFireB + leaderBonusB);
         sa.matches++; sb.matches++; ratedMatches++;
         if (score === 1) { sa.wins++; sb.losses++; }
         else if (score === 0) { sb.wins++; sa.losses++; }
