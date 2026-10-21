@@ -2,7 +2,7 @@
 // A player's provisional rating is deliberately less influential as an opponent until
 // the player has a real sample. This prevents one upset by an unrated/new player from
 // dragging an established competitor down, while still rewarding the upset itself.
-export const RATING_RULES = Object.freeze({ version: 2, initial: 1000, k: 28, provisionalK: 36, scale: 400, maxGap: 250, provisionalOpponentWeight: 0.35, leaderWinBonus: 3, placementMatches: 10, placementEvents: 3, minimumPlayers: 4 });
+export const RATING_RULES = Object.freeze({ version: 2, initial: 1000, k: 28, provisionalK: 36, scale: 400, maxGap: 250, provisionalOpponentWeight: 0.35, leaderWinBonus: 3, weeklyStreakBonus: 3, podiumBonuses: Object.freeze({ 1: 40, 2: 20, 3: 10 }), placementMatches: 10, placementEvents: 3, minimumPlayers: 4 });
 export const RANK_TIERS = [
   { id: 'ferro', name: 'Ferro de Forja', min: 0, color: '#a6afb9' },
   { id: 'bronze', name: 'Bronze de Giro', min: 900, color: '#d39b69' },
@@ -87,6 +87,7 @@ export function calculateRatings(tournaments) {
       else if (m.winnerId === m.p2Id) { rb.wins++; ra.losses++; }
       else { ra.ties++; rb.ties++; }
     }
+    const eventPlacements = new Map([...eventRecords.entries()].sort(([ida, a], [idb, b]) => (b.wins * 3 + b.ties) - (a.wins * 3 + a.ties) || a.losses - b.losses || String(ida).localeCompare(String(idb))).map(([id], index) => [id, index + 1]));
     const before = new Map([...active].map(id => { const s = get(id); return [id, { points: s.points, matches: s.matches, wins: s.wins, losses: s.losses, ties: s.ties }]; }));
     const eventDeltas = new Map([...active].map(id => [id, 0]));
     const rounds = new Map();
@@ -126,6 +127,12 @@ export function calculateRatings(tournaments) {
       }
       // Round snapshot prevents table ordering from changing the result.
       for (const [id, delta] of changes) { const s = get(id); s.points = Math.max(0, s.points + delta); s.peak = Math.max(s.peak, s.points); }
+    }
+    // Weekly participation and podiums are Elo rewards, separate from Swiss points.
+    for (const [id, record] of eventRecords) {
+      const s = get(id), activityInfo = activity.get(id), weekly = activityInfo?.streakWeeks >= 2 ? Math.min(15, (activityInfo.streakWeeks - 1) * RATING_RULES.weeklyStreakBonus) : 0;
+      const podium = RATING_RULES.podiumBonuses[eventPlacements.get(id)] || 0, bonus = weekly + podium;
+      if (bonus) { s.points += bonus; s.peak = Math.max(s.peak, s.points); eventDeltas.set(id, eventDeltas.get(id) + bonus); }
     }
     // A positive tournament campaign (W > L) always finishes with a net Elo gain.
     // This prevents a strong 3–2 or 4–1 event from ending below its starting score.
