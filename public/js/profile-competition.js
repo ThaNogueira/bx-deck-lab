@@ -16,6 +16,7 @@ BX.renderCompetition = function (root, data) {
   const date = d => BX.dateFmt(d, { day: '2-digit', month: '2-digit' });
   const outcome = { W: 'Vitória', L: 'Derrota', D: 'Empate' };
   const events = data.tournaments.filter(t => t.status === 'FINISHED' && t.matches > 0 && t.winRate != null).slice(0, 5).reverse();
+  const historyEvents = data.tournaments.filter(t => t.status === 'FINISHED' && t.matches > 0).sort((a,b) => new Date(b.startsAt) - new Date(a.startsAt));
   const metrics = [
     [s.events, 'Torneios', 'encerrados'],
     [s.podiums, 'Pódios', `${pct(s.podiumRate)} dos torneios`],
@@ -29,6 +30,7 @@ BX.renderCompetition = function (root, data) {
       <div class="pc-metrics">${metrics.map(([value,label,hint]) => `<div class="pc-metric"><strong>${value}</strong><span>${label}</span><small>${hint}</small></div>`).join('')}</div>
     </div>
     <div class="pc-medals" aria-label="Medalhas">${['Ouro','Prata','Bronze'].map((name,i) => `<span class="pc-medal p${i+1}"><img src="/assets/achievements/trophy-neon-gold.png" alt="" width="22" height="22"><b>${s[['gold','silver','bronze'][i]]}</b> ${name}</span>`).join('')}<small>${s.top4} Top 4</small></div>
+    <section class="pc-card pc-history" aria-labelledby="historyTitle"><div class="pc-card-heading"><h3 id="historyTitle">Histórico de torneios</h3><small>${historyEvents.length} resultados</small></div><div data-history-list></div><nav class="pc-history-pages" data-history-pages aria-label="Páginas do histórico"></nav></section>
     <div class="pc-columns">
       <section class="pc-card pc-performance"><div class="pc-card-heading"><h3>Vitórias por torneio</h3><small>Últimos ${events.length || 0}</small></div>
         ${events.length ? `<div class="pc-chart" aria-label="Taxa de vitória por torneio, do mais antigo ao mais recente">
@@ -50,6 +52,18 @@ BX.renderCompetition = function (root, data) {
     root.querySelectorAll('[data-event]').forEach(button => button.setAttribute('aria-pressed', String(Number(button.dataset.event) === index)));
     root.querySelector('[data-event-detail]').innerHTML = `<a href="/torneio/${e(t.slug)}">${e(t.name)} <span aria-hidden="true">↗</span></a><small>${date(t.startsAt)} · ${t.wins} vitória${t.wins === 1 ? '' : 's'} em ${t.matches} partida${t.matches === 1 ? '' : 's'}${t.placement ? ` · ${t.placement}º lugar` : ''}</small>`;
   }
+  const historyPageSize = 8;
+  function renderHistory(page = 1) {
+    const total = Math.max(1, Math.ceil(historyEvents.length / historyPageSize));
+    const current = Math.min(page, total), start = (current - 1) * historyPageSize;
+    const rows = historyEvents.slice(start, start + historyPageSize).map(t => {
+      const place = Number(t.placement) || 0, trophy = place === 1 ? '🏆' : place === 2 ? '🥈' : place === 3 ? '🥉' : '';
+      return `<details class="pc-history-row"><summary><span class="pc-history-main"><strong>${e(t.name)}</strong><small>${date(t.startsAt)}${place ? ` · ${place}º lugar` : ''}</small></span><span class="pc-history-score"><b>${t.wins}–${t.losses}${t.ties ? `–${t.ties}` : ''}</b>${trophy ? `<em title="${place}º lugar">${trophy}</em>` : ''}</span></summary><div class="pc-history-detail"><a href="/torneio/${e(t.slug)}">Ver torneio ↗</a><span>${t.wins} vitória${t.wins === 1 ? '' : 's'}, ${t.losses} derrota${t.losses === 1 ? '' : 's'}${t.ties ? ` e ${t.ties} empate${t.ties === 1 ? '' : 's'}` : ''} em ${t.matches} partida${t.matches === 1 ? '' : 's'}</span>${place && place <= 3 ? `<strong>${trophy} Pódio: ${place}º lugar</strong>` : ''}</div></details>`;
+    }).join('') || '<p class="pc-empty">Ainda sem torneios encerrados.</p>';
+    root.querySelector('[data-history-list]').innerHTML = rows;
+    root.querySelector('[data-history-pages]').innerHTML = total > 1 ? Array.from({length: total}, (_, i) => `<button type="button" aria-current="${i + 1 === current}" data-history-page="${i + 1}">${i + 1}</button>`).join('') : '';
+    root.querySelectorAll('[data-history-page]').forEach(button => button.addEventListener('click', () => renderHistory(Number(button.dataset.historyPage))));
+  }
   function selectScope(scope) {
     const recent = scope === 'recent';
     const wins = recent ? data.recent.filter(r => r.outcome === 'W').length : s.wins;
@@ -65,4 +79,5 @@ BX.renderCompetition = function (root, data) {
   selectScope('all');
   root.querySelectorAll('[data-event]').forEach(button => button.addEventListener('click', () => selectEvent(Number(button.dataset.event))));
   if (events.length) selectEvent(events.length-1);
+  renderHistory();
 };

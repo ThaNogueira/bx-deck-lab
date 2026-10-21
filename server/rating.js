@@ -88,6 +88,7 @@ export function calculateRatings(tournaments) {
       else { ra.ties++; rb.ties++; }
     }
     const before = new Map([...active].map(id => { const s = get(id); return [id, { points: s.points, matches: s.matches, wins: s.wins, losses: s.losses, ties: s.ties }]; }));
+    const eventDeltas = new Map([...active].map(id => [id, 0]));
     const rounds = new Map();
     for (const m of matches) { if (!rounds.has(m.round)) rounds.set(m.round, []); rounds.get(m.round).push(m); }
     for (const list of rounds.values()) {
@@ -116,7 +117,8 @@ export function calculateRatings(tournaments) {
         const campaignProtectionB = base > 0 && recordB?.wins > recordB?.losses ? Math.ceil(-base * 0.75) : -base;
         const fireProtectionA = campaignProtectionA < 0 && fireA ? Math.ceil(campaignProtectionA * 0.90) : campaignProtectionA;
         const fireProtectionB = campaignProtectionB < 0 && fireB ? Math.ceil(campaignProtectionB * 0.90) : campaignProtectionB;
-        changes.set(a, fireProtectionA + fireBonusA + defeatedFireA + leaderBonusA); changes.set(b, fireProtectionB + fireBonusB + defeatedFireB + leaderBonusB);
+        const deltaA = fireProtectionA + fireBonusA + defeatedFireA + leaderBonusA, deltaB = fireProtectionB + fireBonusB + defeatedFireB + leaderBonusB;
+        changes.set(a, deltaA); changes.set(b, deltaB); eventDeltas.set(a, eventDeltas.get(a) + deltaA); eventDeltas.set(b, eventDeltas.get(b) + deltaB);
         sa.matches++; sb.matches++; ratedMatches++;
         if (score === 1) { sa.wins++; sb.losses++; }
         else if (score === 0) { sb.wins++; sa.losses++; }
@@ -124,6 +126,12 @@ export function calculateRatings(tournaments) {
       }
       // Round snapshot prevents table ordering from changing the result.
       for (const [id, delta] of changes) { const s = get(id); s.points = Math.max(0, s.points + delta); s.peak = Math.max(s.peak, s.points); }
+    }
+    // A positive tournament campaign (W > L) always finishes with a net Elo gain.
+    // This prevents a strong 3–2 or 4–1 event from ending below its starting score.
+    for (const [id, net] of eventDeltas) {
+      const record = eventRecords.get(id);
+      if (record?.wins > record?.losses && net <= 0) { const correction = 1 - net; const s = get(id); s.points += correction; s.peak = Math.max(s.peak, s.points); eventDeltas.set(id, 1); }
     }
     let counted = false;
     for (const [id, previous] of before) {
