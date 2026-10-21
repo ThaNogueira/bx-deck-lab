@@ -29,6 +29,21 @@ export function ratingChange(a, b, score, options = {}) {
   const k = options.provisional ? RATING_RULES.provisionalK : RATING_RULES.k;
   return Math.round(k * (score - expected));
 }
+const tierIndexForPoints = points => Math.max(0, RANK_TIERS.findLastIndex(t => points >= t.min));
+const eventModifier = (a, b, score, records) => {
+  if (score === 0.5) return 1;
+  const aTier = tierIndexForPoints(a.points), bTier = tierIndexForPoints(b.points);
+  const lowerWon = score === 1 ? aTier < bTier : bTier < aTier;
+  const gap = Math.abs(aTier - bTier);
+  if (!lowerWon || gap < 2) return 1;
+  const higher = score === 1 ? b : a;
+  const higherRecord = records.get(higher.userId) || { wins: 0, losses: 0 };
+  // Two+ tiers apart is an upset: reward the lower player, but keep the bonus
+  // bounded. A favorite with a positive event still gets a softer correction.
+  const upsetBonus = Math.min(1.25, 1 + 0.12 * (gap - 1));
+  const campaign = higherRecord.wins - higherRecord.losses;
+  return campaign > 0 ? 1 : campaign < 0 ? upsetBonus * 1.08 : upsetBonus;
+};
 const fresh = userId => ({ userId, points: RATING_RULES.initial, peak: RATING_RULES.initial, matches: 0, events: 0, wins: 0, losses: 0, ties: 0, history: [] });
 
 export function ratingDto(state = fresh(null)) {
@@ -59,6 +74,14 @@ export function calculateRatings(tournaments) {
     // Entries alone are not enough: four distinct players must actually play.
     const active = new Set(matches.flatMap(m => [players.get(m.p1Id), players.get(m.p2Id)]));
     if (active.size < RATING_RULES.minimumPlayers) continue;
+    const eventRecords = new Map([...active].map(id => [id, { wins: 0, losses: 0, ties: 0 }]));
+    for (const m of matches) {
+      const a = players.get(m.p1Id), b = players.get(m.p2Id), ra = eventRecords.get(a), rb = eventRecords.get(b);
+      if (!ra || !rb) continue;
+      if (m.winnerId === m.p1Id) { ra.wins++; rb.losses++; }
+      else if (m.winnerId === m.p2Id) { rb.wins++; ra.losses++; }
+      else { ra.ties++; rb.ties++; }
+    }
     const before = new Map([...active].map(id => { const s = get(id); return [id, { points: s.points, matches: s.matches, wins: s.wins, losses: s.losses, ties: s.ties }]; }));
     const rounds = new Map();
     for (const m of matches) { if (!rounds.has(m.round)) rounds.set(m.round, []); rounds.get(m.round).push(m); }
@@ -73,7 +96,8 @@ export function calculateRatings(tournaments) {
         const score = m.winnerId === m.p1Id ? 1 : m.winnerId === m.p2Id ? 0 : 0.5;
         const aProvisional = sa.matches < RATING_RULES.placementMatches || sa.events < RATING_RULES.placementEvents;
         const bProvisional = sb.matches < RATING_RULES.placementMatches || sb.events < RATING_RULES.placementEvents;
-        const delta = ratingChange(sa.points, sb.points, score, { provisional: aProvisional, opponentProvisional: bProvisional });
+        const rawDelta = ratingChange(sa.points, sb.points, score, { provisional: aProvisional, opponentProvisional: bProvisional });
+        const delta = Math.round(rawDelta * eventModifier(sa, sb, score, eventRecords));
         changes.set(a, delta); changes.set(b, -delta);
         sa.matches++; sb.matches++; ratedMatches++;
         if (score === 1) { sa.wins++; sb.losses++; }
