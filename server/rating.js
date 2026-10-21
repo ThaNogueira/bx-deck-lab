@@ -1,5 +1,8 @@
-// BX Elo v1. Pure replay: editing/removing a tournament never leaves stale points.
-export const RATING_RULES = Object.freeze({ version: 1, initial: 1000, k: 32, scale: 400, placementMatches: 5, placementEvents: 2, minimumPlayers: 4 });
+// BX Ladder v2. Pure replay: editing/removing a tournament never leaves stale points.
+// A player's provisional rating is deliberately less influential as an opponent until
+// the player has a real sample. This prevents one upset by an unrated/new player from
+// dragging an established competitor down, while still rewarding the upset itself.
+export const RATING_RULES = Object.freeze({ version: 2, initial: 1000, k: 28, provisionalK: 36, scale: 400, maxGap: 250, provisionalOpponentWeight: 0.35, placementMatches: 10, placementEvents: 3, minimumPlayers: 4 });
 export const RANK_TIERS = [
   { id: 'ferro', name: 'Ferro de Forja', min: 0, color: '#a6afb9' },
   { id: 'bronze', name: 'Bronze de Giro', min: 900, color: '#d39b69' },
@@ -15,9 +18,16 @@ export const rankableEvent = t => t.status === 'FINISHED'
   && ['PUBLIC', 'LINK_ONLY'].includes(t.visibility)
   && !t.description?.startsWith('[ADMIN TEST]');
 
-export function ratingChange(a, b, score) {
-  const expected = 1 / (1 + 10 ** ((b - a) / RATING_RULES.scale));
-  return Math.round(RATING_RULES.k * (score - expected));
+export function ratingChange(a, b, score, options = {}) {
+  // Provisional players remain anchored to the starting point until their form is
+  // proven. Their own climb is preserved; only their weight as an opponent is damped.
+  const opponent = options.opponentProvisional
+    ? RATING_RULES.initial + (b - RATING_RULES.initial) * RATING_RULES.provisionalOpponentWeight
+    : b;
+  const gap = Math.max(-RATING_RULES.maxGap, Math.min(RATING_RULES.maxGap, opponent - a));
+  const expected = 1 / (1 + 10 ** (gap / RATING_RULES.scale));
+  const k = options.provisional ? RATING_RULES.provisionalK : RATING_RULES.k;
+  return Math.round(k * (score - expected));
 }
 const fresh = userId => ({ userId, points: RATING_RULES.initial, peak: RATING_RULES.initial, matches: 0, events: 0, wins: 0, losses: 0, ties: 0, history: [] });
 
@@ -61,7 +71,9 @@ export function calculateRatings(tournaments) {
         played.add(a); played.add(b);
         const sa = get(a), sb = get(b);
         const score = m.winnerId === m.p1Id ? 1 : m.winnerId === m.p2Id ? 0 : 0.5;
-        const delta = ratingChange(sa.points, sb.points, score);
+        const aProvisional = sa.matches < RATING_RULES.placementMatches || sa.events < RATING_RULES.placementEvents;
+        const bProvisional = sb.matches < RATING_RULES.placementMatches || sb.events < RATING_RULES.placementEvents;
+        const delta = ratingChange(sa.points, sb.points, score, { provisional: aProvisional, opponentProvisional: bProvisional });
         changes.set(a, delta); changes.set(b, -delta);
         sa.matches++; sb.matches++; ratedMatches++;
         if (score === 1) { sa.wins++; sb.losses++; }

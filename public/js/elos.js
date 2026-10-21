@@ -8,7 +8,7 @@ BX.renderTopbar('/elos');
     const slider = document.getElementById('eloGap');
     const signed = n => n > 0 ? `+${n}` : String(n).replace('-', '−');
     const update = () => {
-      const gap = Number(slider.value), expected = 1/(1+10**(gap/rules.scale));
+      const gap = Number(slider.value), boundedGap = Math.max(-rules.maxGap, Math.min(rules.maxGap, gap)), expected = 1/(1+10**(boundedGap/rules.scale));
       document.getElementById('eloGapLabel').textContent = gap ? `${Math.abs(gap)} pontos ${gap > 0 ? 'acima' : 'abaixo'}` : 'Mesmo Elo';
       for (const [id,score] of [['eloWin',1],['eloLoss',0],['eloDraw',.5]]) document.getElementById(id).textContent = signed(Math.round(rules.k*(score-expected)));
     };
