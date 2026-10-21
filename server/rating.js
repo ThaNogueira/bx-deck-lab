@@ -111,7 +111,12 @@ export function calculateRatings(tournaments) {
         const leaders = topPoints == null ? new Set() : new Set(establishedStates.filter(s => s.points === topPoints).map(s => s.userId));
         const leaderBonusA = score === 1 && leaders.has(b) && !leaders.has(a) ? RATING_RULES.leaderWinBonus : 0;
         const leaderBonusB = score === 0 && leaders.has(a) && !leaders.has(b) ? RATING_RULES.leaderWinBonus : 0;
-        changes.set(a, base + fireBonusA + defeatedFireA + leaderBonusA); changes.set(b, -base + fireBonusB + defeatedFireB + leaderBonusB);
+        const recordA = eventRecords.get(a), recordB = eventRecords.get(b);
+        const campaignProtectionA = base < 0 && recordA?.wins > recordA?.losses ? Math.ceil(base * 0.75) : base;
+        const campaignProtectionB = base > 0 && recordB?.wins > recordB?.losses ? Math.ceil(-base * 0.75) : -base;
+        const fireProtectionA = campaignProtectionA < 0 && fireA ? Math.ceil(campaignProtectionA * 0.90) : campaignProtectionA;
+        const fireProtectionB = campaignProtectionB < 0 && fireB ? Math.ceil(campaignProtectionB * 0.90) : campaignProtectionB;
+        changes.set(a, fireProtectionA + fireBonusA + defeatedFireA + leaderBonusA); changes.set(b, fireProtectionB + fireBonusB + defeatedFireB + leaderBonusB);
         sa.matches++; sb.matches++; ratedMatches++;
         if (score === 1) { sa.wins++; sb.losses++; }
         else if (score === 0) { sb.wins++; sa.losses++; }
