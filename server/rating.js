@@ -45,6 +45,8 @@ const eventModifier = (a, b, score, records) => {
   return campaign > 0 ? 1 : campaign < 0 ? upsetBonus * 1.08 : upsetBonus;
 };
 const fresh = userId => ({ userId, points: RATING_RULES.initial, peak: RATING_RULES.initial, matches: 0, events: 0, wins: 0, losses: 0, ties: 0, history: [] });
+const weekKey = value => { const d = new Date(value); d.setUTCHours(0, 0, 0, 0); const day = d.getUTCDay() || 7; d.setUTCDate(d.getUTCDate() - day + 1); return d.toISOString().slice(0, 10); };
+const weekDistance = (a, b) => Math.round((new Date(b) - new Date(a)) / 604800000);
 
 export function ratingDto(state = fresh(null)) {
   const provisional = state.matches < RATING_RULES.placementMatches || state.events < RATING_RULES.placementEvents;
@@ -59,7 +61,7 @@ export function ratingDto(state = fresh(null)) {
     progress: provisional ? Math.round(Math.min(state.matches / RATING_RULES.placementMatches, state.events / RATING_RULES.placementEvents, 1) * 100)
       : next ? Math.round((state.points - tier.min) / (next.min - tier.min) * 100) : 100,
     pointsToNext: !provisional && next ? next.min - state.points : null,
-    lastChange: state.history.at(-1)?.delta ?? null, history: state.history.slice(-12), version: RATING_RULES.version };
+    lastChange: state.history.at(-1)?.delta ?? null, history: state.history.slice(-12), onFire: Boolean(state.streakWeeks >= 2 && state.lastActiveWeek && weekDistance(state.lastActiveWeek, weekKey(new Date())) <= 1), streakWeeks: state.streakWeeks || 0, version: RATING_RULES.version };
 }
 
 export function calculateRatings(tournaments) {
@@ -74,6 +76,8 @@ export function calculateRatings(tournaments) {
     // Entries alone are not enough: four distinct players must actually play.
     const active = new Set(matches.flatMap(m => [players.get(m.p1Id), players.get(m.p2Id)]));
     if (active.size < RATING_RULES.minimumPlayers) continue;
+    const currentWeek = weekKey(t.startsAt);
+    const activity = new Map([...active].map(id => { const s = get(id), distance = s.lastActiveWeek ? weekDistance(s.lastActiveWeek, currentWeek) : null; const streak = distance === 0 ? (s.streakWeeks || 1) : distance === 1 ? (s.streakWeeks || 1) + 1 : 1; return [id, { onFire: streak >= 2, streakWeeks: streak }]; }));
     const eventRecords = new Map([...active].map(id => [id, { wins: 0, losses: 0, ties: 0 }]));
     for (const m of matches) {
       const a = players.get(m.p1Id), b = players.get(m.p2Id), ra = eventRecords.get(a), rb = eventRecords.get(b);
@@ -97,8 +101,12 @@ export function calculateRatings(tournaments) {
         const aProvisional = sa.matches < RATING_RULES.placementMatches || sa.events < RATING_RULES.placementEvents;
         const bProvisional = sb.matches < RATING_RULES.placementMatches || sb.events < RATING_RULES.placementEvents;
         const rawDelta = ratingChange(sa.points, sb.points, score, { provisional: aProvisional, opponentProvisional: bProvisional });
-        const delta = Math.round(rawDelta * eventModifier(sa, sb, score, eventRecords));
-        changes.set(a, delta); changes.set(b, -delta);
+        const base = Math.round(rawDelta * eventModifier(sa, sb, score, eventRecords));
+        const fireA = activity.get(a)?.onFire, fireB = activity.get(b)?.onFire;
+        const fireBonusA = base > 0 && fireA ? Math.max(1, Math.round(base * 0.10)) : 0;
+        const fireBonusB = base < 0 && fireB ? Math.max(1, Math.round(-base * 0.10)) : 0;
+        const defeatedFireA = score === 1 && fireB ? 2 : 0, defeatedFireB = score === 0 && fireA ? 2 : 0;
+        changes.set(a, base + fireBonusA + defeatedFireA); changes.set(b, -base + fireBonusB + defeatedFireB);
         sa.matches++; sb.matches++; ratedMatches++;
         if (score === 1) { sa.wins++; sb.losses++; }
         else if (score === 0) { sb.wins++; sa.losses++; }
@@ -112,6 +120,9 @@ export function calculateRatings(tournaments) {
       const s = get(id);
       if (s.matches === previous.matches) continue;
       counted = true; s.events++;
+      const currentWeek = weekKey(t.startsAt);
+      if (s.lastActiveWeek !== currentWeek) { s.streakWeeks = activity.get(id)?.streakWeeks || 1; s.lastActiveWeek = currentWeek; }
+      s.onFire = (s.streakWeeks || 0) >= 2;
       s.history.push({ slug: t.slug, name: t.name, startsAt: t.startsAt, before: previous.points, points: s.points, delta: s.points - previous.points,
         wins: s.wins - previous.wins, losses: s.losses - previous.losses, ties: s.ties - previous.ties });
     }
