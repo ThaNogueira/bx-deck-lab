@@ -2,7 +2,7 @@
 // A player's provisional rating is deliberately less influential as an opponent until
 // the player has a real sample. This prevents one upset by an unrated/new player from
 // dragging an established competitor down, while still rewarding the upset itself.
-export const RATING_RULES = Object.freeze({ version: 2, initial: 1000, k: 28, provisionalK: 36, scale: 400, maxGap: 250, provisionalOpponentWeight: 0.35, leaderWinBonus: 3, weeklyStreakBonus: 3, podiumBonuses: Object.freeze({ 1: 40, 2: 20, 3: 10 }), placementMatches: 10, placementEvents: 3, minimumPlayers: 4 });
+export const RATING_RULES = Object.freeze({ version: 2, initial: 1000, k: 28, provisionalK: 36, scale: 400, maxGap: 250, provisionalOpponentWeight: 0.35, leaderWinBonus: 1, weeklyStreakBonus: 1, podiumBonuses: Object.freeze({ 1: 15, 2: 8, 3: 4 }), placementMatches: 10, placementEvents: 3, minimumPlayers: 4 });
 export const RANK_TIERS = [
   { id: 'ferro', name: 'Ferro de Forja', min: 0, color: '#a6afb9' },
   { id: 'bronze', name: 'Bronze de Giro', min: 900, color: '#d39b69' },
@@ -106,9 +106,9 @@ export function calculateRatings(tournaments) {
         const rawDelta = ratingChange(sa.points, sb.points, score, { provisional: aProvisional, opponentProvisional: bProvisional });
         const base = Math.round(rawDelta * eventModifier(sa, sb, score, eventRecords));
         const fireA = activity.get(a)?.onFire, fireB = activity.get(b)?.onFire;
-        const fireBonusA = base > 0 && fireA ? Math.max(1, Math.round(base * 0.10)) : 0;
-        const fireBonusB = base < 0 && fireB ? Math.max(1, Math.round(-base * 0.10)) : 0;
-        const defeatedFireA = score === 1 && fireB ? 2 : 0, defeatedFireB = score === 0 && fireA ? 2 : 0;
+        const fireBonusA = base > 0 && fireA ? Math.max(1, Math.round(base * 0.05)) : 0;
+        const fireBonusB = base < 0 && fireB ? Math.max(1, Math.round(-base * 0.05)) : 0;
+        const defeatedFireA = score === 1 && fireB ? 1 : 0, defeatedFireB = score === 0 && fireA ? 1 : 0;
         const establishedStates = [...states.values()].filter(established), topPoints = establishedStates.length ? Math.max(...establishedStates.map(s => s.points)) : null;
         const leaders = topPoints == null ? new Set() : new Set(establishedStates.filter(s => s.points === topPoints).map(s => s.userId));
         const leaderBonusA = score === 1 && leaders.has(b) && !leaders.has(a) ? RATING_RULES.leaderWinBonus : 0;
@@ -130,7 +130,7 @@ export function calculateRatings(tournaments) {
     }
     // Weekly participation and podiums are Elo rewards, separate from Swiss points.
     for (const [id, record] of eventRecords) {
-      const s = get(id), activityInfo = activity.get(id), weekly = activityInfo?.streakWeeks >= 2 ? Math.min(15, (activityInfo.streakWeeks - 1) * RATING_RULES.weeklyStreakBonus) : 0;
+      const s = get(id), activityInfo = activity.get(id), weekly = activityInfo?.streakWeeks >= 2 ? Math.min(5, (activityInfo.streakWeeks - 1) * RATING_RULES.weeklyStreakBonus) : 0;
       const podium = RATING_RULES.podiumBonuses[eventPlacements.get(id)] || 0, bonus = weekly + podium;
       if (bonus) { s.points += bonus; s.peak = Math.max(s.peak, s.points); eventDeltas.set(id, eventDeltas.get(id) + bonus); }
     }
