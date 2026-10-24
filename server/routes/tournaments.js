@@ -280,8 +280,20 @@ router.get('/api/tournaments', ah(async (req, res) => {
 }));
 
 router.get('/api/stores', ah(async (_req, res) => {
-  const stores = await prisma.store.findMany({ where: { active: true }, select: { id: true, name: true, address: true }, orderBy: { name: 'asc' } });
+  const stores = await prisma.store.findMany({ where: { active: true }, select: { id: true, name: true, address: true, website: true }, orderBy: { name: 'asc' } });
   res.json({ stores });
+}));
+
+router.post('/api/stores', requireUser, moderateFields('name', 'address', 'website'), ah(async (req, res) => {
+  const name = String(req.body?.name || '').trim().slice(0, 80);
+  const address = String(req.body?.address || '').trim().slice(0, 200) || null;
+  const website = String(req.body?.website || '').trim().slice(0, 240) || null;
+  if (!name) return res.status(422).json({ error: 'Informe o nome da loja.' });
+  let normalizedWebsite = null;
+  if (website) { try { normalizedWebsite = new URL(/^https?:\/\//i.test(website) ? website : `https://${website}`).toString(); } catch { return res.status(422).json({ error: 'Informe um site válido.' }); } }
+  if (await prisma.store.findUnique({ where: { name } })) return res.status(409).json({ error: 'Já existe uma loja com esse nome.' });
+  const store = await prisma.store.create({ data: { name, address, website: normalizedWebsite, active: true } });
+  res.json({ store: { id: store.id, name: store.name, address: store.address, website: store.website } });
 }));
 
 router.post('/api/tournaments', requireUser, moderateFields('name', 'description'), ah(async (req, res) => {

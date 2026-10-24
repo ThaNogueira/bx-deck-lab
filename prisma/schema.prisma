@@ -256,6 +256,7 @@ model Store {
   id              String   @id @default(cuid())
   name            String   @unique
   address         String?
+  website         String?
   active          Boolean  @default(true)
   tamerLeagueSync Boolean  @default(false)
   createdAt       DateTime @default(now())

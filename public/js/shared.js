@@ -966,3 +966,7 @@
     report, requireLogin, qs, pathPart, ytEmbed,
   };
 })();
+// Tournament pages share the store creation flow without duplicating inline form code.
+if (document.getElementById('store') || document.getElementById('eStore') || location.pathname.startsWith('/torneio/')) {
+  const script = document.createElement('script'); script.src = '/js/tournament-store.js'; document.head.appendChild(script);
+}
