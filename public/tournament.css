@@ -47,6 +47,12 @@
 }
 @media (prefers-reduced-motion: reduce) { .tournament-gallery-grid img { transition: none; } }
 
+#viewBox[data-manager-section] .manager-table .row-actions{gap:5px}
+#viewBox[data-manager-section] .manager-table .row-actions .btn{min-height:36px;padding:5px 8px;font-size:11px;gap:6px;border-radius:7px;line-height:1.25}
+#viewBox[data-manager-section] .manager-table .row-actions .accept-result{min-height:40px;font-size:11px;padding:6px 8px;box-shadow:none}
+@media(min-width:761px){#app #viewBox[data-manager-section] .manager-table{grid-template-columns:minmax(0,1fr) minmax(115px,.65fr);gap:6px 10px}}
+@media(max-width:760px){#viewBox[data-manager-section] .manager-table .row-actions .btn{min-height:44px;padding:6px;font-size:10px}#viewBox[data-manager-section] .manager-table .row-actions .accept-result{min-height:44px;font-size:10px}}
+
 /* Compact public header and focused tournament operations. */
 #viewBox[data-manager-section] .manager-table .row-actions .btn{display:flex;align-items:center}.manager-table .award-win>span:last-child{flex:1}
 @media(min-width:761px){#viewBox[data-manager-section] .manager-table{grid-template-rows:24px 1fr}}

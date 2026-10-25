@@ -351,10 +351,9 @@
                       <div class="row-actions">
                         ${m.status !== 'DONE' && !m.bye && shownRound === t.currentRound ? `
                           ${m.status !== 'CONFLICT' && (m.p1Reported || m.p2Reported) ? `<button class="btn primary accept-result" data-accept="${m.id}">${BX.ic('check',18)}<span>Aceitar reporte único</span></button>` : ''}
-                          <button class="btn secondary award-win award-p1" data-win="${m.id}:${m.p1?.id}" aria-label="Dar vitória para ${BX.esc(m.p1?.user.name || '')}">${BX.avatarHtml(m.p1?.user,{size:24})}<span>${BX.ic('trophy', 13)} ${BX.esc(m.p1?.user.name || '')}</span></button>
-                          <button class="btn secondary award-win award-p2" data-win="${m.id}:${m.p2?.id}" aria-label="Dar vitória para ${BX.esc(m.p2?.user.name || '')}">${BX.avatarHtml(m.p2?.user,{size:24})}<span>${BX.ic('trophy', 13)} ${BX.esc(m.p2?.user.name || '')}</span></button>` : ''}
+                          <button class="btn secondary award-win award-p1" data-win="${m.id}:${m.p1?.id}" aria-label="Dar vitória para ${BX.esc(m.p1?.user.name || '')}">${BX.avatarHtml(m.p1?.user,{size:20})}<span>${BX.ic('trophy', 12)} ${BX.esc(m.p1?.user.name || '')}</span></button>
+                          <button class="btn secondary award-win award-p2" data-win="${m.id}:${m.p2?.id}" aria-label="Dar vitória para ${BX.esc(m.p2?.user.name || '')}">${BX.avatarHtml(m.p2?.user,{size:20})}<span>${BX.ic('trophy', 12)} ${BX.esc(m.p2?.user.name || '')}</span></button>` : ''}
                         ${m.status === 'DONE' && !m.bye && shownRound === t.currentRound ? `<button class="btn ghost" data-reopen="${m.id}">Reabrir</button>` : ''}
-                        ${!m.bye ? `<button class="btn ghost" data-mesa="${m.id}" title="Abrir a tela de mesa desta partida no dispositivo da mesa (reporta pelos dois lados)">${BX.ic('screen', 14)} Mesa</button>` : ''}
                       </div>
                     </div>`;
                   }).join('') || '<div class="empty-state">Nenhuma partida nesta rodada.</div>'}
