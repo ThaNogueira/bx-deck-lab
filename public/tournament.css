@@ -74,7 +74,9 @@
 #app .manager-table .manager-competitor.match-winner{border-color:#edcf70;outline:1px solid #edcf7040;background:#433b1c;box-shadow:0 0 8px #e6c85816}
 #app .manager-table .match-winner b{color:#fff1b8}
 .match-winner-trophy{flex-shrink:0;width:28px;height:28px;object-fit:contain;margin-left:auto;filter:drop-shadow(0 0 3px #ffd54a44)}
-#app:has(>.tabs),#app:has(>.match-focus){padding-top:12px}
+#app:has(>.tabs),#app:has(>.match-focus){padding-top:8px}
+#app>nav.tabs[aria-label],#app .match-focus>nav.tabs{margin:0 0 4px!important;padding:2px 0;align-items:center;min-height:0}
+#app>nav.tabs button.tab,#app .match-focus>nav.tabs .tab{min-height:36px;padding:6px 10px;font-size:12px;line-height:1.25;border-radius:7px}
 #app #viewBox[data-manager-section] .manager-table{grid-template-columns:minmax(0,1fr);grid-template-rows:auto;gap:7px}
 #app #viewBox[data-manager-section] .manager-table>a,#app #viewBox[data-manager-section] .manager-table .manager-table-info,#app #viewBox[data-manager-section] .manager-table .row-actions{grid-column:1;grid-row:auto}
 #app .manager-table .manager-table-info{display:grid;gap:5px;min-width:0}
@@ -95,7 +97,7 @@
 #app .tournament-fact>span{font-size:11px;line-height:1.3}
 #app .tournament-fact strong{font:600 16px/1.35 var(--body);white-space:normal}
 #app .tournament-fact small{font-size:12px;line-height:1.4}
-#app .tournament-heading{display:flex;align-items:center;gap:10px;margin:10px 0 8px}
+#app .tournament-heading{display:flex;align-items:center;gap:10px;margin:0 0 8px}
 #app .tournament-heading .tournament-title{flex:1;min-width:0;margin:0;font-size:clamp(21px,3vw,30px)}
 #app .tournament-heading #reportBtn{flex:0 0 40px;width:40px;height:40px;min-height:40px;padding:8px}
 #app.management-view>.tournament-heading{display:none}
