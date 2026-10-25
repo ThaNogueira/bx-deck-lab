@@ -3,8 +3,17 @@
   const esc = BX.esc;
   const install = () => {
     const select = document.getElementById('store') || document.getElementById('eStore');
-    if (!select || document.querySelector('[data-create-store]')) return;
-    if (select.id === 'store') select.insertAdjacentHTML('afterbegin', '<option value="">Sem loja</option>');
+    if (!select) return;
+    // The existing form loads stores asynchronously and replaces its options.
+    // Restore the explicit no-store choice after that load as well.
+    let noStore = [...select.options].find(option => option.value === '');
+    if (!noStore) {
+      noStore = new Option('Sem loja definida', '');
+      select.prepend(noStore);
+      if (select.id === 'store') select.value = '';
+    }
+    if (noStore.textContent !== 'Sem loja definida') noStore.textContent = 'Sem loja definida';
+    if (document.querySelector('[data-create-store]')) return;
     select.removeAttribute('required');
     const holder = select.parentElement;
     const button = document.createElement('button');

@@ -25,7 +25,7 @@ try {
  app.get('/api/me',(req,res)=>res.json({user:publicUser(req.user)}));
  app.get('/api/site',(req,res)=>res.json({site:{name:'BeyXLab'},flags:{}}));
  app.get('/api/parts-index',(req,res)=>res.json({parts:[]}));
- app.use(router);app.get('/torneio/:slug',(req,res)=>res.sendFile(path.resolve('public/torneio.html')));app.use(express.static('public'));
+ app.use(router);app.get('/torneios/novo',(req,res)=>res.sendFile(path.resolve('public/novo-torneio.html')));app.get('/torneio/:slug',(req,res)=>res.sendFile(path.resolve('public/torneio.html')));app.use(express.static('public'));
  app.use((err,req,res,next)=>{console.error(err);res.status(500).json({error:err.message});});
  server=app.listen(0,'127.0.0.1');await new Promise(r=>server.on('listening',r));
  const base=`http://127.0.0.1:${server.address().port}`;
@@ -38,6 +38,13 @@ try {
  for(const p of ps.slice(0,4)) assert.equal((await call(`/players/${p.id}/payment`,{paid:true},users[0],'PATCH')).status,200);
  if(process.argv.includes('--visual')) {
   const {chromium}=await import('playwright');browser=await chromium.launch({headless:true,channel:'msedge'});mkdirSync('artifacts/tournament-manager',{recursive:true});
+  await prisma.store.create({data:{name:'Loja de teste',address:'Rua Teste, 10'}});
+  const creation=await browser.newPage({viewport:{width:390,height:900}});
+  await creation.route('**/api/stores',async route=>{const response=await route.fetch();await new Promise(r=>setTimeout(r,200));await route.fulfill({response});});
+  await creation.goto(base+'/torneios/novo');await creation.locator('#store option', {hasText:'Loja de teste'}).waitFor({state:'attached'});
+  assert.equal(await creation.locator('#store option[value=""]').textContent(),'Sem loja definida');assert.equal(await creation.locator('#store').inputValue(),'');
+  await creation.locator('#name').fill('Torneio sem loja');await creation.locator('#date').fill('2026-11-01T14:00');await creation.locator('#submit').click();await creation.waitForURL('**/torneio/torneio-sem-loja');
+  const noStoreEvent=await prisma.tournament.findUnique({where:{slug:'torneio-sem-loja'}});assert.equal(noStoreEvent.storeId,null);assert.equal(noStoreEvent.storeName,null);await creation.close();
   for(const width of [320,390,1440]) {
    const page=await browser.newPage({viewport:{width,height:1000}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
    await page.goto(base+'/torneio/qa-manager#gestao');await page.locator('[data-payment]').first().waitFor();
