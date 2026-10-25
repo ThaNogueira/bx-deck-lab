@@ -25,7 +25,7 @@ for (const file of readdirSync('public').filter(name => name.endsWith('.html')))
     assert(html.includes('/js/shared.js') && html.includes('type="module"'));
     continue; // Migrated routes have dedicated React e2e coverage.
   }
-  if (file === 'torneio.html' || file === 'torneios.html' || file === 'novo-torneio.html') {
+  if (file === 'torneio.html' || file === 'torneios.html' || file === 'novo-torneio.html' || file === 'inscricao.html') {
     const html = readFileSync(`public/${file}`, 'utf8');
     assert(html.includes('/js/shared.js'));
     if (file === 'torneio.html') {
@@ -33,6 +33,8 @@ for (const file of readdirSync('public').filter(name => name.endsWith('.html')))
     } else if (file === 'torneios.html') {
       assert(html.includes('href="/torneios/novo"'));
       assert(!html.includes('newModal') && !html.includes('tCreate'));
+    } else if(file === 'inscricao.html') {
+      for (const hook of ['paymentPending','Pagamento pendente','/join','joinBtn','/js/shared.js']) assert(html.includes(hook));
     } else {
       for (const id of ['id="form"', 'id="store"', 'id="cover"', '/api/stores', 'storeId']) assert(html.includes(id));
     }

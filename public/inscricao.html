@@ -56,6 +56,7 @@
       }
       if (joined) {
         screen(`<p style="color:var(--green);font-weight:800;margin-top:14px">${BX.ic('check', 14)} Você já está inscrito!</p>
+          ${data.me?.paymentPending ? '<p style="color:var(--yellow)">Pagamento pendente. Faça o pagamento na loja ou com o organizador para participar das rodadas.</p>' : ''}
           <a class="btn primary" style="margin-top:14px;display:inline-block;text-decoration:none" href="/torneio/${t.slug}">Ir para o torneio</a>`);
         return;
       }
@@ -71,6 +72,7 @@
         try {
           await BX.api(`/api/tournaments/${t.slug}/join`, { method: 'POST', body: lateToken ? { lateToken } : {} });
           screen(`<p style="color:var(--green);font:800 30px var(--display);text-transform:uppercase;margin-top:18px">${BX.ic('check', 14)} Inscrição confirmada!</p>
+            ${t.entryFeeCents ? '<p style="color:var(--yellow)">Pagamento pendente. Faça o pagamento na loja ou com o organizador. Aguarde a confirmação do gestor para entrar nas rodadas.</p>' : ''}
             <a class="btn primary" style="margin-top:14px;display:inline-block;text-decoration:none" href="/torneio/${t.slug}">Ir para o torneio</a>`);
         } catch (e) { BX.toast(e.message); }
       });

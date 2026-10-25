@@ -25,7 +25,8 @@
       BX.renderTopbar('/torneios');
       const slug = BX.pathPart(1);
       const app = document.getElementById('app');
-      const VIEWS = ['geral', 'pairings', 'partida', 'gestao'];
+      const VIEWS = ['geral', 'pairings', 'partida', 'gestao', 'divulgacao', 'configuracao'];
+      let manageRound = null;
       const hashView = () => { const v = location.hash.slice(1); return VIEWS.includes(v) ? v : 'geral'; };
       let view = hashView(); // geral | partida | gestao — fica no hash: recarregar/voltar não perde a aba
       const reportExitKey = `bx_exit_match_report_${slug}`;
@@ -55,7 +56,7 @@
         // Participante vai direto para a aba "Minha partida", que é o report
         // integrado e responsivo desta própria página. Mantemos a aba aberta
         // mesmo após o reporte, para a pessoa ver o estado da sua partida.
-        if (data.tournament.status === 'RUNNING' && myMatch?.match && !myMatch.match.bye && !sessionStorage.getItem(reportExitKey) && view !== 'partida') {
+        if (!data.tournament.canManage && data.tournament.status === 'RUNNING' && myMatch?.match && !myMatch.match.bye && !sessionStorage.getItem(reportExitKey) && view !== 'partida') {
           view = 'partida';
           history.replaceState(null, '', '#partida');
         }
@@ -71,6 +72,15 @@
       window.addEventListener('hashchange', () => { const v = hashView(); if (v !== view) { view = v; if (last) render(last.data, last.me, last.myData); } });
 
       let ME = null;
+      let swipeStart = null;
+      app.addEventListener('touchstart', event => { if (!event.target.closest('input,select,textarea,button,a,.bracket-viewport,.manage-deck-preview')) swipeStart = { x:event.touches[0].clientX, y:event.touches[0].clientY }; }, {passive:true});
+      app.addEventListener('touchend', event => {
+        if (!swipeStart) return;
+        const dx = event.changedTouches[0].clientX-swipeStart.x, dy = event.changedTouches[0].clientY-swipeStart.y; swipeStart = null;
+        if (Math.abs(dx)<85 || Math.abs(dy)>45) return;
+        const buttons = [...app.querySelectorAll('nav.tabs [data-view]')], index = buttons.findIndex(b => b.dataset.view === view);
+        buttons[index + (dx<0 ? 1 : -1)]?.click();
+      }, {passive:true});
       function render(data, me, myData) {
         ME = me;
         const t = data.tournament;
@@ -81,28 +91,31 @@
           ...(data.matches?.length ? [['pairings', 'Pairings']] : []),
           ...(joined && t.status === 'RUNNING' ? [['partida', `${BX.ic('target', 14)} Minha partida`]] : []),
           ...(t.canManage ? [['gestao', `${BX.ic('settings', 14)} Gestão`]] : []),
+          ...(t.canManage ? [['divulgacao', BX.ic('share', 14) + ' Divulgação'], ['configuracao', BX.ic('edit', 16)]] : []),
         ];
 
         // Foco de jogo: preserva o mesmo report responsivo, mas remove capa,
         // resumo e rolagem antes dele. As abas mantêm a saída para o torneio.
         if (view === 'partida' && myData?.match) {
+          app.classList.remove('management-view');
           app.innerHTML = `<section class="match-focus" style="min-height:calc(100vh - 90px);display:flex;flex-direction:column"><nav class="tabs" style="justify-content:flex-start;margin:10px 0 18px" aria-label="Navegação do torneio">${tabs.map(([k, label]) => `<button class="tab${k === 'partida' ? ' active' : ''}" data-view="${k}">${label}</button>`).join('')}</nav><div id="viewBox" style="flex:1;display:grid;place-items:center"></div></section>`;
           document.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => { view = b.dataset.view; if (view === 'partida') sessionStorage.removeItem(reportExitKey); else sessionStorage.setItem(reportExitKey, '1'); history.replaceState(null, '', '#' + view); render(data, me, myData); }));
           renderMatch(document.getElementById('viewBox'), t, myData);
           return;
         }
 
+        const managementView = t.canManage && ['gestao', 'divulgacao', 'configuracao'].includes(view);
+        app.classList.toggle('management-view', managementView);
         app.innerHTML = `
+          <h1 class="tournament-title" title="${BX.esc(t.name)}">${BX.esc(t.name)}</h1>
           <div class="tournament-cover ${t.coverUrl ? 'has-image' : ''}">
             ${t.coverUrl ? `<img src="${BX.esc(t.coverUrl)}" alt="Capa do torneio ${BX.esc(t.name)}">` : `<div class="tournament-cover-placeholder">${BX.icon('tournaments', 64)}<span>BEYXLAB / TOURNAMENT</span></div>`}
           </div>
           <div class="hero compact tournament-hero">
             <div>
-              <p class="eyebrow">TORNEIO BEYBLADE X</p>
-              <h1>${BX.esc(t.name)}</h1>
               <p>
                 <span class="status-chip ${t.status}">${STATUS_PT[t.status]}${t.status === 'RUNNING' ? ` — rodada ${t.currentRound}/${t.roundsPlanned}` : ''}</span>
-                <span>${t.format === 'MD3' ? 'Melhor de 3' : 'Partida simples até 4 pontos'} · ${t.roundsPlanned} rodadas · ${data.players.length} inscritos</span>
+                <span class="event-tag">${t.format === 'MD3' ? 'Melhor de 3' : 'Até 4 pontos'}</span><span class="event-tag">${t.roundsPlanned} rodadas</span><span class="event-tag">${data.players.length} inscritos</span>
               </p>
             </div>
             <div class="hero-actions">
@@ -115,7 +128,9 @@
             <div class="tournament-fact"><span>${BX.icon('calendar', 20)} Data e horário</span><strong>${BX.dateFmt(t.startsAt, { weekday: 'long', day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' })}</strong></div>
             <div class="tournament-fact"><span>${BX.icon('pin', 20)} Local</span><strong>${BX.esc(t.storeName || t.address || 'A definir')}</strong>${t.storeName && t.address ? `<small>${BX.esc(t.address)}</small>` : ''}</div>
             <div class="tournament-fact"><span>${BX.icon('money', 20)} Inscrição</span><strong>${feeLabel(t.entryFeeCents)}</strong></div>
+            <div class="tournament-fact"><span>${BX.icon('users', 20)} Jogadores</span><strong>${data.players.filter(p => !p.dropped && (!t.entryFeeCents || p.paymentConfirmed)).length} aptos / ${data.players.length} inscritos</strong></div>
           </div>
+          ${data.me?.paymentPending ? '<div class="payment-notice">Inscrito no torneio · <strong>Pagamento pendente</strong><p>Faça o pagamento na loja ou com o organizador. Sua participação nas rodadas depende da confirmação do gestor.</p></div>' : ''}
           ${t.description ? `<section class="tournament-intro"><p class="eyebrow">SOBRE O EVENTO</p><p>${BX.esc(t.description)}</p></section>` : ''}
           ${tabs.length > 1 ? `<nav class="tabs" style="justify-content:flex-start;margin-bottom:18px" aria-label="Seções do torneio">${tabs.map(([k, label]) => `<button class="tab${view === k ? ' active' : ''}" data-view="${k}" aria-selected="${view === k}">${label}</button>`).join('')}</nav>` : ''}
           <div id="viewBox"></div>`;
@@ -132,7 +147,7 @@
         const box = document.getElementById('viewBox');
         if (view === 'pairings') renderPairings(box, t, data);
         else if (view === 'partida' && myData?.match) renderMatch(box, t, myData);
-        else if (view === 'gestao' && t.canManage) renderManage(box, t, data);
+        else if (['gestao', 'divulgacao', 'configuracao'].includes(view) && t.canManage) renderManage(box, t, data);
         else renderGeneral(box, t, data);
       }
 
@@ -221,9 +236,9 @@
           </div>
           <div class="player-list" style="grid-template-columns:repeat(auto-fill,minmax(230px,1fr))">
             ${data.players.map((p) => `
-              <a class="player-card" href="/u/${p.user.slug}" style="text-decoration:none;color:inherit;${p.dropped ? 'opacity:.5' : ''}">
+              <a class="player-card ${t.entryFeeCents && !p.paymentConfirmed ? 'payment-pending' : ''}" href="/u/${p.user.slug}" style="text-decoration:none;color:inherit;${p.dropped ? 'opacity:.5' : ''}">
                 ${BX.avatarHtml(p.user, { size: 44 })}
-                <div><h3>${BX.esc(p.user.name)}</h3><small>@${BX.esc(p.user.slug)}${p.dropped ? ' • DROP' : ''}${t.status === 'FINISHED' && p.deck?.title ? ` • ${BX.icon('decks', 11)} ${BX.esc(p.deck.title)}` : ''}</small></div>
+                <div><h3>${BX.esc(p.user.name)}</h3><small>@${BX.esc(p.user.slug)}${p.dropped ? ' • DROP' : ''}${t.entryFeeCents && !p.paymentConfirmed ? ' · Pagamento pendente' : ''}${t.status === 'FINISHED' && p.deck?.title ? ` • ${BX.icon('decks', 11)} ${BX.esc(p.deck.title)}` : ''}</small></div>
               </a>`).join('') || '<div class="empty-state">Ninguém inscrito ainda.</div>'}
           </div>
           ${t.status === 'FINISHED' ? `<section class="tournament-gallery"><div class="section-title-row"><div><p class="eyebrow">MOMENTOS DO EVENTO</p><h2>Galeria de fotos</h2></div></div>${data.photos?.length ? `<div class="tournament-gallery-grid">${data.photos.map((photo, i) => `<a href="${BX.esc(photo.url)}" target="_blank" rel="noopener" aria-label="Abrir foto ${i + 1} do evento"><img src="${BX.esc(photo.url)}" alt="Foto ${i + 1} do torneio" loading="lazy"></a>`).join('')}</div>` : '<p class="muted">As fotos do evento aparecerão aqui.</p>'}</section>` : ''}
@@ -298,6 +313,8 @@
 
       function renderManage(box, t, data) {
         const roundMatches = data.matches.filter((m) => m.round === t.currentRound);
+        const shownRound = manageRound && manageRound <= t.currentRound ? manageRound : t.currentRound;
+        const shownMatches = data.matches.filter(m => m.round === shownRound);
         const conflicts = roundMatches.filter((m) => m.status === 'CONFLICT');
         const pendingMatches = roundMatches.filter((m) => m.status !== 'DONE').length;
         const canAdvance = roundMatches.length > 0 && pendingMatches === 0;
@@ -318,23 +335,25 @@
               </div>
               ${t.status !== 'OPEN' ? `
               <div class="panel-card">
-                <p class="eyebrow">RODADA ${t.currentRound} — PARTIDAS</p>
-                <div style="margin-top:12px">
-                  ${roundMatches.map((m) => {
+                <nav class="manager-rounds" aria-label="Rodadas">${Array.from({length:t.currentRound}, (_,i) => `<button type="button" data-manager-round="${i+1}" class="btn ${shownRound === i+1 ? 'primary' : 'secondary'}">R${i+1}${i+1 === t.currentRound ? ' · atual' : ''}</button>`).join('')}</nav>
+                <p class="eyebrow">RODADA ${shownRound} — PARTIDAS</p>
+                ${shownRound < t.currentRound && t.status === 'RUNNING' ? '<button class="btn secondary" id="correctPast">'+BX.ic('edit',14)+' Arrumar resultados passados</button>' : ''}
+                <div class="manager-tables" style="margin-top:12px">
+                  ${shownMatches.map((m) => {
                     const rep = (r) => r == null ? '<span style="color:#5a6270">—</span>' : r ? `<b style="color:var(--green)">reportou</b>` : '';
                     return `
-                    <div class="org-match-row ${m.status === 'CONFLICT' ? 'conflict' : ''} ${m.status === 'DONE' ? 'done' : ''}">
+                    <div class="org-match-row manager-table ${m.status === 'CONFLICT' ? 'conflict' : ''} ${m.status === 'DONE' ? 'done' : m.p1Reported || m.p2Reported ? 'reported' : 'playing'}">
                       <a style="font:800 15px var(--display);color:var(--yellow);text-decoration:none" href="/mesa/${t.slug}/${m.id}" title="Abrir tela de mesa">M${m.tableNo}</a>
                       <div style="font-size:12px">
-                        <b>${BX.esc(m.p1?.user.name || '?')}</b> ${m.p1Reported ? `${BX.ic('check', 14)}` : ''} vs <b>${BX.esc(m.p2?.user.name || 'BYE')}</b> ${m.p2Reported ? `${BX.ic('check', 14)}` : ''}
+                        <div class="manager-competitor">${m.p1 ? BX.avatarHtml(m.p1.user,{size:24}) : ''}<b>${BX.esc(m.p1?.user.name || '?')}</b>${m.p1Reported ? BX.ic('check',14) : ''}</div><div class="manager-competitor">${m.p2 ? BX.avatarHtml(m.p2.user,{size:24}) : ''}<b>${BX.esc(m.p2?.user.name || 'BYE')}</b>${m.p2Reported ? BX.ic('check',14) : ''}</div>
                         <small style="display:block;color:var(--muted)">${m.status === 'DONE' ? `${BX.ic('check', 14)} vencedor: ${BX.esc((m.winnerId === m.p1?.id ? m.p1 : m.p2)?.user.name || '?')}${m.resolvedBy === 'ORGANIZER' ? ' (manual)' : ''}` : m.status === 'CONFLICT' ? `${BX.ic('warn', 14)} conflito — escolha o vencedor` : 'aguardando reportes'}</small>
                       </div>
                       <div class="row-actions">
-                        ${m.status !== 'DONE' && !m.bye ? `
+                        ${m.status !== 'DONE' && !m.bye && shownRound === t.currentRound ? `
                           ${m.status !== 'CONFLICT' && (m.p1Reported || m.p2Reported) ? `<button class="btn secondary" data-accept="${m.id}">Aceitar reporte único</button>` : ''}
                           <button class="btn secondary" data-win="${m.id}:${m.p1?.id}">${BX.ic('trophy', 14)} ${BX.esc(m.p1?.user.name || '')}</button>
                           <button class="btn secondary" data-win="${m.id}:${m.p2?.id}">${BX.ic('trophy', 14)} ${BX.esc(m.p2?.user.name || '')}</button>` : ''}
-                        ${m.status === 'DONE' && !m.bye ? `<button class="btn ghost" data-reopen="${m.id}">Reabrir</button>` : ''}
+                        ${m.status === 'DONE' && !m.bye && shownRound === t.currentRound ? `<button class="btn ghost" data-reopen="${m.id}">Reabrir</button>` : ''}
                         ${!m.bye ? `<button class="btn ghost" data-mesa="${m.id}" title="Abrir a tela de mesa desta partida no dispositivo da mesa (reporta pelos dois lados)">${BX.ic('screen', 14)} Mesa</button>` : ''}
                       </div>
                     </div>`;
@@ -343,10 +362,12 @@
               </div>` : ''}
               <div class="panel-card">
                 <p class="eyebrow">JOGADORES</p>
-                <div style="margin-top:10px">${data.players.map((p) => `
-                  <div class="org-match-row">
+                <div class="payment-filters"><button class="btn secondary" data-payment-filter="all">Todos</button><button class="btn secondary" data-payment-filter="paid">Chamada · aptos</button><button class="btn secondary" data-payment-filter="pending">Pagamento pendente</button></div>
+                <div class="manager-players" style="margin-top:10px">${data.players.map((p) => `
+                  <div class="org-match-row manager-player ${t.entryFeeCents && !p.paymentConfirmed ? 'payment-pending' : ''}" data-payment-state="${!p.dropped && (!t.entryFeeCents || p.paymentConfirmed) ? 'paid' : 'pending'}">
                     ${BX.avatarHtml(p.user, { size: 34 })}
                     <div style="font-size:12px"><b>${BX.esc(p.user.name)}</b>${p.dropped ? ' <small style="color:var(--muted)">(removido/drop)</small>' : ''}<small style="display:block;color:var(--muted)">${p.deck?.title ? `Deck: ${BX.esc(p.deck.title)}${p.deck.managed ? ' (gestão)' : ''}` : p.deckDeclared ? 'Deck do jogador (privado)' : 'Sem deck declarado'}</small>${p.deck?.beys?.length ? `<div class="manage-deck-preview">${BX.deckPreview(p.deck.beys, { u: 27 })}</div>` : ''}</div>
+                    ${t.entryFeeCents ? `<label class="payment-check"><input type="checkbox" data-payment="${p.id}" ${p.paymentConfirmed ? 'checked' : ''} ${t.status !== 'OPEN' ? 'disabled' : ''}>${p.paymentConfirmed ? 'Pago' : 'Pagamento pendente'}</label>` : '<span class="payment-check">Inscrição gratuita</span>'}
                     <button class="btn secondary" data-build-deck="${p.id}">${BX.icon('decks', 14)} Montar deck</button>
                     <button class="btn secondary" data-pick-deck="${p.id}">${BX.icon('community', 14)} Escolher deck</button>
                     ${!p.dropped && !['FINISHED', 'CANCELED'].includes(t.status) ? `<button class="btn danger-outline" data-kick="${p.id}">${t.status === 'OPEN' ? 'Remover' : 'Drop'}</button>` : '<span></span>'}
@@ -396,6 +417,41 @@
           <div class="modal-backdrop" id="manageDeckModal" hidden><div class="modal"></div></div>`;
 
         const act = (fn) => async () => { try { await fn(); load(); } catch (e) { BX.toast(e.message); } };
+        box.dataset.managerSection = view;
+        const grid = box.querySelector('.profile-grid'), columns = grid ? [...grid.children] : [];
+        if (columns[0]) columns[0].classList.add('manager-main');
+        if (columns[1]) {
+          columns[1].classList.add('manager-secondary');
+          [...columns[1].children].forEach(panel => panel.classList.add(panel.querySelector('#copyLink') ? 'manager-publicity' : 'manager-settings'));
+          const settings = columns[1].querySelector('.manager-settings');
+          ['tamerLeagueSyncBtn','cancelBtn','lateInviteBtn'].forEach(id => { const button=box.querySelector('#'+id); if(button && settings) settings.append(button); });
+        }
+        box.querySelectorAll('.manager-player').forEach(row => {
+          const options=document.createElement('details'); options.className='manager-player-options';
+          options.innerHTML='<summary>Deck e opções</summary>';
+          row.querySelectorAll('button').forEach(button=>options.append(button)); row.append(options);
+        });
+        const central = box.querySelector('.tournament-control-card'), next = box.querySelector('.next-round-card');
+        if (central && next) central.append(next);
+        box.querySelectorAll('[data-manager-round]').forEach(button => button.onclick = () => { manageRound = Number(button.dataset.managerRound); renderManage(box,t,data); });
+        box.querySelectorAll('[data-payment-filter]').forEach(button => button.onclick = () => {
+          box.querySelectorAll('[data-payment-state]').forEach(row => row.hidden = button.dataset.paymentFilter !== 'all' && row.dataset.paymentState !== button.dataset.paymentFilter);
+        });
+        box.querySelectorAll('[data-payment]').forEach(input => input.onchange = async () => {
+          input.disabled = true;
+          try { await BX.api(`/api/tournaments/${slug}/players/${input.dataset.payment}/payment`, {method:'PATCH',body:{paid:input.checked}}); await load(); }
+          catch(error) { input.checked = !input.checked; input.disabled = false; BX.toast(error.message); }
+        });
+        box.querySelector('#correctPast')?.addEventListener('click', () => {
+          const dialog = document.createElement('dialog'); dialog.className = 'correction-dialog';
+          dialog.innerHTML = `<h2>Corrigir rodada ${shownRound}</h2><p>Confira os vencedores. Os pareamentos posteriores ainda sem atividade serão refeitos com estes resultados. Partidas já jogadas impedem esta operação.</p><form method="dialog">${shownMatches.filter(m=>!m.bye).map(m=>`<label>Mesa ${m.tableNo}<select data-correct-match="${m.id}"><option value="${m.p1.id}" ${m.winnerId === m.p1.id ? 'selected' : ''}>${BX.esc(m.p1.user.name)}</option><option value="${m.p2.id}" ${m.winnerId === m.p2.id ? 'selected' : ''}>${BX.esc(m.p2.user.name)}</option></select></label>`).join('')}<div class="inline-actions"><button class="btn secondary" value="cancel">Cancelar</button><button type="button" class="btn primary" data-save-correction>Salvar e refazer rodada ${shownRound+1}</button></div><p data-correction-error role="alert"></p></form>`;
+          document.body.append(dialog); dialog.showModal(); dialog.addEventListener('close',()=>dialog.remove());
+          dialog.querySelector('[data-save-correction]').onclick = async event => {
+            event.target.disabled = true;
+            try { await BX.api(`/api/tournaments/${slug}/correct-round`,{method:'POST',body:{round:shownRound,results:[...dialog.querySelectorAll('[data-correct-match]')].map(el=>({matchId:el.dataset.correctMatch,winnerId:el.value}))}}); manageRound=null; dialog.close(); await load(); }
+            catch(error) { dialog.querySelector('[data-correction-error]').textContent=error.message; event.target.disabled=false; }
+          };
+        });
         const uploadFiles = async (inputId, field, endpoint, buttonId) => {
           const input = document.getElementById(inputId);
           const button = document.getElementById(buttonId);

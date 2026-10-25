@@ -79,6 +79,7 @@ const playerDto = (p, { showDeclaredDeck = true } = {}) => {
   return {
     id: p.id,
     dropped: p.dropped,
+    paymentConfirmed: p.paymentConfirmed !== false,
     lateLosses: p.lateLosses ?? 0,
     user: publicUser(p.user),
     // A composição manual pertence ao evento. Um deck declarado pelo jogador só
@@ -122,6 +123,7 @@ export async function loadTournament(slug) {
 }
 
 export function standingsOf(t, options) {
+  t = { ...t, players: t.players.filter(p => !t.entryFeeCents || p.paymentConfirmed !== false) };
   // Regra TamerLeague / Play! Pokémon: pontos do torneio (3-1-0) são
   // independentes do percentual usado nos desempates (2-1-0). BYEs dão
   // pontos, mas nunca entram em relacionamento de oponente nem em Win %.
@@ -198,8 +200,8 @@ async function automaticTamerLeagueSync(t) {
 }
 
 /** Pareamento suíço: procura uma combinação inteira sem revanche antes de aceitá-la. */
-async function pairRound(t, round) {
-  const active = t.players.filter((p) => !p.dropped);
+async function pairRound(t, round, db = prisma) {
+  const active = t.players.filter((p) => !p.dropped && (!t.entryFeeCents || p.paymentConfirmed !== false));
   const played = new Set();
   const hadBye = new Set();
   for (const m of t.matches) {
@@ -244,12 +246,12 @@ async function pairRound(t, round) {
 
   let tableNo = 1;
   for (const [a, b] of pairs) {
-    await prisma.tMatch.create({
+    await db.tMatch.create({
       data: { tournamentId: t.id, round, tableNo: tableNo++, p1Id: a.id, p2Id: b.id },
     });
   }
   if (bye) {
-    await prisma.tMatch.create({
+    await db.tMatch.create({
       data: {
         tournamentId: t.id, round, tableNo: tableNo, p1Id: bye.id, p2Id: null,
         winnerId: bye.id, status: 'DONE', resolvedBy: 'AUTO',
@@ -371,7 +373,7 @@ router.get('/api/tournaments/:slug', ah(async (req, res) => {
     matches: t.matches.map((m) => matchDto(m, deckOptions)),
     photos: t.photos.map(({ id, url, createdAt }) => ({ id, url, createdAt })),
     standings: t.status === 'OPEN' ? [] : standingsOf(t, deckOptions),
-    me: me ? { playerId: me.id, dropped: me.dropped } : null,
+    me: me ? { playerId: me.id, dropped: me.dropped, paymentPending: !!t.entryFeeCents && me.paymentConfirmed === false } : null,
   });
 }));
 
@@ -389,7 +391,7 @@ router.post('/api/tournaments/:slug/join', requireUser, ah(async (req, res) => {
       if (!invite || invite.tournamentId !== t.id || invite.usedAt || (invite.expiresAt && invite.expiresAt <= new Date())) return null;
       const claimed = await tx.tournamentLateEntryInvite.updateMany({ where: { id: invite.id, usedAt: null }, data: { usedAt: new Date(), usedByUserId: req.user.id } });
       if (!claimed.count) return null;
-      await tx.tournamentPlayer.create({ data: { tournamentId: t.id, userId: req.user.id, lateLosses: t.currentRound } });
+      await tx.tournamentPlayer.create({ data: { tournamentId: t.id, userId: req.user.id, lateLosses: t.currentRound, paymentConfirmed: !t.entryFeeCents } });
       return { lateLosses: t.currentRound };
     });
     if (!result) return res.status(403).json({ error: 'Este convite de entrada tardia expirou ou já foi usado.' });
@@ -400,7 +402,7 @@ router.post('/api/tournaments/:slug/join', requireUser, ah(async (req, res) => {
   await prisma.tournamentPlayer.upsert({
     where: { tournamentId_userId: { tournamentId: t.id, userId: req.user.id } },
     update: { dropped: false },
-    create: { tournamentId: t.id, userId: req.user.id },
+    create: { tournamentId: t.id, userId: req.user.id, paymentConfirmed: !t.entryFeeCents },
   });
   res.json({ ok: true });
 }));
@@ -716,10 +718,45 @@ router.post('/api/tournaments/:slug/photos', requireManage(bySlug), uploadTourna
   } catch (e) { await Promise.all(files.map((file) => fs.unlink(file.path).catch(() => {}))); throw e; }
 }));
 
+router.patch('/api/tournaments/:slug/players/:playerId/payment', requireManage(bySlug), ah(async (req, res) => {
+  const t = req.tournament;
+  if (t.status !== 'OPEN') return res.status(409).json({ error: 'Confirme os pagamentos antes de iniciar o torneio.' });
+  const p = t.players.find(p => p.id === req.params.playerId);
+  if (!p) return res.status(404).json({ error: 'Inscrição não encontrada.' });
+  if (typeof req.body?.paid !== 'boolean') return res.status(422).json({ error: 'Informe se o pagamento foi confirmado.' });
+  await prisma.tournamentPlayer.update({ where: { id: p.id }, data: { paymentConfirmed: req.body.paid } });
+  await audit(req.user, 'tournament.payment', 'TOURNAMENT', t.id, { playerId: p.id, paid: req.body.paid });
+  res.json({ ok: true });
+}));
+
+// Correct one completed round and regenerate only a later round that has not been played.
+router.post('/api/tournaments/:slug/correct-round', requireManage(bySlug), ah(async (req, res) => {
+  const t = req.tournament, round = Number(req.body?.round), results = req.body?.results;
+  if (t.status !== 'RUNNING' || !Number.isInteger(round) || round < 1 || round >= t.currentRound) return res.status(422).json({ error: 'Escolha uma rodada anterior de um torneio em andamento.' });
+  const targets = t.matches.filter(m => m.round === round && m.p2Id);
+  if (!Array.isArray(results) || results.length !== targets.length || new Set(results.map(r => r.matchId)).size !== targets.length || results.some(r => !targets.some(m => m.id === r.matchId && [m.p1Id, m.p2Id].includes(r.winnerId)))) return res.status(422).json({ error: 'Informe um vencedor válido para cada mesa da rodada.' });
+  try {
+    await prisma.$transaction(async tx => {
+      const later = await tx.tMatch.findMany({ where: { tournamentId: t.id, round: { gt: round } }, include: { rounds: true } });
+      if (later.some(m => m.p2Id && (m.status !== 'PENDING' || m.p1Report || m.p2Report || m.p1Score || m.p2Score || m.rounds.some(r => r.status !== 'VOID')))) throw new Error('A rodada posterior já tem atividade. Não é possível refazer os pareamentos sem apagar partidas jogadas.');
+      await tx.tMatch.deleteMany({ where: { tournamentId: t.id, round: { gt: round } } });
+      for (const r of results) {
+        await tx.tMatch.update({ where: { id: r.matchId }, data: { winnerId: r.winnerId, status: 'DONE', resolvedBy: 'ORGANIZER', p1Report: null, p2Report: null, p1Score: 0, p2Score: 0 } });
+        await tx.matchRound.updateMany({ where: { matchId: r.matchId }, data: { status: 'VOID', resolvedBy: 'ORGANIZER' } });
+      }
+      const matches = await tx.tMatch.findMany({ where: { tournamentId: t.id } });
+      await pairRound({ ...t, matches }, round + 1, tx);
+      await tx.tournament.update({ where: { id: t.id }, data: { currentRound: round + 1 } });
+    });
+  } catch (error) { if (error.message.startsWith('A rodada posterior')) return res.status(409).json({ error: error.message }); throw error; }
+  await audit(req.user, 'tournament.correct_round', 'TOURNAMENT', t.id, { round, results });
+  res.json({ ok: true, round: round + 1 });
+}));
+
 router.post('/api/tournaments/:slug/start', requireManage(bySlug), ah(async (req, res) => {
   const t = req.tournament;
   if (t.status !== 'OPEN') return res.status(403).json({ error: 'O torneio já começou.' });
-  if (t.players.filter((p) => !p.dropped).length < 2) return res.status(422).json({ error: 'É preciso ter ao menos 2 jogadores.' });
+  if (t.players.filter((p) => !p.dropped && (!t.entryFeeCents || p.paymentConfirmed)).length < 2) return res.status(422).json({ error: 'É preciso ter ao menos 2 jogadores aptos, com pagamento confirmado quando houver inscrição paga.' });
   await pairRound(t, 1);
   await prisma.tournament.update({ where: { id: t.id }, data: { status: 'RUNNING', currentRound: 1 } });
   await audit(req.user, 'tournament.start', 'TOURNAMENT', t.id);
@@ -776,6 +813,7 @@ router.post('/api/tournaments/:slug/matches/:matchId/resolve', requireManage(byS
   const t = req.tournament;
   const match = t.matches.find((m) => m.id === req.params.matchId);
   if (!match || !match.p2Id) return res.status(404).json({ error: 'Partida não encontrada.' });
+  if (match.round < t.currentRound) return res.status(409).json({ error: 'Use Arrumar resultados passados para corrigir esta rodada e revisar os próximos pareamentos.' });
 
   let winnerId = req.body?.winnerId ?? null;
   if (!winnerId) {
@@ -799,6 +837,7 @@ router.post('/api/tournaments/:slug/matches/:matchId/resolve', requireManage(byS
 router.post('/api/tournaments/:slug/matches/:matchId/reopen', requireManage(bySlug), ah(async (req, res) => {
   const match = req.tournament.matches.find((m) => m.id === req.params.matchId);
   if (!match || !match.p2Id) return res.status(404).json({ error: 'Partida não encontrada.' });
+  if (match.round < req.tournament.currentRound) return res.status(409).json({ error: 'Use Arrumar resultados passados para corrigir rodadas anteriores.' });
   const updated = await prisma.tMatch.update({
     where: { id: match.id },
     data: { winnerId: null, status: 'PENDING', resolvedBy: null, p1Report: null, p2Report: null, p1Score: 0, p2Score: 0 },
@@ -927,6 +966,7 @@ function roundAction(fn) {
     if (!match) return res.status(404).json({ error: 'Partida não encontrada.' });
     if (!match.p2Id) return res.status(422).json({ error: 'BYE não tem rounds.' });
     if (t.status !== 'RUNNING') return res.status(403).json({ error: 'O torneio não está em andamento.' });
+    if (match.round !== t.currentRound) return res.status(409).json({ error: 'Use a correção de resultados passados na gestão para alterar esta rodada.' });
     const can = actorSides(req, t, match);
     const side = req.body?.side === 'p2' ? 'p2' : 'p1';
     const judge = !!req.body?.judge && can.organizer;
@@ -996,6 +1036,7 @@ router.post('/api/tournaments/:slug/matches/:matchId/rounds/:roundId/resolve', r
   const t = req.tournament;
   const match = await loadMatch(t, req.params.matchId);
   if (!match || !match.p2Id) return res.status(404).json({ error: 'Partida não encontrada.' });
+  if (match.round !== t.currentRound) return res.status(409).json({ error: 'Use a correção de resultados passados na gestão.' });
   const round = match.rounds.find((r) => r.id === req.params.roundId);
   if (!round || !['DISPUTED', 'PENDING', 'CONFIRMED'].includes(round.status)) return res.status(404).json({ error: 'Round não encontrado.' });
   const w = req.body?.winnerSide;
