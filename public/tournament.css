@@ -54,6 +54,7 @@
 @media(max-width:760px){#viewBox[data-manager-section] .manager-table .row-actions .btn{min-height:44px;padding:6px;font-size:10px}#viewBox[data-manager-section] .manager-table .row-actions .accept-result{min-height:44px;font-size:10px}}
 
 /* Compact public header and focused tournament operations. */
+#app:has(>.tabs),#app:has(>.match-focus){padding-top:12px}
 #app #viewBox[data-manager-section] .manager-table{grid-template-columns:minmax(0,1fr);grid-template-rows:auto;gap:7px}
 #app #viewBox[data-manager-section] .manager-table>a,#app #viewBox[data-manager-section] .manager-table .manager-table-info,#app #viewBox[data-manager-section] .manager-table .row-actions{grid-column:1;grid-row:auto}
 #app .manager-table .manager-table-info{display:grid;gap:5px;min-width:0}

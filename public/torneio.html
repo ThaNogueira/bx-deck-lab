@@ -107,6 +107,8 @@
         const managementView = t.canManage && ['gestao', 'divulgacao', 'configuracao'].includes(view);
         app.classList.toggle('management-view', managementView);
         app.innerHTML = `
+          <nav class="tabs" style="justify-content:flex-start;margin:0 0 12px" aria-label="Seções do torneio">${tabs.map(([k, label]) => `<button class="tab${view === k ? ' active' : ''}" data-view="${k}" aria-selected="${view === k}">${label}</button>`).join('')}</nav>
+          ${view === 'geral' ? `
           <div class="tournament-heading"><h1 class="tournament-title" title="${BX.esc(t.name)}">${BX.esc(t.name)}</h1><button class="btn ghost icon-only" id="reportBtn" aria-label="Denunciar torneio" title="Denunciar torneio">${BX.icon('flag', 18)}</button></div>
           <div class="tournament-cover ${t.coverUrl ? 'has-image' : ''}">
             ${t.coverUrl ? `<img src="${BX.esc(t.coverUrl)}" alt="Capa do torneio ${BX.esc(t.name)}">` : `<div class="tournament-cover-placeholder">${BX.icon('tournaments', 64)}<span>BEYXLAB / TOURNAMENT</span></div>`}
@@ -131,7 +133,7 @@
           </div>
           ${data.me?.paymentPending ? '<div class="payment-notice">Inscrito no torneio · <strong>Pagamento pendente</strong><p>Faça o pagamento na loja ou com o organizador. Sua participação nas rodadas depende da confirmação do gestor.</p></div>' : ''}
           ${t.description ? `<section class="tournament-intro"><p class="eyebrow">SOBRE O EVENTO</p><p>${BX.esc(t.description)}</p></section>` : ''}
-          ${tabs.length > 1 ? `<nav class="tabs" style="justify-content:flex-start;margin-bottom:18px" aria-label="Seções do torneio">${tabs.map(([k, label]) => `<button class="tab${view === k ? ' active' : ''}" data-view="${k}" aria-selected="${view === k}">${label}</button>`).join('')}</nav>` : ''}
+          ` : ''}
           <div id="viewBox"></div>`;
 
         document.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => { view = b.dataset.view; if (view === 'partida') sessionStorage.removeItem(reportExitKey); else sessionStorage.setItem(reportExitKey, '1'); history.replaceState(null, '', '#' + view); render(data, me, myData); }));
@@ -145,7 +147,7 @@
 
         const box = document.getElementById('viewBox');
         if (view === 'pairings') renderPairings(box, t, data);
-        else if (view === 'partida' && myData?.match) renderMatch(box, t, myData);
+        else if (view === 'partida') renderMatch(box, t, { ...myData, paymentPending: data.me?.paymentPending });
         else if (['gestao', 'divulgacao', 'configuracao'].includes(view) && t.canManage) renderManage(box, t, data);
         else renderGeneral(box, t, data);
       }
@@ -277,6 +279,7 @@
 
       function renderMatch(box, t, myData) {
         const m = myData.match;
+        if (!m) { box.innerHTML = `<div class="empty-state">${myData.paymentPending ? 'Pagamento pendente. Faça o pagamento com o organizador para participar das rodadas.' : 'Você ainda não tem uma mesa nesta rodada. Aguarde os pareamentos.'}</div>`; return; }
         if (m.bye) {
           box.innerHTML = `<div class="match-screen"><p class="eyebrow">RODADA ${myData.round}</p><div class="match-vs">BYE</div><p style="color:var(--muted)">Você folga nesta rodada e já tem a vitória. Descanse o pulso! </p></div>`;
           return;
