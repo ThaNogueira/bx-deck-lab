@@ -141,6 +141,7 @@
 #app .manager-table .row-actions:empty{display:none}
 #app #viewBox[data-manager-section] .manager-table .manager-table-head{grid-column:1;grid-row:auto;display:flex;align-items:center;justify-content:space-between;gap:6px;min-width:0}
 #app #viewBox .manager-table .manager-table-head .reopen-match{flex:0 0 auto;width:auto;min-height:32px;padding:4px 7px;font-size:11px;line-height:1.2;border-radius:6px;box-shadow:none}
+#app #viewBox .manager-table .manager-table-head .accept-result{flex:0 1 auto;min-width:0;width:auto;max-width:calc(100% - 23px);min-height:32px;padding:4px 6px;font-size:10px;line-height:1.2;white-space:normal;border-radius:6px;box-shadow:none}
 @media(max-width:760px){#app .manager-table .manager-table-info .award-win{font-size:11px;padding:6px;gap:5px}}
 #viewBox[data-manager-section] .manager-table .row-actions .btn{display:flex;align-items:center}.manager-table .award-win>span:last-child{flex:1}
 @media(min-width:761px){#viewBox[data-manager-section] .manager-table{grid-template-rows:24px 1fr}}

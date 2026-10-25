@@ -117,6 +117,9 @@ try {
    await page.screenshot({path:`artifacts/tournament-manager/standings-${width}.png`,animations:'disabled'});
    assert.equal(await page.locator('#app>:first-child').getAttribute('class'),'tabs');
    await page.locator('[data-view=gestao]').click();await page.locator('.manager-table.reported').waitFor();
+   assert.equal(await page.locator('.manager-table-head [data-accept]').count(),1);
+   assert.equal(await page.locator('.manager-table.reported .row-actions').count(),0);
+   assert(await page.locator('.manager-table-head [data-accept]').evaluate(el=>el.getBoundingClientRect().bottom<=el.closest('.manager-table').querySelector('.manager-table-info').getBoundingClientRect().top));
    if(width>900) assert(await page.evaluate(()=>document.querySelector('#viewBox').getBoundingClientRect().x>=document.querySelector('.side-nav').getBoundingClientRect().right));
    assert.match(await page.locator('.manager-rounds .primary').innerText(),/R2/);
    assert.equal(await page.locator('.manager-rounds .current .round-live-dot').count(),1);
