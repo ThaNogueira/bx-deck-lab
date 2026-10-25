@@ -181,11 +181,10 @@
             ${competitor(m.p2, { won: done && m.winnerId === m.p2?.id, lost: done && !!m.winnerId && m.winnerId !== m.p2?.id, reported: !done && m.p2Reported, bye: m.bye, score: showScore ? m.p2Score : null })}
           </article>`;
         };
-        const cols = [selectedRound].map((r) => `<section class="bracket-round ${isCur(r) ? 'current' : ''}" data-round="${r}"><h3>Rodada ${r}${isCur(r) ? ' · em andamento' : ''}</h3><div class="round-matches">${data.matches.filter((m) => m.round === r).sort((a, b) => a.tableNo - b.tableNo).map(card).join('')}</div></section>`).join('');
+        const cols = [selectedRound].map((r) => `<section class="bracket-round ${isCur(r) ? 'current' : ''}" data-round="${r}" aria-label="Mesas da rodada ${r}"><div class="round-matches">${data.matches.filter((m) => m.round === r).sort((a, b) => a.tableNo - b.tableNo).map(card).join('')}</div></section>`).join('');
         return `
-          <div class="section-title-row" style="margin:18px 0 10px"><div><p class="eyebrow">RODADAS</p><h2>Chaveamento</h2></div></div>
           <div class="bracket-tools">
-            <div class="bracket-rounds" id="tRounds" aria-label="Escolher rodada">${rounds.map(r => `<button type="button" data-round="${r}" aria-pressed="${r === selectedRound}" class="${isCur(r) ? 'current' : ''} ${r === selectedRound ? 'active' : ''}">R${r}${isCur(r) ? ' · atual' : ''}</button>`).join('')}</div>
+            <div class="bracket-rounds" id="tRounds" aria-label="Escolher rodada">${rounds.map(r => `<button type="button" data-round="${r}" aria-pressed="${r === selectedRound}" class="${isCur(r) ? 'current' : ''} ${r === selectedRound ? 'active' : ''}">${isCur(r) ? '<i class="round-live-dot" aria-hidden="true"></i>' : ''}R${r}${isCur(r) ? ' · atual' : ''}</button>`).join('')}</div>
           </div>
           <div class="bracket-viewport list pairings-single" id="tViewport"><div class="bracket">${cols}</div></div>`;
       }

@@ -18,7 +18,7 @@ const {publicUser}=await import('../server/auth.js');
 const users=[];
 let server,browser;
 try {
- for(let i=0;i<7;i++) users.push(await prisma.user.create({data:{name:`Jogador ${i+1}`,slug:`player-${i}`,email:`player-${i}@test.invalid`}}));
+ for(let i=0;i<7;i++) users.push(await prisma.user.create({data:{name:i===1?'Tharcísio Nogueira':i===2?'Lucas Magalhães':`Jogador ${i+1}`,slug:`player-${i}`,email:`player-${i}@test.invalid`}}));
  const t=await prisma.tournament.create({data:{slug:'qa-manager',name:'Copa BeyXLab — Teste de gestão',organizerId:users[0].id,startsAt:new Date(),entryFeeCents:2500,roundsPlanned:5,coverUrl:'/assets/profiles/default-blader.png'}});
  const app=express();app.use(express.json());
  app.use((req,res,next)=>{req.user=users.find(u=>u.id===req.headers['x-test-user'])||users[0];next();});
@@ -80,6 +80,8 @@ try {
    assert.equal(await page.locator('.bracket-round').count(),1);
    await page.locator('#tRounds button[data-round="1"]').click();assert.equal(await page.locator('.bracket-round').getAttribute('data-round'),'1');
    await page.locator('#tRounds button[data-round="2"]').click();assert.equal(await page.locator('.bracket-round').getAttribute('data-round'),'2');assert.equal(await page.locator('.bracket-round').count(),1);
+   assert.equal(await page.locator('#tRounds .round-live-dot').count(),1);
+   await page.screenshot({path:`artifacts/tournament-manager/pairings-compact-${width}.png`,animations:'disabled'});
    assert.equal(await page.locator('#app>:first-child').getAttribute('class'),'tabs');
    await page.locator('[data-view=gestao]').click();await page.locator('.manager-table.reported').waitFor();
    if(width>900) assert(await page.evaluate(()=>document.querySelector('#viewBox').getBoundingClientRect().x>=document.querySelector('.side-nav').getBoundingClientRect().right));
