@@ -9,6 +9,10 @@ const parts = [
 const match = (outcome, round = 1) => ({round,tableNo:1,p1Id:'p',p2Id:outcome === 'bye' ? null : 'q',winnerId:outcome === 'W' || outcome === 'bye' ? 'p' : outcome === 'L' ? 'q' : null,status:'DONE'});
 const event = (id, overrides = {}) => ({id,slug:id,name:id,startsAt:`2026-09-${String(Number(id.replace(/\D/g,'')) || 1).padStart(2,'0')}T12:00:00Z`,status:'FINISHED',visibility:'PUBLIC',placement:1,
   players:[{id:'p',userId:'u',manualDeckJson:JSON.stringify([['shark','160','rush']])},{id:'q',userId:'other'}],matches:[match('W')],...overrides});
+test('recent opponents expose only public identity',()=>{
+ const t=event('1');t.players[1].user={name:'Rival',slug:'rival',avatarUrl:'/avatar.png',email:'private@example.test'};
+ assert.deepEqual(buildCompetitionStats('u',[t],parts).recent[0].opponent,{name:'Rival',slug:'rival',avatarUrl:'/avatar.png'});
+});
 test('excludes private, test and canceled; includes link-only; ongoing only in history', () => {
   const out=buildCompetitionStats('u',[event('1'),event('2',{visibility:'PRIVATE'}),event('3',{description:'[ADMIN TEST] demo'}),event('4',{status:'CANCELED'}),event('5',{visibility:'LINK_ONLY'}),event('6',{status:'RUNNING'})],parts);
   assert.equal(out.summary.events,2); assert.equal(out.summary.wins,2); assert.equal(out.tournaments.length,3);

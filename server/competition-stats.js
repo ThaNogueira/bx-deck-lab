@@ -44,7 +44,9 @@ export function buildCompetitionStats(userId, tournaments, parts) {
       const outcome = !m.winnerId ? 'D' : m.winnerId === player.id ? 'W' : 'L';
       record.matches++;
       record[outcome === 'W' ? 'wins' : outcome === 'L' ? 'losses' : 'ties']++;
-      eventResults.push({ outcome, round: m.round, tournament: t.name, slug: t.slug, date: t.startsAt });
+      const other = t.players.find(p => p.id === (m.p1Id === player.id ? m.p2Id : m.p1Id))?.user;
+      eventResults.push({ outcome, round: m.round, tournament: t.name, slug: t.slug, date: t.startsAt,
+        opponent: other ? { name: other.name, slug: other.slug || null, avatarUrl: other.avatarUrl || null } : null });
     }
     record.winRate = percent(record.wins, record.matches);
     history.push(record);

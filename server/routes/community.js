@@ -560,7 +560,7 @@ router.get('/api/users/:slug/tournaments', ah(async (req, res) => {
   if (!user || user.status === 'BANNED') return res.status(404).json({ error: 'Perfil não encontrado.' });
   const tournaments = await prisma.tournament.findMany({
     where: { ...competitionWhere, players: { some: { userId: user.id } } },
-    include: { players: { include: { user: { select: { id: true, name: true } }, deck: { select: { beysJson: true } } } }, matches: true },
+    include: { players: { include: { user: { select: { id: true, name: true, slug: true, avatarUrl: true } }, deck: { select: { beysJson: true } } } }, matches: true },
     orderBy: [{ startsAt: 'asc' }, { id: 'asc' }],
   });
   for (const t of tournaments) {

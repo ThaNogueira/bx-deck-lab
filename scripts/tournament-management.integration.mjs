@@ -14,6 +14,7 @@ assert.equal(migrate.status,0,migrate.stderr);
 const {prisma}=await import('../server/db.js');
 const {default:express}=await import('express');
 const {default:router}=await import('../server/routes/tournaments.js');
+const {default:community}=await import('../server/routes/community.js');
 const {publicUser}=await import('../server/auth.js');
 const users=[];
 let server,browser;
@@ -25,7 +26,7 @@ try {
  app.get('/api/me',(req,res)=>res.json({user:publicUser(req.user)}));
  app.get('/api/site',(req,res)=>res.json({site:{name:'BeyXLab'},flags:{}}));
  app.get('/api/parts-index',(req,res)=>res.json({parts:[]}));
- app.use(router);app.get('/torneios/novo',(req,res)=>res.sendFile(path.resolve('public/novo-torneio.html')));app.get('/torneio/:slug',(req,res)=>res.sendFile(path.resolve('public/torneio.html')));app.use(express.static('public'));
+ app.use(router,community);app.get('/torneios/novo',(req,res)=>res.sendFile(path.resolve('public/novo-torneio.html')));app.get('/torneio/:slug',(req,res)=>res.sendFile(path.resolve('public/torneio.html')));app.use(express.static('public'));
  app.use((err,req,res,next)=>{console.error(err);res.status(500).json({error:err.message});});
  server=app.listen(0,'127.0.0.1');await new Promise(r=>server.on('listening',r));
  const base=`http://127.0.0.1:${server.address().port}`;
@@ -73,10 +74,16 @@ try {
  matches=await prisma.tMatch.findMany({where:{tournamentId:t.id,round:2}});
  if(browser) {
   const participant=ps.find(p=>p.id===matches[1].p2Id);
+  const previousEvent=await prisma.tournament.create({data:{slug:'copa-anterior',name:'Copa anterior',organizerId:users[0].id,status:'FINISHED',startsAt:new Date('2026-10-01T12:00:00Z')}});
+  const historicalPlayers=[];for(const u of users.slice(1))historicalPlayers.push(await prisma.tournamentPlayer.create({data:{tournamentId:previousEvent.id,userId:u.id}}));
+  for(let i=0;i<6;i+=2)await prisma.tMatch.create({data:{tournamentId:previousEvent.id,round:1,tableNo:i/2+1,p1Id:historicalPlayers[i].id,p2Id:historicalPlayers[i+1].id,winnerId:historicalPlayers[i].id,status:'DONE'}});
   const page=await browser.newPage({viewport:{width:390,height:844},extraHTTPHeaders:{'x-test-user':participant.userId}});
   await page.goto(base+'/torneio/qa-manager#partida');await page.locator('[data-report=WIN]').waitFor();
+  await page.locator('.opponent-history h3').filter({hasText:'Últimos confrontos'}).waitFor();
+  assert.match(await page.locator('.match-opponent-info').innerText(),/Rodada 1/);
   assert.equal(await page.locator('.mesa-link').count(),0);assert.equal(await page.locator('.match-score-zero').count(),0);
-  assert(await page.locator('.match-screen').evaluate(el=>el.getBoundingClientRect().height<450));
+  assert(await page.locator('.report-row').evaluate(el=>el.getBoundingClientRect().bottom<500));
+  assert.match(await page.locator('.match-opponent-info').innerText(),/Copa anterior/);
   await page.screenshot({path:'artifacts/tournament-manager/my-match-390.png',animations:'disabled'});await page.close();
  }
  await prisma.tMatch.update({where:{id:matches[0].id},data:{p1Report:'WIN'}});

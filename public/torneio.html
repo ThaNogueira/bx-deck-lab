@@ -37,6 +37,7 @@
       let pendingRender = false;
       const editing = () => { const el = document.activeElement; return !!el && app.contains(el) && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName); };
       let pairingRound = null;
+      const opponentStatsCache = new Map();
       BX.partTagReady().then(() => { if (last) render(last.data, last.me, last.myData); }).catch(() => {});
 
       const STATUS_PT = { OPEN: 'inscrições abertas', RUNNING: 'em andamento', FINISHED: 'encerrado', CANCELED: 'cancelado' };
@@ -282,6 +283,10 @@
                         <button class="report-btn loss" data-report="LOSS">${BX.ic('x', 14)} Perdi</button>
                       </div>`}`}
           </div>`;
+        const opponentPanel = document.createElement('section');
+        opponentPanel.className = 'match-opponent-info';
+        box.querySelector('.match-screen').append(opponentPanel);
+        renderOpponentInfo(opponentPanel, m.opponent, myData.round);
         box.querySelectorAll('[data-report]').forEach((btn) => btn.addEventListener('click', async () => {
           try {
             const res = await BX.api(`/api/tournaments/${slug}/report`, { method: 'POST', body: { matchId: m.id, result: btn.dataset.report } });
@@ -289,6 +294,23 @@
             load();
           } catch (e) { BX.toast(e.message); }
         }));
+      }
+
+      async function renderOpponentInfo(panel, opponent, round) {
+        if (!opponent?.slug) return;
+        const player = last?.data.players.find(p=>p.user.id===opponent.id);
+        const previous = (last?.data.matches || []).filter(m=>player && m.round < round && m.status === 'DONE' && !m.bye && [m.p1?.id,m.p2?.id].includes(player.id)).sort((a,b)=>b.round-a.round);
+        const recentRow = (outcome, rival, caption) => `<div class="opponent-result"><span class="opponent-outcome ${outcome}">${outcome === 'W' ? 'V' : outcome === 'L' ? 'D' : 'E'}</span>${BX.avatarHtml(rival,{size:22})}<div><b>${BX.esc(rival?.name || 'Adversário não identificado')}</b><small>${BX.esc(caption)}</small></div></div>`;
+        const draw = (stats, failed=false) => {
+          const rating=stats?.rating, recent=stats?.recent || [], wr=stats?.summary?.recentWinRate;
+          panel.innerHTML=`<header><strong>Seu adversário</strong><a href="/u/${encodeURIComponent(opponent.slug)}">Ver perfil ↗</a></header><div class="opponent-metrics"><div>${rating?.tier ? `<img src="${BX.esc(rating.tier.icon)}" alt="" width="30" height="30">` : ''}<b>${BX.esc(rating?.tier?.name || (rating ? 'Em avaliação' : '—'))}</b><small>${rating ? `${rating.points} Elo${rating.provisional ? ' provisório' : ''}` : failed ? 'Dados indisponíveis' : 'Carregando Elo…'}</small></div><div><b>${wr == null ? '—' : `${wr.toLocaleString('pt-BR',{maximumFractionDigits:1})}%`}</b><small>Vitórias · últimas ${recent.length || 10}</small></div><div><b>${previous.filter(m=>m.winnerId===player.id).length}V – ${previous.filter(m=>m.winnerId && m.winnerId!==player.id).length}D</b><small>Neste torneio</small></div></div><div class="opponent-history"><h3>Neste torneio</h3>${previous.slice(0,5).map(m=>recentRow(!m.winnerId?'D':m.winnerId===player.id?'W':'L',(m.p1.id===player.id?m.p2:m.p1)?.user,`Rodada ${m.round}`)).join('') || '<p>Sem confrontos anteriores.</p>'}</div>${stats ? `<div class="opponent-history"><h3>Últimos confrontos</h3>${[...recent].reverse().slice(0,3).map(r=>recentRow(r.outcome,r.opponent,`${r.tournament} · R${r.round}`)).join('') || '<p>Ainda sem partidas em torneios encerrados.</p>'}</div>` : ''}`;
+        };
+        draw(null);
+        try {
+          if (!opponentStatsCache.has(opponent.slug)) opponentStatsCache.set(opponent.slug,BX.api(`/api/users/${encodeURIComponent(opponent.slug)}/tournaments`).catch(error=>{opponentStatsCache.delete(opponent.slug);throw error;}));
+          const stats=await opponentStatsCache.get(opponent.slug);
+          if(panel.isConnected) draw(stats);
+        } catch { if(panel.isConnected) draw(null,true); }
       }
 
       function renderManage(box, t, data) {
