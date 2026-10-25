@@ -139,6 +139,8 @@
 #app .manager-table .manager-table-info .award-win>span:not(.avatar){flex:1;min-width:0;overflow-wrap:anywhere;line-height:1.3}
 #app .manager-table .manager-table-info .award-win .avatar{flex-shrink:0}
 #app .manager-table .row-actions:empty{display:none}
+#app #viewBox[data-manager-section] .manager-table .manager-table-head{grid-column:1;grid-row:auto;display:flex;align-items:center;justify-content:space-between;gap:6px;min-width:0}
+#app #viewBox .manager-table .manager-table-head .reopen-match{flex:0 0 auto;width:auto;min-height:32px;padding:4px 7px;font-size:11px;line-height:1.2;border-radius:6px;box-shadow:none}
 @media(max-width:760px){#app .manager-table .manager-table-info .award-win{font-size:11px;padding:6px;gap:5px}}
 #viewBox[data-manager-section] .manager-table .row-actions .btn{display:flex;align-items:center}.manager-table .award-win>span:last-child{flex:1}
 @media(min-width:761px){#viewBox[data-manager-section] .manager-table{grid-template-rows:24px 1fr}}

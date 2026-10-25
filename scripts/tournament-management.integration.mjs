@@ -133,8 +133,14 @@ try {
  if(browser) {
   const page=await browser.newPage({viewport:{width:390,height:900}});await page.goto(base+'/torneio/qa-manager#gestao');await page.locator('.match-winner').waitFor();
   assert.equal(await page.locator('.match-winner-trophy').count(),1);
+  assert.equal(await page.locator('.manager-table-head [data-reopen]').count(),1);
+  assert.equal(await page.locator('.manager-table.done .row-actions').count(),0);
+  assert(await page.locator('[data-reopen]').evaluate(el=>el.getBoundingClientRect().height<=34));
   assert(await page.locator('.tournament-control-card').evaluate(el=>el.getBoundingClientRect().height<150));
-  await page.screenshot({path:'artifacts/tournament-manager/winner-compact-390.png',animations:'disabled'});await page.close();
+  await page.screenshot({path:'artifacts/tournament-manager/winner-compact-390.png',animations:'disabled'});
+  await page.locator('[data-reopen]').click();await page.locator('.manager-table.done').waitFor({state:'detached'});assert.equal(await page.locator('[data-reopen]').count(),0);
+  assert.equal((await call(`/matches/${matches[0].id}/resolve`,{winnerId:matches[0].p1Id})).status,200);
+  await page.close();
  }
  const m=matches[1],u1=users.find(u=>u.id===ps.find(p=>p.id===m.p1Id).userId),u2=users.find(u=>u.id===ps.find(p=>p.id===m.p2Id).userId);
  assert.equal((await call('/report',{matchId:m.id,result:'WIN'},u1)).status,200);
