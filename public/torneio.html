@@ -43,6 +43,9 @@
       const STATUS_PT = { OPEN: 'inscrições abertas', RUNNING: 'em andamento', FINISHED: 'encerrado', CANCELED: 'cancelado' };
       const feeLabel = (cents) => cents ? (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'Gratuito';
       const addressWithoutZip = address => String(address || '').replace(/(?:\bCEP\s*:?\s*)?\b\d{2}\.?\d{3}[\s-]?\d{3}\b/gi, '').replace(/[\s,;–-]+$/, '').trim();
+      const tournamentTabIcon = kind => `<svg class="tournament-tab-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${kind === 'match'
+        ? '<path d="m4 3 5 2 10 12-2 2L5 9 3 4Z M15 15l5 5 M14 20l6-6 M20 3l1 1-2 5-4 4 M9 15l-5 5 M4 14l6 6"/>'
+        : '<path d="m9 3-.6 2.4-2 .9-2.2-.7-2 3.5L4 10.8v2.4l-1.8 1.7 2 3.5 2.2-.7 2 .9L9 21h6l.6-2.4 2-.9 2.2.7 2-3.5-1.8-1.7v-2.4l1.8-1.7-2-3.5-2.2.7-2-.9L15 3Z"/><circle cx="12" cy="12" r="3.2"/>'}</svg>`;
 
       async function load(prefetched = null) {
         let data = prefetched;
@@ -92,15 +95,17 @@
         const tabs = [
           ['geral', 'Torneio'],
           ...(data.matches?.length ? [['pairings', 'Pairings']] : []),
-          ...(joined && t.status === 'RUNNING' ? [['partida', `${BX.ic('target', 14)} Minha partida`]] : []),
-          ...(t.canManage ? [['gestao', `${BX.ic('settings', 14)} Gestão`]] : []),
+          ...(joined && t.status === 'RUNNING' ? [['partida', `${tournamentTabIcon('match')}<span>Minha partida</span>`]] : []),
+          ...(t.canManage ? [['gestao', `${tournamentTabIcon('manage')}<span>Gestão</span>`]] : []),
         ];
+        const matchNeedsReport = t.status === 'RUNNING' && myData?.round === t.currentRound && myData?.match && !myData.match.bye && !myData.match.myReport && !['DONE','VOID','CONFLICT'].includes(myData.match.status);
+        const renderTabs = () => tabs.map(([k,label]) => `<button class="tab${view === k ? ' active' : ''}${k === 'partida' && matchNeedsReport ? ' match-awaiting-report' : ''}" data-view="${k}" aria-selected="${view === k}"${k === 'partida' && matchNeedsReport ? ' title="Partida em andamento · reporte seu resultado" aria-label="Minha partida · resultado pendente"' : ''}>${label}</button>`).join('');
 
         // Foco de jogo: preserva o mesmo report responsivo, mas remove capa,
         // resumo e rolagem antes dele. As abas mantêm a saída para o torneio.
         if (view === 'partida' && myData?.match) {
           app.classList.remove('management-view');
-          app.innerHTML = `<section class="match-focus" style="min-height:calc(100vh - 90px);display:flex;flex-direction:column"><nav class="tabs" style="justify-content:flex-start;margin:10px 0 18px" aria-label="Navegação do torneio">${tabs.map(([k, label]) => `<button class="tab${k === 'partida' ? ' active' : ''}" data-view="${k}">${label}</button>`).join('')}</nav><div id="viewBox" style="flex:1;display:grid;place-items:center"></div></section>`;
+          app.innerHTML = `<section class="match-focus" style="min-height:calc(100vh - 90px);display:flex;flex-direction:column"><nav class="tabs" style="justify-content:flex-start;margin:10px 0 18px" aria-label="Navegação do torneio">${renderTabs()}</nav><div id="viewBox" style="flex:1;display:grid;place-items:center"></div></section>`;
           document.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => { view = b.dataset.view; if (view === 'partida') sessionStorage.removeItem(reportExitKey); else sessionStorage.setItem(reportExitKey, '1'); history.replaceState(null, '', '#' + view); render(data, me, myData); }));
           renderMatch(document.getElementById('viewBox'), t, myData);
           return;
@@ -109,7 +114,7 @@
         const managementView = t.canManage && view === 'gestao';
         app.classList.toggle('management-view', managementView);
         app.innerHTML = `
-          <nav class="tabs" style="justify-content:flex-start;margin:0 0 12px" aria-label="Seções do torneio">${tabs.map(([k, label]) => `<button class="tab${view === k ? ' active' : ''}" data-view="${k}" aria-selected="${view === k}">${label}</button>`).join('')}</nav>
+          <nav class="tabs" style="justify-content:flex-start;margin:0 0 12px" aria-label="Seções do torneio">${renderTabs()}</nav>
           ${view === 'geral' ? `
           <div class="tournament-heading"><h1 class="tournament-title" title="${BX.esc(t.name)}">${BX.esc(t.name)}</h1><button class="btn ghost icon-only" id="reportBtn" aria-label="Denunciar torneio" title="Denunciar torneio">${BX.icon('flag', 18)}</button></div>
           <div class="tournament-cover ${t.coverUrl ? 'has-image' : ''}">

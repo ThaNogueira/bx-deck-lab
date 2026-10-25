@@ -118,7 +118,12 @@
 .match-winner-trophy{flex-shrink:0;width:28px;height:28px;object-fit:contain;margin-left:auto;filter:drop-shadow(0 0 3px #ffd54a44)}
 #app:has(>.tabs),#app:has(>.match-focus){padding-top:8px}
 #app>nav.tabs[aria-label],#app .match-focus>nav.tabs{margin:0 0 4px!important;padding:2px 0;align-items:center;min-height:0}
-#app>nav.tabs button.tab,#app .match-focus>nav.tabs .tab{min-height:36px;padding:6px 10px;font-size:12px;line-height:1.25;border-radius:7px}
+#app>nav.tabs button.tab,#app .match-focus>nav.tabs .tab{display:inline-flex;align-items:center;justify-content:center;gap:4px;min-height:36px;padding:6px 8px;font-size:12px;line-height:1.25;border-radius:7px}
+#app .tabs .tab .tournament-tab-icon{display:block;flex:0 0 15px;width:15px;height:15px;margin:0}
+#app .tabs .tab.match-awaiting-report{background:#143d46;color:#b7f3ff;border-color:#68d5eb;animation:match-tab-glow 2.8s ease-in-out infinite}
+#app .tabs .tab.match-awaiting-report.active{background:#205969;color:#fff;border-color:#91e8fa}
+@keyframes match-tab-glow{0%,100%{box-shadow:0 0 3px #65dbef25}50%{box-shadow:0 0 10px #65dbef65,inset 0 0 5px #65dbef18}}
+@media(prefers-reduced-motion:reduce){#app .tabs .tab.match-awaiting-report{animation:none;box-shadow:0 0 4px #65dbef35}}
 #app #viewBox[data-manager-section] .manager-table{grid-template-columns:minmax(0,1fr);grid-template-rows:auto;gap:7px}
 #app #viewBox[data-manager-section] .manager-table>a,#app #viewBox[data-manager-section] .manager-table .manager-table-info,#app #viewBox[data-manager-section] .manager-table .row-actions{grid-column:1;grid-row:auto}
 #app .manager-table .manager-table-info{display:grid;gap:5px;min-width:0}

@@ -79,12 +79,26 @@ try {
   for(let i=0;i<6;i+=2)await prisma.tMatch.create({data:{tournamentId:previousEvent.id,round:1,tableNo:i/2+1,p1Id:historicalPlayers[i].id,p2Id:historicalPlayers[i+1].id,winnerId:historicalPlayers[i].id,status:'DONE'}});
   const page=await browser.newPage({viewport:{width:390,height:844},extraHTTPHeaders:{'x-test-user':participant.userId}});
   await page.goto(base+'/torneio/qa-manager#partida');await page.locator('[data-report=WIN]').waitFor();
+  assert.equal(await page.locator('[data-view=partida].match-awaiting-report').count(),1);
+  assert.equal(await page.locator('[data-view=partida] svg').count(),1);
   await page.locator('.opponent-history h3').filter({hasText:'Últimos confrontos'}).waitFor();
   assert.match(await page.locator('.match-opponent-info').innerText(),/Rodada 1/);
   assert.equal(await page.locator('.mesa-link').count(),0);assert.equal(await page.locator('.match-score-zero').count(),0);
   assert(await page.locator('.report-row').evaluate(el=>el.getBoundingClientRect().bottom<500));
   assert.match(await page.locator('.match-opponent-info').innerText(),/Copa anterior/);
-  await page.screenshot({path:'artifacts/tournament-manager/my-match-390.png',animations:'disabled'});await page.close();
+  await page.screenshot({path:'artifacts/tournament-manager/my-match-390.png',animations:'disabled'});
+  await page.locator('[data-view=pairings]').click();assert.equal(await page.locator('[data-view=partida].match-awaiting-report').count(),1);
+  for(const width of [320,390,1440]){
+   await page.setViewportSize({width,height:844});
+   await page.screenshot({path:`artifacts/tournament-manager/match-tab-${width}.png`,animations:'disabled'});
+  }
+  await page.emulateMedia({reducedMotion:'reduce'});assert.equal(await page.locator('[data-view=partida]').evaluate(el=>getComputedStyle(el).animationName),'none');
+  let state={myReport:'WIN'};
+  await page.route('**/api/tournaments/qa-manager/me',async route=>{const response=await route.fetch();const payload=await response.json();Object.assign(payload.match,state);await route.fulfill({response,json:payload});});
+  for(const next of [{myReport:'WIN'},{myReport:null,status:'DONE'},{myReport:null,bye:true}]){
+   state=next;await page.reload();await page.locator('[data-view=partida]').waitFor();assert.equal(await page.locator('.match-awaiting-report').count(),0);
+  }
+  await page.close();
  }
  await prisma.tMatch.update({where:{id:matches[0].id},data:{p1Report:'WIN'}});
  if(browser) {
