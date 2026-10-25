@@ -88,7 +88,7 @@ try {
  }
  await prisma.tMatch.update({where:{id:matches[0].id},data:{p1Report:'WIN'}});
  if(browser) {
-  for(const width of [390,1440]) {
+  for(const width of [320,390,1440]) {
    const page=await browser.newPage({viewport:{width,height:1100}});
    await page.goto(base+'/torneio/qa-manager#gestao');await page.locator('.manager-table.reported').waitFor();
    await page.locator('[data-view=pairings]').click();assert.equal(await page.locator('.tournament-facts,.tournament-cover,.tournament-heading').count(),0);
@@ -97,6 +97,10 @@ try {
    await page.locator('#tRounds button[data-round="2"]').click();assert.equal(await page.locator('.bracket-round').getAttribute('data-round'),'2');assert.equal(await page.locator('.bracket-round').count(),1);
    assert.equal(await page.locator('#tRounds .round-live-dot').count(),1);
    await page.screenshot({path:`artifacts/tournament-manager/pairings-compact-${width}.png`,animations:'disabled'});
+   await page.locator('[data-view=geral]').click();
+   assert.equal(await page.locator('.standings th').last().textContent(),'Deck');
+   assert(await page.locator('.standings-wrap').evaluate(el=>el.querySelectorAll('th')[7].getBoundingClientRect().right<=el.getBoundingClientRect().right+1));
+   await page.screenshot({path:`artifacts/tournament-manager/standings-${width}.png`,animations:'disabled'});
    assert.equal(await page.locator('#app>:first-child').getAttribute('class'),'tabs');
    await page.locator('[data-view=gestao]').click();await page.locator('.manager-table.reported').waitFor();
    if(width>900) assert(await page.evaluate(()=>document.querySelector('#viewBox').getBoundingClientRect().x>=document.querySelector('.side-nav').getBoundingClientRect().right));
