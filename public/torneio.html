@@ -129,7 +129,7 @@
             <div class="tournament-fact"><span>${BX.icon('calendar', 18)} Data e horário</span><strong>${BX.dateFmt(t.startsAt, { day: '2-digit', month: 'short', year: 'numeric' })}<br>${BX.dateFmt(t.startsAt, { hour: '2-digit', minute: '2-digit' })}</strong></div>
             <div class="tournament-fact"><span>${BX.icon('pin', 20)} Local</span><strong>${BX.esc(t.storeName || t.address || 'A definir')}</strong>${t.storeName && t.address ? `<small>${BX.esc(t.address)}</small>` : ''}</div>
             <div class="tournament-fact"><span>${BX.icon('money', 20)} Inscrição</span><strong>${feeLabel(t.entryFeeCents)}</strong></div>
-            <div class="tournament-fact"><span>${BX.icon('users', 20)} Jogadores</span><strong>${data.players.filter(p => !p.dropped && (!t.entryFeeCents || p.paymentConfirmed)).length} aptos / ${data.players.length} inscritos</strong></div>
+            <div class="tournament-fact"><span>${BX.icon('users', 20)} Jogadores</span><strong>${data.players.length} inscritos</strong></div>
           </div>
           ${data.me?.paymentPending ? '<div class="payment-notice">Inscrito no torneio · <strong>Pagamento pendente</strong><p>Faça o pagamento na loja ou com o organizador. Sua participação nas rodadas depende da confirmação do gestor.</p></div>' : ''}
           ${t.description ? `<section class="tournament-intro"><p class="eyebrow">SOBRE O EVENTO</p><p>${BX.esc(t.description)}</p></section>` : ''}
