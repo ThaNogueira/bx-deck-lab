@@ -107,25 +107,24 @@
         const managementView = t.canManage && ['gestao', 'divulgacao', 'configuracao'].includes(view);
         app.classList.toggle('management-view', managementView);
         app.innerHTML = `
-          <h1 class="tournament-title" title="${BX.esc(t.name)}">${BX.esc(t.name)}</h1>
+          <div class="tournament-heading"><h1 class="tournament-title" title="${BX.esc(t.name)}">${BX.esc(t.name)}</h1><button class="btn ghost icon-only" id="reportBtn" aria-label="Denunciar torneio" title="Denunciar torneio">${BX.icon('flag', 18)}</button></div>
           <div class="tournament-cover ${t.coverUrl ? 'has-image' : ''}">
             ${t.coverUrl ? `<img src="${BX.esc(t.coverUrl)}" alt="Capa do torneio ${BX.esc(t.name)}">` : `<div class="tournament-cover-placeholder">${BX.icon('tournaments', 64)}<span>BEYXLAB / TOURNAMENT</span></div>`}
           </div>
           <div class="hero compact tournament-hero">
             <div>
               <p>
-                <span class="status-chip ${t.status}">${STATUS_PT[t.status]}${t.status === 'RUNNING' ? ` — rodada ${t.currentRound}/${t.roundsPlanned}` : ''}</span>
+                <span class="status-chip ${t.status}">${STATUS_PT[t.status]}${t.status === 'RUNNING' ? ` · ${t.currentRound}/${t.roundsPlanned}` : ''}</span>
                 <span class="event-tag">${t.format === 'MD3' ? 'Melhor de 3' : 'Até 4 pontos'}</span><span class="event-tag">${t.roundsPlanned} rodadas</span><span class="event-tag">${data.players.length} inscritos</span>
               </p>
             </div>
             <div class="hero-actions">
               ${t.status === 'OPEN' && !joined ? `<button class="btn primary" id="joinBtn">Entrar no torneio</button>` : ''}
               ${t.status === 'OPEN' && joined ? `<button class="btn danger-outline" id="leaveBtn">Sair do torneio</button>` : ''}
-              <button class="btn ghost icon-only" id="reportBtn" aria-label="Denunciar torneio" title="Denunciar torneio">${BX.icon('flag', 18)}</button>
             </div>
           </div>
           <div class="tournament-facts" aria-label="Informações principais">
-            <div class="tournament-fact"><span>${BX.icon('calendar', 20)} Data e horário</span><strong>${BX.dateFmt(t.startsAt, { weekday: 'long', day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' })}</strong></div>
+            <div class="tournament-fact"><span>${BX.icon('calendar', 18)} Data e horário</span><strong>${BX.dateFmt(t.startsAt, { day: '2-digit', month: 'short', year: 'numeric' })}<br>${BX.dateFmt(t.startsAt, { hour: '2-digit', minute: '2-digit' })}</strong></div>
             <div class="tournament-fact"><span>${BX.icon('pin', 20)} Local</span><strong>${BX.esc(t.storeName || t.address || 'A definir')}</strong>${t.storeName && t.address ? `<small>${BX.esc(t.address)}</small>` : ''}</div>
             <div class="tournament-fact"><span>${BX.icon('money', 20)} Inscrição</span><strong>${feeLabel(t.entryFeeCents)}</strong></div>
             <div class="tournament-fact"><span>${BX.icon('users', 20)} Jogadores</span><strong>${data.players.filter(p => !p.dropped && (!t.entryFeeCents || p.paymentConfirmed)).length} aptos / ${data.players.length} inscritos</strong></div>

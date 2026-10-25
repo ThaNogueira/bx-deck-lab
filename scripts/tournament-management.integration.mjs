@@ -38,7 +38,7 @@ try {
  for(const p of ps.slice(0,4)) assert.equal((await call(`/players/${p.id}/payment`,{paid:true},users[0],'PATCH')).status,200);
  if(process.argv.includes('--visual')) {
   const {chromium}=await import('playwright');browser=await chromium.launch({headless:true,channel:'msedge'});mkdirSync('artifacts/tournament-manager',{recursive:true});
-  for(const width of [390,1440]) {
+  for(const width of [320,390,1440]) {
    const page=await browser.newPage({viewport:{width,height:1000}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
    await page.goto(base+'/torneio/qa-manager#gestao');await page.locator('[data-payment]').first().waitFor();
    assert.equal(await page.locator('.tournament-cover').isVisible(),false);
@@ -47,6 +47,8 @@ try {
    await page.locator('[data-view=divulgacao]').click();assert(await page.locator('#copyLink').isVisible());assert.equal(await page.locator('#startBtn').isVisible(),false);
    await page.locator('[data-view=configuracao]').click();assert(await page.locator('#saveT').isVisible());
    await page.locator('[data-view=geral]').click();assert(await page.locator('.tournament-cover').isVisible());
+   const compact = await page.evaluate(()=>({blocks:[...document.querySelectorAll('.tournament-fact')].map(el=>el.getBoundingClientRect().height),size:parseFloat(getComputedStyle(document.querySelector('.tournament-fact strong')).fontSize),tags:[...document.querySelectorAll('.tournament-hero p>span')].map(el=>el.getBoundingClientRect().y),flag:document.querySelector('#reportBtn').getBoundingClientRect().bottom,cover:document.querySelector('.tournament-cover').getBoundingClientRect().top}));
+   assert(compact.blocks.every(height=>height<140));assert(compact.size>=16);assert.equal(new Set(compact.tags).size,1);assert(compact.flag<=compact.cover);
    await page.screenshot({path:`artifacts/tournament-manager/public-${width}.png`,fullPage:true});
    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.deepEqual(errors,[]);await page.close();
   }
