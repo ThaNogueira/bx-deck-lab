@@ -54,6 +54,18 @@
 @media(max-width:760px){#viewBox[data-manager-section] .manager-table .row-actions .btn{min-height:44px;padding:6px;font-size:10px}#viewBox[data-manager-section] .manager-table .row-actions .accept-result{min-height:44px;font-size:10px}}
 
 /* Compact public header and focused tournament operations. */
+#app .match-focus{min-height:0!important;display:block!important}
+#app .match-focus #viewBox{display:block!important;flex:none!important}
+#app .match-screen{min-height:0;justify-content:flex-start;gap:7px;padding:12px 0 18px;max-width:520px;margin:0 auto}
+#app .match-screen .eyebrow{font-size:11px;margin:0 0 4px}
+.match-opponent-photo{margin:2px 0 5px}
+#app .match-screen .match-vs{font-size:clamp(28px,6vw,42px);line-height:1.15;overflow-wrap:anywhere}
+#app .match-screen .match-table{font-size:18px;margin:0;line-height:1.3}
+#app .match-screen .match-result-prompt{font-size:12px;color:var(--muted);margin:10px 0 0}
+#app .match-screen .report-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:3px 0 0;width:100%}
+#app .match-screen .report-btn{min-height:64px;padding:14px 12px;display:flex;align-items:center;justify-content:center;gap:6px;font-size:24px;border-radius:12px;font-weight:800}
+#app .match-screen .match-score-zero{font-size:40px;margin:6px 0}
+#app .match-screen>p:not(.eyebrow):not(.match-result-prompt){font-size:12px;margin:6px 0;line-height:1.5}
 #app #viewBox #tRounds{display:flex;align-items:center;gap:7px;padding:4px 2px;margin:0 0 8px;overflow-x:auto}
 #app #viewBox #tRounds button{display:inline-flex;align-items:center;justify-content:center;gap:6px;flex-shrink:0;min-height:36px;padding:7px 11px;font-size:12px}
 #app #viewBox #tRounds button.current{min-height:40px;font-size:13px;border-color:#ed7373;animation:round-live-ring 2.4s ease-in-out infinite}

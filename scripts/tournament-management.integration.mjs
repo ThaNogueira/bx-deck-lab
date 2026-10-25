@@ -71,6 +71,14 @@ try {
  assert.equal((await call('/correct-round',correction)).status,200);
  assert.equal((await call(`/matches/${matches[0].id}/reopen`)).status,409);
  matches=await prisma.tMatch.findMany({where:{tournamentId:t.id,round:2}});
+ if(browser) {
+  const participant=ps.find(p=>p.id===matches[1].p2Id);
+  const page=await browser.newPage({viewport:{width:390,height:844},extraHTTPHeaders:{'x-test-user':participant.userId}});
+  await page.goto(base+'/torneio/qa-manager#partida');await page.locator('[data-report=WIN]').waitFor();
+  assert.equal(await page.locator('.mesa-link').count(),0);assert.equal(await page.locator('.match-score-zero').count(),0);
+  assert(await page.locator('.match-screen').evaluate(el=>el.getBoundingClientRect().height<450));
+  await page.screenshot({path:'artifacts/tournament-manager/my-match-390.png',animations:'disabled'});await page.close();
+ }
  await prisma.tMatch.update({where:{id:matches[0].id},data:{p1Report:'WIN'}});
  if(browser) {
   for(const width of [390,1440]) {

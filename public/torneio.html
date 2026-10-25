@@ -268,17 +268,15 @@
         box.innerHTML = `
           <div class="match-screen">
             <p class="eyebrow">RODADA ${myData.round} • ${t.format === 'MD3' ? 'MELHOR DE 3' : 'ATÉ 4 PONTOS'}</p>
-            <div style="margin:6px 0 2px">${BX.avatarHtml(m.opponent, { size: 84 })}</div>
+            <div class="match-opponent-photo">${BX.avatarHtml(m.opponent, { size: 104 })}</div>
             <div class="match-vs">VS ${BX.esc(m.opponent?.name || '?')}</div>
             <div class="match-table">Mesa ${m.tableNo}${t.format === 'MD3' && (m.myScore || m.oppScore) ? ` · rounds ${m.myScore}–${m.oppScore}` : ''}</div>
-            ${!done ? `<a class="btn primary mesa-link" href="/mesa/${t.slug}/${m.id}">${BX.ic('screen', 14)} Abrir tela de mesa</a>` : ''}
             ${done
               ? `<div class="match-score-zero" style="color:${m.won ? 'var(--green)' : 'var(--red)'}">${m.won ? 'VITÓRIA' : 'DERROTA'}</div><p style="color:var(--muted)">Resultado fechado. Aguarde a próxima rodada.</p>`
-              : `<div class="match-score-zero">0 — 0</div>
-                 ${m.status === 'CONFLICT' ? `<div class="conflict-banner">${BX.ic('warn', 14)} Os dois jogadores reportaram o mesmo resultado. O organizador foi notificado e vai resolver com vocês.</div>` : ''}
+              : `${m.status === 'CONFLICT' ? `<div class="conflict-banner">${BX.ic('warn', 14)} Resultados divergentes. Aguarde o gestor.</div>` : ''}
                  ${m.myReport
                    ? `<p style="color:var(--muted)">Você reportou <b style="color:${m.myReport === 'WIN' ? 'var(--green)' : 'var(--red)'}">${m.myReport === 'WIN' ? 'vitória' : 'derrota'}</b>. ${m.opponentReported ? '' : 'Aguardando o oponente…'}</p>`
-                   : `<p style="color:var(--muted)">Terminou a partida? Reporte o SEU resultado:</p>
+                   : `<p class="match-result-prompt">Seu resultado</p>
                       <div class="report-row">
                         <button class="report-btn win" data-report="WIN">${BX.ic('check', 14)} Venci</button>
                         <button class="report-btn loss" data-report="LOSS">${BX.ic('x', 14)} Perdi</button>
