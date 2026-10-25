@@ -340,19 +340,20 @@
                 ${shownRound < t.currentRound && t.status === 'RUNNING' ? '<button class="btn secondary" id="correctPast">'+BX.ic('edit',14)+' Arrumar resultados passados</button>' : ''}
                 <div class="manager-tables" style="margin-top:12px">
                   ${shownMatches.map((m) => {
-                    const rep = (r) => r == null ? '<span style="color:#5a6270">—</span>' : r ? `<b style="color:var(--green)">reportou</b>` : '';
+                    const canChoose = m.status !== 'DONE' && !m.bye && shownRound === t.currentRound;
+                    const names = [m.p1,m.p2].map((p,i) => canChoose
+                      ? `<button class="btn secondary award-win award-p${i+1}" data-win="${m.id}:${p.id}" aria-label="Dar vitória para ${BX.esc(p.user.name)}">${BX.avatarHtml(p.user,{size:24})}<span>${BX.esc(p.user.name)}</span>${BX.ic('trophy',12)}</button>`
+                      : `<div class="manager-competitor">${p ? BX.avatarHtml(p.user,{size:24}) : ''}<b>${BX.esc(p?.user.name || 'BYE')}</b>${m.winnerId === p?.id ? BX.ic('trophy',12) : ''}</div>`).join('');
                     return `
                     <div class="org-match-row manager-table ${m.status === 'CONFLICT' ? 'conflict' : ''} ${m.status === 'DONE' ? 'done' : m.p1Reported || m.p2Reported ? 'reported' : 'playing'}">
                       <a style="font:800 15px var(--display);color:var(--yellow);text-decoration:none" href="/mesa/${t.slug}/${m.id}" title="Abrir tela de mesa">M${m.tableNo}</a>
                       <div class="manager-table-info" style="font-size:12px">
-                        <div class="manager-competitor">${m.p1 ? BX.avatarHtml(m.p1.user,{size:24}) : ''}<b>${BX.esc(m.p1?.user.name || '?')}</b>${m.p1Reported ? BX.ic('check',14) : ''}</div><div class="manager-competitor">${m.p2 ? BX.avatarHtml(m.p2.user,{size:24}) : ''}<b>${BX.esc(m.p2?.user.name || 'BYE')}</b>${m.p2Reported ? BX.ic('check',14) : ''}</div>
+                        ${names}
                         <small style="display:block;color:var(--muted)">${m.status === 'DONE' ? `${BX.ic('check', 14)} vencedor: ${BX.esc((m.winnerId === m.p1?.id ? m.p1 : m.p2)?.user.name || '?')}${m.resolvedBy === 'ORGANIZER' ? ' (manual)' : ''}` : m.status === 'CONFLICT' ? `${BX.ic('warn', 14)} conflito — escolha o vencedor` : 'aguardando reportes'}</small>
                       </div>
                       <div class="row-actions">
                         ${m.status !== 'DONE' && !m.bye && shownRound === t.currentRound ? `
-                          ${m.status !== 'CONFLICT' && (m.p1Reported || m.p2Reported) ? `<button class="btn primary accept-result" data-accept="${m.id}">${BX.ic('check',18)}<span>Aceitar reporte único</span></button>` : ''}
-                          <button class="btn secondary award-win award-p1" data-win="${m.id}:${m.p1?.id}" aria-label="Dar vitória para ${BX.esc(m.p1?.user.name || '')}">${BX.avatarHtml(m.p1?.user,{size:20})}<span>${BX.ic('trophy', 12)} ${BX.esc(m.p1?.user.name || '')}</span></button>
-                          <button class="btn secondary award-win award-p2" data-win="${m.id}:${m.p2?.id}" aria-label="Dar vitória para ${BX.esc(m.p2?.user.name || '')}">${BX.avatarHtml(m.p2?.user,{size:20})}<span>${BX.ic('trophy', 12)} ${BX.esc(m.p2?.user.name || '')}</span></button>` : ''}
+                          ${m.status !== 'CONFLICT' && (m.p1Reported || m.p2Reported) ? `<button class="btn primary accept-result" data-accept="${m.id}">${BX.ic('check',18)}<span>Aceitar reporte único</span></button>` : ''}` : ''}
                         ${m.status === 'DONE' && !m.bye && shownRound === t.currentRound ? `<button class="btn ghost" data-reopen="${m.id}">Reabrir</button>` : ''}
                       </div>
                     </div>`;
