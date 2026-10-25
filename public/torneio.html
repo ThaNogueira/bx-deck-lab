@@ -44,7 +44,7 @@
       const feeLabel = (cents) => cents ? (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'Gratuito';
       const addressWithoutZip = address => String(address || '').replace(/(?:\bCEP\s*:?\s*)?\b\d{2}\.?\d{3}[\s-]?\d{3}\b/gi, '').replace(/[\s,;–-]+$/, '').trim();
       const tournamentTabIcon = kind => `<svg class="tournament-tab-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${kind === 'match'
-        ? '<path d="m4 3 5 2 10 12-2 2L5 9 3 4Z M15 15l5 5 M14 20l6-6 M20 3l1 1-2 5-4 4 M9 15l-5 5 M4 14l6 6"/>'
+        ? '<path d="m21 3-1 6-9 9-5-5 9-9Z M15 9l-6 6 M4 11l9 9 M8 17l-4 4 M3 20l1 1 1-1"/>'
         : '<path d="m9 3-.6 2.4-2 .9-2.2-.7-2 3.5L4 10.8v2.4l-1.8 1.7 2 3.5 2.2-.7 2 .9L9 21h6l.6-2.4 2-.9 2.2.7 2-3.5-1.8-1.7v-2.4l1.8-1.7-2-3.5-2.2.7-2-.9L15 3Z"/><circle cx="12" cy="12" r="3.2"/>'}</svg>`;
 
       async function load(prefetched = null) {
