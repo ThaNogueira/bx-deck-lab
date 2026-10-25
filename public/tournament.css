@@ -108,6 +108,8 @@
 #app .tournament-hero .hero-actions:empty{display:none}
 #app .tournament-hero .hero-actions:has(button){margin-top:8px}
 #app .tournament-facts{margin:0 0 12px;align-items:stretch}
+#app .tournament-facts .tournament-fact:nth-child(n+3){min-height:0;padding-bottom:10px}
+#app .tournament-facts{margin-bottom:6px}
 @media(max-width:380px){#app .tournament-hero .status-chip,#app .tournament-hero .event-tag{font-size:9px;padding:3px 4px;min-height:23px}}
 #viewBox .manager-table{align-content:start;box-shadow:none!important;opacity:1}#viewBox .manager-table.playing{box-shadow:none!important}#viewBox .manager-table.reported{box-shadow:inset 3px 0 #d4b748!important}#viewBox .manager-table.done{box-shadow:inset 3px 0 #48bd68!important}.tournament-control-card .next-round-card{margin:12px 0 0;padding:12px;box-shadow:none}.tournament-control-card .next-round-card h2{font-size:18px}.tournament-control-card .next-round-card .eyebrow{display:none}.tournament-control-card .next-round-card small{font-size:11px}.tournament-control-card .next-round-card button{min-height:44px}
 .manager-player-options{grid-column:1/-1;min-width:0}.manager-player-options summary{min-height:44px;display:flex;align-items:center;color:var(--accent);font-size:11px;cursor:pointer}.manager-player-options summary:after{content:'＋';margin-left:auto}.manager-player-options[open] summary:after{content:'−'}.manager-player-options button{width:100%;margin-top:5px}.player-card.payment-pending{filter:grayscale(.85);opacity:.65}.manager-settings>.btn{margin-top:10px}
