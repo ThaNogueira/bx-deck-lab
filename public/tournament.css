@@ -48,6 +48,7 @@
 @media (prefers-reduced-motion: reduce) { .tournament-gallery-grid img { transition: none; } }
 
 /* Compact public header and focused tournament operations. */
+#viewBox .manager-player.payment-pending{background:#20221f;border-color:#4c5048;color:#b0b4ab}#viewBox .manager-player.payment-pending>.avatar{filter:grayscale(.85)}
 @media(max-width:760px){#app .tournament-fact{aspect-ratio:1;justify-content:center}}
 #viewBox .manager-table{align-content:start;box-shadow:none!important;opacity:1}#viewBox .manager-table.playing{box-shadow:none!important}#viewBox .manager-table.reported{box-shadow:inset 3px 0 #d4b748!important}#viewBox .manager-table.done{box-shadow:inset 3px 0 #48bd68!important}.tournament-control-card .next-round-card{margin:12px 0 0;padding:12px;box-shadow:none}.tournament-control-card .next-round-card h2{font-size:18px}.tournament-control-card .next-round-card .eyebrow{display:none}.tournament-control-card .next-round-card small{font-size:11px}.tournament-control-card .next-round-card button{min-height:44px}
 .manager-player-options{grid-column:1/-1;min-width:0}.manager-player-options summary{min-height:44px;display:flex;align-items:center;color:var(--accent);font-size:11px;cursor:pointer}.manager-player-options summary:after{content:'＋';margin-left:auto}.manager-player-options[open] summary:after{content:'−'}.manager-player-options button{width:100%;margin-top:5px}.player-card.payment-pending{filter:grayscale(.85);opacity:.65}.manager-settings>.btn{margin-top:10px}
