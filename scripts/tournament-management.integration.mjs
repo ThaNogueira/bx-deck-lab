@@ -68,6 +68,9 @@ try {
    const page=await browser.newPage({viewport:{width,height:1100}});
    await page.goto(base+'/torneio/qa-manager#gestao');await page.locator('.manager-table.reported').waitFor();
    await page.locator('[data-view=pairings]').click();assert.equal(await page.locator('.tournament-facts,.tournament-cover,.tournament-heading').count(),0);
+   assert.equal(await page.locator('.bracket-round').count(),1);
+   await page.locator('#tRounds button[data-round="1"]').click();assert.equal(await page.locator('.bracket-round').getAttribute('data-round'),'1');
+   await page.locator('#tRounds button[data-round="2"]').click();assert.equal(await page.locator('.bracket-round').getAttribute('data-round'),'2');assert.equal(await page.locator('.bracket-round').count(),1);
    assert.equal(await page.locator('#app>:first-child').getAttribute('class'),'tabs');
    await page.locator('[data-view=gestao]').click();await page.locator('.manager-table.reported').waitFor();
    if(width>900) assert(await page.evaluate(()=>document.querySelector('#viewBox').getBoundingClientRect().x>=document.querySelector('.side-nav').getBoundingClientRect().right));

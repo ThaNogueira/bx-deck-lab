@@ -35,7 +35,7 @@
       let lastSig = '';      // assinatura do último payload — poll só re-renderiza se algo mudou
       let pendingRender = false;
       const editing = () => { const el = document.activeElement; return !!el && app.contains(el) && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName); };
-      let roundsMode = localStorage.getItem('bx_tmode') || 'list';
+      let pairingRound = null;
       BX.partTagReady().then(() => { if (last) render(last.data, last.me, last.myData); }).catch(() => {});
 
       const STATUS_PT = { OPEN: 'inscrições abertas', RUNNING: 'em andamento', FINISHED: 'encerrado', CANCELED: 'cancelado' };
@@ -168,6 +168,7 @@
       function renderRounds(t, data) {
         if (!data.matches?.length) return '';
         const rounds = [...new Set(data.matches.map((m) => m.round))].sort((a, b) => a - b);
+        const selectedRound = rounds.includes(pairingRound) ? pairingRound : rounds.includes(t.currentRound) ? t.currentRound : rounds[0];
         const isCur = (r) => t.status === 'RUNNING' && r === t.currentRound;
         const card = (m) => {
           const [st, label] = matchStatus(t, m);
@@ -179,41 +180,20 @@
             ${competitor(m.p2, { won: done && m.winnerId === m.p2?.id, lost: done && !!m.winnerId && m.winnerId !== m.p2?.id, reported: !done && m.p2Reported, bye: m.bye, score: showScore ? m.p2Score : null })}
           </article>`;
         };
-        const cols = rounds.map((r) => `<section class="bracket-round ${isCur(r) ? 'current' : ''}" data-round="${r}"><h3>Rodada ${r}${isCur(r) ? ' · em andamento' : ''}</h3><div class="round-matches">${data.matches.filter((m) => m.round === r).sort((a, b) => a.tableNo - b.tableNo).map(card).join('')}</div></section>`).join('');
+        const cols = [selectedRound].map((r) => `<section class="bracket-round ${isCur(r) ? 'current' : ''}" data-round="${r}"><h3>Rodada ${r}${isCur(r) ? ' · em andamento' : ''}</h3><div class="round-matches">${data.matches.filter((m) => m.round === r).sort((a, b) => a.tableNo - b.tableNo).map(card).join('')}</div></section>`).join('');
         return `
           <div class="section-title-row" style="margin:18px 0 10px"><div><p class="eyebrow">RODADAS</p><h2>Chaveamento</h2></div></div>
           <div class="bracket-tools">
-            <div class="bracket-rounds" id="tRounds" aria-label="Ir para a rodada" ${rounds.length < 2 ? 'hidden' : ''}>${rounds.map((r, i) => `<button type="button" data-round="${r}" class="${isCur(r) ? 'current' : ''} ${i === 0 ? 'active' : ''}">R${r}${isCur(r) ? ' •' : ''}</button>`).join('')}</div>
-            <div class="bracket-actions"><button type="button" class="btn secondary" id="tModeBtn">${roundsMode === 'list' ? 'Ver como chave' : 'Ver como lista'}</button></div>
+            <div class="bracket-rounds" id="tRounds" aria-label="Escolher rodada">${rounds.map(r => `<button type="button" data-round="${r}" aria-pressed="${r === selectedRound}" class="${isCur(r) ? 'current' : ''} ${r === selectedRound ? 'active' : ''}">R${r}${isCur(r) ? ' · atual' : ''}</button>`).join('')}</div>
           </div>
-          <div class="bracket-viewport free ${roundsMode === 'list' ? 'list' : ''}" id="tViewport"><div class="bracket">${cols}</div></div>
-          <p class="bracket-scroll-hint">Arraste para o lado para ver as outras rodadas.</p>`;
+          <div class="bracket-viewport list pairings-single" id="tViewport"><div class="bracket">${cols}</div></div>`;
       }
-      function wireRounds(box) {
-        const vp = box.querySelector('#tViewport'); if (!vp) return;
-        const pills = [...box.querySelectorAll('#tRounds button')];
-        const secs = [...vp.querySelectorAll('.bracket-round')];
-        box.querySelector('#tModeBtn')?.addEventListener('click', () => { roundsMode = roundsMode === 'list' ? 'tree' : 'list'; localStorage.setItem('bx_tmode', roundsMode); if (last) render(last.data, last.me, last.myData); });
-        pills.forEach((b) => b.addEventListener('click', () => {
-          const sec = secs.find((s) => s.dataset.round === b.dataset.round); if (!sec) return;
-          if (roundsMode === 'list') window.scrollTo({ top: sec.getBoundingClientRect().top + window.scrollY - 130, behavior: 'smooth' });
-          else vp.scrollTo({ left: sec.offsetLeft - 14, behavior: 'smooth' });
+      function wireRounds(box, t, data) {
+        box.querySelectorAll('#tRounds button').forEach(button => button.addEventListener('click', () => {
+          pairingRound = Number(button.dataset.round);
+          renderPairings(box, t, data);
+          box.querySelector(`#tRounds button[data-round="${pairingRound}"]`)?.focus({preventScroll:true});
         }));
-        const mark = () => {
-          let idx = 0;
-          if (roundsMode === 'list') secs.forEach((s, i) => { if (s.getBoundingClientRect().top <= 150) idx = i; });
-          else { const x = vp.scrollLeft + vp.clientWidth * 0.35; secs.forEach((s, i) => { if (s.offsetLeft <= x) idx = i; }); }
-          pills.forEach((b, i) => b.classList.toggle('active', i === idx));
-        };
-        let raf = 0; const tick = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(mark); };
-        vp.addEventListener('scroll', tick, { passive: true });
-        if (wireRounds._scroll) window.removeEventListener('scroll', wireRounds._scroll);
-        wireRounds._scroll = () => { if (roundsMode === 'list' && document.body.contains(vp)) tick(); };
-        window.addEventListener('scroll', wireRounds._scroll, { passive: true });
-        // Começa na rodada em andamento
-        const cur = secs.find((s) => s.classList.contains('current'));
-        if (cur && roundsMode !== 'list') vp.scrollLeft = cur.offsetLeft - 14;
-        mark();
       }
 
       function renderGeneral(box, t, data) {
@@ -274,7 +254,7 @@
 
       function renderPairings(box, t, data) {
         box.innerHTML = renderRounds(t, data) || '<div class="empty-state">Os pairings aparecem aqui quando a primeira rodada for gerada.</div>';
-        wireRounds(box);
+        wireRounds(box, t, data);
       }
 
       function renderMatch(box, t, myData) {

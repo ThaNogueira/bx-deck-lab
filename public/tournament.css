@@ -54,6 +54,7 @@
 @media(max-width:760px){#viewBox[data-manager-section] .manager-table .row-actions .btn{min-height:44px;padding:6px;font-size:10px}#viewBox[data-manager-section] .manager-table .row-actions .accept-result{min-height:44px;font-size:10px}}
 
 /* Compact public header and focused tournament operations. */
+#viewBox .pairings-single{overflow:visible;max-height:none}#viewBox .pairings-single .bracket{display:block;min-width:0;width:100%}#viewBox .pairings-single .bracket-round{width:100%;min-width:0}
 #app #viewBox .bracket-match .competitor.winner{outline:1px solid #edcf70;outline-offset:-2px;background:#433b1c;color:#fff1b8;border-radius:7px}
 #app #viewBox .tournament-control-card{padding:12px;border-radius:12px}
 #app #viewBox .tournament-control-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
