@@ -343,9 +343,8 @@
                 </div>
               </div>
               ${t.status !== 'OPEN' ? `
-              <div class="panel-card">
-                <nav class="manager-rounds" aria-label="Rodadas">${Array.from({length:t.currentRound}, (_,i) => `<button type="button" data-manager-round="${i+1}" class="btn ${shownRound === i+1 ? 'primary' : 'secondary'}">R${i+1}${i+1 === t.currentRound ? ' · atual' : ''}</button>`).join('')}</nav>
-                <p class="eyebrow">RODADA ${shownRound} — PARTIDAS</p>
+              <div class="panel-card manager-round-panel">
+                <nav class="manager-rounds" aria-label="Escolher rodada">${Array.from({length:t.currentRound}, (_,i) => { const current = t.status === 'RUNNING' && i+1 === t.currentRound; return `<button type="button" data-manager-round="${i+1}" aria-pressed="${shownRound === i+1}" class="btn ${shownRound === i+1 ? 'primary' : 'secondary'}${current ? ' current' : ''}">${current ? '<i class="round-live-dot" aria-hidden="true"></i>' : ''}R${i+1}${current ? ' · atual' : ''}</button>`; }).join('')}</nav>
                 ${shownRound < t.currentRound && t.status === 'RUNNING' ? '<button class="btn secondary" id="correctPast">'+BX.ic('edit',14)+' Arrumar resultados passados</button>' : ''}
                 <div class="manager-tables" style="margin-top:12px">
                   ${shownMatches.map((m) => {

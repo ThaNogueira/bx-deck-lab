@@ -119,8 +119,11 @@ try {
    await page.locator('[data-view=gestao]').click();await page.locator('.manager-table.reported').waitFor();
    if(width>900) assert(await page.evaluate(()=>document.querySelector('#viewBox').getBoundingClientRect().x>=document.querySelector('.side-nav').getBoundingClientRect().right));
    assert.match(await page.locator('.manager-rounds .primary').innerText(),/R2/);
+   assert.equal(await page.locator('.manager-rounds .current .round-live-dot').count(),1);
+   assert.equal(await page.locator('.manager-round-panel>.eyebrow').count(),0);
+   assert(await page.locator('.manager-rounds .current').evaluate(el=>el.getBoundingClientRect().height<=38));
    await page.screenshot({path:`artifacts/tournament-manager/tables-${width}.png`,fullPage:false,animations:'disabled'});
-   await page.locator('[data-manager-round="1"]').click();await page.locator('#correctPast').click();assert(await page.locator('dialog').isVisible());await page.getByRole('button',{name:'Cancelar',exact:true}).last().click();
+   await page.locator('[data-manager-round="1"]').click();assert.equal(await page.locator('[data-manager-round="1"]').getAttribute('aria-pressed'),'true');assert.equal(await page.locator('[data-manager-round="2"].current').count(),1);await page.locator('#correctPast').click();assert(await page.locator('dialog').isVisible());await page.getByRole('button',{name:'Cancelar',exact:true}).last().click();
    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await page.close();
   }
  }
