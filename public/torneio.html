@@ -331,7 +331,7 @@
                       <a style="font:800 15px var(--display);color:var(--yellow);text-decoration:none" href="/mesa/${t.slug}/${m.id}" title="Abrir tela de mesa">M${m.tableNo}</a>
                       <div class="manager-table-info" style="font-size:12px">
                         ${names}
-                        <small style="display:block;color:var(--muted)">${m.status === 'DONE' ? `${BX.ic('check', 14)} vencedor: ${BX.esc((m.winnerId === m.p1?.id ? m.p1 : m.p2)?.user.name || '?')}${m.resolvedBy === 'ORGANIZER' ? ' (manual)' : ''}` : m.status === 'CONFLICT' ? `${BX.ic('warn', 14)} conflito — escolha o vencedor` : 'aguardando reportes'}</small>
+                        ${m.status !== 'DONE' ? `<small style="display:block;color:var(--muted)">${m.status === 'CONFLICT' ? `${BX.ic('warn', 14)} conflito — escolha o vencedor` : 'aguardando reportes'}</small>` : ''}
                       </div>
                       <div class="row-actions">
                         ${m.status !== 'DONE' && !m.bye && shownRound === t.currentRound ? `
