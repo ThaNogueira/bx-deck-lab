@@ -12,6 +12,15 @@ const router = Router();
 const ah = (fn) => (req, res, next) => fn(req, res, next).catch(next);
 
 const STATE_COOKIE = 'bx_oauth_state';
+export function safeReturnPath(value) {
+  if (typeof value !== 'string' || !value.startsWith('/') || value.startsWith('//') || /[\\\x00-\x1f]/.test(value)) return null;
+  try { const url = new URL(value, 'https://beyxlab.local'); return url.origin === 'https://beyxlab.local' ? url.pathname + url.search + url.hash : null; } catch { return null; }
+}
+function consumeReturnPath(req, res, fallback) {
+  const path = safeReturnPath(req.cookies?.bx_after_login);
+  res.clearCookie('bx_after_login', { path: '/' });
+  return path || fallback;
+}
 
 router.get('/api/oauth/google', (req, res) => {
   if (!isGoogleEnabled()) return res.redirect('/entrar?erro=' + encodeURIComponent('Login Google não configurado.'));
@@ -37,7 +46,7 @@ router.get('/api/oauth/google/callback', ah(async (req, res) => {
     await createSession(res, user.id);
     res.clearCookie(STATE_COOKIE, { path: '/' });
     if (isNew) await audit(user, 'user.signup', 'USER', user.id);
-    res.redirect(isNew ? '/perfil?bemvindo=1' : (req.cookies?.bx_after_login || '/'));
+    res.redirect(consumeReturnPath(req, res, isNew ? '/perfil?bemvindo=1' : '/'));
   } catch (e) {
     console.error('[oauth google]', e);
     return fail('Falha no login com Google — tente novamente.');
@@ -46,11 +55,14 @@ router.get('/api/oauth/google/callback', ah(async (req, res) => {
 
 /** Guarda para onde voltar após o login (ex.: tela de inscrição de torneio). */
 router.post('/api/auth/after-login', (req, res) => {
-  const to = String(req.body?.to || '/');
-  if (to.startsWith('/') && !to.startsWith('//')) {
-    res.cookie('bx_after_login', to, cookieOptions(new Date(Date.now() + 15 * 60_000)));
-  }
+  const to = safeReturnPath(req.body?.to);
+  if (!to) return res.status(422).json({ error: 'Destino de retorno inválido.' });
+  res.cookie('bx_after_login', to, cookieOptions(new Date(Date.now() + 60 * 60_000)));
   res.json({ ok: true });
+});
+
+router.get('/api/auth/after-login', (req, res) => {
+  res.set('Cache-Control', 'no-store').json({ redirectTo: req.user ? consumeReturnPath(req, res, '/perfil') : null });
 });
 
 router.post('/api/auth/logout', ah(async (req, res) => {
@@ -110,7 +122,7 @@ router.post('/api/auth/register', moderateFields('name'), ah(async (req, res) =>
   });
   await createSession(res, user.id);
   await audit(user, 'user.signup', 'USER', user.id, { method: 'password' });
-  res.json({ ok: true, user: publicUser(user) });
+  res.json({ ok: true, user: publicUser(user), redirectTo: consumeReturnPath(req, res, '/perfil?bemvindo=1') });
 }));
 
 router.post('/api/auth/login', ah(async (req, res) => {
@@ -137,7 +149,7 @@ router.post('/api/auth/login', ah(async (req, res) => {
     },
   });
   await createSession(res, updated.id);
-  res.json({ ok: true, user: publicUser(updated) });
+  res.json({ ok: true, user: publicUser(updated), redirectTo: consumeReturnPath(req, res, '/') });
 }));
 
 /**
@@ -153,7 +165,7 @@ router.post('/api/auth/dev-login', ah(async (req, res) => {
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.status(422).json({ error: 'E-mail inválido.' });
   const { user } = await upsertOAuthUser({ email, name, avatarUrl: null });
   await createSession(res, user.id);
-  res.json({ ok: true, user: publicUser(user) });
+  res.json({ ok: true, user: publicUser(user), redirectTo: consumeReturnPath(req, res, '/perfil') });
 }));
 
 router.get('/api/me', ah(async (req, res) => {

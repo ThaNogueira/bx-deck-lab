@@ -35,6 +35,7 @@
       }
       const t = data.tournament;
       const lateToken = new URLSearchParams(location.search).get('late');
+      const autoJoin = new URLSearchParams(location.search).get('autoJoin') === '1';
       const lateJoin = t.status === 'RUNNING' && !!lateToken;
       document.title = `Inscrição: ${t.name} — BX Deck Lab`;
       const me = await BX.me().catch(() => null);
@@ -49,6 +50,7 @@
         </div></div>`;
       }
 
+      if (joined && autoJoin && me) { location.replace(`/torneio/${t.slug}`); return; }
       if (t.status !== 'OPEN' && !lateJoin) {
         screen(`<p style="color:var(--muted);margin-top:14px">As inscrições deste torneio estão fechadas.</p>
           <a class="btn secondary" style="margin-top:14px;display:inline-block;text-decoration:none" href="/torneio/${t.slug}">Ver o torneio</a>`);
@@ -63,7 +65,17 @@
       if (!me) {
         screen(`<p style="color:var(--muted);margin-top:10px">Para se inscrever, entre com sua conta (leva 10 segundos):</p>
           <button class="btn-huge btn" id="loginBtn" style="margin-top:22px">ENTRAR PARA SE INSCREVER</button>`);
-        document.getElementById('loginBtn').addEventListener('click', () => BX.requireLogin(`/t/${t.slug}${lateToken ? `?late=${encodeURIComponent(lateToken)}` : ''}`));
+        document.getElementById('loginBtn').addEventListener('click', () => BX.requireLogin(`/t/${t.slug}?autoJoin=1${lateToken ? `&late=${encodeURIComponent(lateToken)}` : ''}`));
+        return;
+      }
+      if (autoJoin) {
+        screen('<p style="margin-top:18px">Concluindo sua inscrição no torneio…</p>');
+        try {
+          await BX.api(`/api/tournaments/${t.slug}/join`, { method: 'POST', body: lateToken ? { lateToken } : {} });
+          location.replace(`/torneio/${t.slug}`);
+        } catch (error) {
+          screen(`<p role="alert" style="margin-top:14px">${BX.esc(error.message)}</p><p>Sua conta está pronta, mas não foi possível concluir a inscrição.</p><a class="btn primary" href="/torneio/${t.slug}">Ver o torneio</a>`);
+        }
         return;
       }
       screen(`<button class="btn-huge" id="joinBtn">${lateJoin ? 'ENTRAR NA PRÓXIMA RODADA' : 'ENTRAR NO TORNEIO'}</button>

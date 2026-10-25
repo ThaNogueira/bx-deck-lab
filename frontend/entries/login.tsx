@@ -13,9 +13,9 @@ function LoginPage() {
   const [error,setError] = useState(new URLSearchParams(location.search).get('erro')||'');
   useEffect(()=>{
     let active=true;
-    bx.me().catch(()=>null).then(user=>{
+    bx.me().catch(()=>null).then(async user=>{
       if (!active) return;
-      if (user) { location.href='/perfil'; return; }
+      if (user) { const result=await bx.api<{redirectTo?:string}>('/api/auth/after-login').catch(()=>null); if(active)location.href=result?.redirectTo||'/perfil'; return; }
       setReady(true);
     });
     bx.site().then(value=>{if(active)setSite(value);}).catch(()=>{});
@@ -28,8 +28,8 @@ function LoginPage() {
     const body={email:String(form.get('email')||''),password:String(form.get('password')||''),...(mode==='register'?{name:String(form.get('name')||'')}:{})};
     setBusy(true); setError('');
     try {
-      await bx.api(dev?'/api/auth/dev-login':`/api/auth/${mode}`,{method:'POST',body:dev?{email:body.email}:body});
-      location.href=dev?'/perfil':mode==='register'?'/perfil?bemvindo=1':'/';
+      const result=await bx.api<{redirectTo?:string}>(dev?'/api/auth/dev-login':`/api/auth/${mode}`,{method:'POST',body:dev?{email:body.email}:body});
+      location.href=result.redirectTo||(dev?'/perfil':mode==='register'?'/perfil?bemvindo=1':'/');
     } catch (err) {
       const message=err instanceof Error?err.message:'Não foi possível entrar. Tente novamente.';
       setError(message); bx.toast(message); setBusy(false);
