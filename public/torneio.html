@@ -344,15 +344,15 @@
                     return `
                     <div class="org-match-row manager-table ${m.status === 'CONFLICT' ? 'conflict' : ''} ${m.status === 'DONE' ? 'done' : m.p1Reported || m.p2Reported ? 'reported' : 'playing'}">
                       <a style="font:800 15px var(--display);color:var(--yellow);text-decoration:none" href="/mesa/${t.slug}/${m.id}" title="Abrir tela de mesa">M${m.tableNo}</a>
-                      <div style="font-size:12px">
+                      <div class="manager-table-info" style="font-size:12px">
                         <div class="manager-competitor">${m.p1 ? BX.avatarHtml(m.p1.user,{size:24}) : ''}<b>${BX.esc(m.p1?.user.name || '?')}</b>${m.p1Reported ? BX.ic('check',14) : ''}</div><div class="manager-competitor">${m.p2 ? BX.avatarHtml(m.p2.user,{size:24}) : ''}<b>${BX.esc(m.p2?.user.name || 'BYE')}</b>${m.p2Reported ? BX.ic('check',14) : ''}</div>
                         <small style="display:block;color:var(--muted)">${m.status === 'DONE' ? `${BX.ic('check', 14)} vencedor: ${BX.esc((m.winnerId === m.p1?.id ? m.p1 : m.p2)?.user.name || '?')}${m.resolvedBy === 'ORGANIZER' ? ' (manual)' : ''}` : m.status === 'CONFLICT' ? `${BX.ic('warn', 14)} conflito — escolha o vencedor` : 'aguardando reportes'}</small>
                       </div>
                       <div class="row-actions">
                         ${m.status !== 'DONE' && !m.bye && shownRound === t.currentRound ? `
-                          ${m.status !== 'CONFLICT' && (m.p1Reported || m.p2Reported) ? `<button class="btn secondary" data-accept="${m.id}">Aceitar reporte único</button>` : ''}
-                          <button class="btn secondary" data-win="${m.id}:${m.p1?.id}">${BX.ic('trophy', 14)} ${BX.esc(m.p1?.user.name || '')}</button>
-                          <button class="btn secondary" data-win="${m.id}:${m.p2?.id}">${BX.ic('trophy', 14)} ${BX.esc(m.p2?.user.name || '')}</button>` : ''}
+                          ${m.status !== 'CONFLICT' && (m.p1Reported || m.p2Reported) ? `<button class="btn primary accept-result" data-accept="${m.id}">${BX.ic('check',18)}<span>Aceitar reporte único</span></button>` : ''}
+                          <button class="btn secondary award-win award-p1" data-win="${m.id}:${m.p1?.id}" aria-label="Dar vitória para ${BX.esc(m.p1?.user.name || '')}">${BX.avatarHtml(m.p1?.user,{size:24})}<span>${BX.ic('trophy', 13)} ${BX.esc(m.p1?.user.name || '')}</span></button>
+                          <button class="btn secondary award-win award-p2" data-win="${m.id}:${m.p2?.id}" aria-label="Dar vitória para ${BX.esc(m.p2?.user.name || '')}">${BX.avatarHtml(m.p2?.user,{size:24})}<span>${BX.ic('trophy', 13)} ${BX.esc(m.p2?.user.name || '')}</span></button>` : ''}
                         ${m.status === 'DONE' && !m.bye && shownRound === t.currentRound ? `<button class="btn ghost" data-reopen="${m.id}">Reabrir</button>` : ''}
                         ${!m.bye ? `<button class="btn ghost" data-mesa="${m.id}" title="Abrir a tela de mesa desta partida no dispositivo da mesa (reporta pelos dois lados)">${BX.ic('screen', 14)} Mesa</button>` : ''}
                       </div>
