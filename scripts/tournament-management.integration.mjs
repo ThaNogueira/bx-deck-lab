@@ -80,6 +80,12 @@ try {
  assert.equal((await call('/correct-round',correction)).status,409);
  assert.equal((await prisma.tMatch.findMany({where:{tournamentId:t.id,round:2}})).length,2);
  assert.equal((await call(`/matches/${matches[0].id}/resolve`,{})).status,200);
+ if(browser) {
+  const page=await browser.newPage({viewport:{width:390,height:900}});await page.goto(base+'/torneio/qa-manager#gestao');await page.locator('.match-winner').waitFor();
+  assert.equal(await page.locator('.match-winner-trophy').count(),1);
+  assert(await page.locator('.tournament-control-card').evaluate(el=>el.getBoundingClientRect().height<150));
+  await page.screenshot({path:'artifacts/tournament-manager/winner-compact-390.png',animations:'disabled'});await page.close();
+ }
  const m=matches[1],u1=users.find(u=>u.id===ps.find(p=>p.id===m.p1Id).userId),u2=users.find(u=>u.id===ps.find(p=>p.id===m.p2Id).userId);
  assert.equal((await call('/report',{matchId:m.id,result:'WIN'},u1)).status,200);
  assert.equal((await prisma.tMatch.findUnique({where:{id:m.id}})).status,'PENDING');

@@ -163,7 +163,7 @@
         const name = BX.esc(pl?.user?.name || (bye ? 'BYE' : '?'));
         const av = pl ? BX.avatarHtml(pl.user, { size: 28 }) : '<span class="avatar" style="width:28px;height:28px"><b>—</b></span>';
         const tag = won ? 'venceu' : reported ? 'reportou' : '';
-        return `<div class="competitor ${won ? 'winner' : ''} ${lost ? 'loser' : ''}">${av}<span title="${name}">${name}</span>${tag ? `<b class="rep">${tag}</b>` : '<span></span>'}${score != null ? `<b class="tournament-score">${score}</b>` : ''}</div>`;
+        return `<div class="competitor ${won ? 'winner' : ''} ${lost ? 'loser' : ''}">${av}<span title="${name}">${name}</span>${won ? '<img class="match-winner-trophy" src="/assets/achievements/trophy-minimal.svg" alt="Vencedor" width="28" height="28">' : tag ? `<b class="rep">${tag}</b>` : '<span></span>'}${score != null ? `<b class="tournament-score">${score}</b>` : ''}</div>`;
       }
       function renderRounds(t, data) {
         if (!data.matches?.length) return '';
@@ -321,14 +321,14 @@
         const pendingMatches = roundMatches.filter((m) => m.status !== 'DONE').length;
         const canAdvance = roundMatches.length > 0 && pendingMatches === 0;
         box.innerHTML = `
-          ${conflicts.length ? `<div class="conflict-banner" style="margin-bottom:14px">${BX.ic('warn', 14)} <b>${conflicts.length} conflito(s) de resultado</b> nesta rodada — verifique com os jogadores e escolha o vencedor abaixo antes de fechar a rodada.</div>` : ''}
-          ${t.status === 'RUNNING' && t.currentRound < t.roundsPlanned ? `<section class="next-round-card ${canAdvance ? 'ready' : 'waiting'}"><div><p class="eyebrow">PRÓXIMA ETAPA</p><h2>${canAdvance ? 'Rodada pronta para avançar' : `Aguardando ${pendingMatches} resultado${pendingMatches === 1 ? '' : 's'}`}</h2><small>${canAdvance ? 'Todos os resultados foram resolvidos. Você pode gerar os próximos pairings.' : 'Resolva todas as mesas ou conflitos antes de continuar.'}</small></div><button class="btn" id="nextBtn" ${canAdvance ? '' : 'disabled'}>${BX.ic('chevron', 18)} Gerar rodada ${t.currentRound + 1}</button></section>` : ''}
+          ${conflicts.length ? `<div class="conflict-banner" style="margin-bottom:10px">${BX.ic('warn', 14)} <b>${conflicts.length} conflito(s) de resultado</b></div>` : ''}
           <div class="profile-grid">
             <div style="display:flex;flex-direction:column;gap:16px">
               <div class="panel-card tournament-control-card">
-                <div class="tournament-control-head"><div><p class="eyebrow">CENTRAL DO GESTOR</p><h2>${t.status === 'OPEN' ? 'Pronto para começar' : t.status === 'RUNNING' ? `Rodada ${t.currentRound} em andamento` : t.status === 'FINISHED' ? 'Torneio encerrado' : 'Torneio cancelado'}</h2><small>${t.status === 'OPEN' ? 'Confira os inscritos e inicie quando estiver tudo certo.' : t.status === 'RUNNING' ? `${roundMatches.filter((m) => m.status === 'DONE').length}/${roundMatches.length} mesas concluídas nesta rodada.` : 'Use as abas para consultar os resultados.'}</small></div><span class="status-chip ${t.status}">${STATUS_PT[t.status]}</span></div>
+                <div class="tournament-control-head"><h2>${t.status === 'OPEN' ? 'Inscrições abertas' : t.status === 'RUNNING' ? `Rodada ${t.currentRound}/${t.roundsPlanned}` : t.status === 'FINISHED' ? 'Torneio encerrado' : 'Torneio cancelado'}</h2><small>${t.status === 'OPEN' ? `${data.players.filter(p=>!p.dropped && (!t.entryFeeCents || p.paymentConfirmed)).length} jogadores aptos` : t.status === 'RUNNING' ? `${roundMatches.filter(m=>m.status === 'DONE').length}/${roundMatches.length} mesas concluídas` : ''}</small></div>
                 <div class="inline-actions tournament-control-actions" style="justify-content:flex-start;margin-top:16px">
                   ${t.status === 'OPEN' ? `<button class="btn primary" id="startBtn">${BX.ic('play', 14)} Começar (rodada 1)</button>` : ''}
+                  ${t.status === 'RUNNING' && t.currentRound < t.roundsPlanned ? `<button class="btn primary" id="nextBtn" ${canAdvance ? '' : 'disabled'}>${BX.ic('chevron',14)} Gerar rodada ${t.currentRound+1}</button>` : ''}
                   ${t.status === 'RUNNING' ? `<button class="btn secondary" id="lateInviteBtn">${BX.ic('link', 14)} Gerar convite de entrada tardia</button>` : ''}
                   ${t.status === 'RUNNING' ? `<button class="btn secondary" id="finishBtn">${BX.ic('finish', 14)} Encerrar torneio</button>` : ''}
                   ${t.status !== 'CANCELED' ? `<button class="btn ghost" id="tamerLeagueSyncBtn" title="Reenvia o estado atual do torneio ao TamerLeague">Sincronizar TamerLeague</button>` : ''}
@@ -345,7 +345,7 @@
                     const canChoose = m.status !== 'DONE' && !m.bye && shownRound === t.currentRound;
                     const names = [m.p1,m.p2].map((p,i) => canChoose
                       ? `<button class="btn secondary award-win award-p${i+1}" data-win="${m.id}:${p.id}" aria-label="Dar vitória para ${BX.esc(p.user.name)}">${BX.avatarHtml(p.user,{size:24})}<span>${BX.esc(p.user.name)}</span>${BX.ic('trophy',12)}</button>`
-                      : `<div class="manager-competitor">${p ? BX.avatarHtml(p.user,{size:24}) : ''}<b>${BX.esc(p?.user.name || 'BYE')}</b>${m.winnerId === p?.id ? BX.ic('trophy',12) : ''}</div>`).join('');
+                      : `<div class="manager-competitor ${p && m.winnerId === p.id ? 'match-winner' : ''}">${p ? BX.avatarHtml(p.user,{size:24}) : ''}<b>${BX.esc(p?.user.name || 'BYE')}</b>${p && m.winnerId === p.id ? '<img class="match-winner-trophy" src="/assets/achievements/trophy-minimal.svg" alt="Vencedor" width="28" height="28">' : ''}</div>`).join('');
                     return `
                     <div class="org-match-row manager-table ${m.status === 'CONFLICT' ? 'conflict' : ''} ${m.status === 'DONE' ? 'done' : m.p1Reported || m.p2Reported ? 'reported' : 'playing'}">
                       <a style="font:800 15px var(--display);color:var(--yellow);text-decoration:none" href="/mesa/${t.slug}/${m.id}" title="Abrir tela de mesa">M${m.tableNo}</a>
