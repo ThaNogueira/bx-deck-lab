@@ -41,6 +41,7 @@
 
       const STATUS_PT = { OPEN: 'inscrições abertas', RUNNING: 'em andamento', FINISHED: 'encerrado', CANCELED: 'cancelado' };
       const feeLabel = (cents) => cents ? (cents / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'Gratuito';
+      const addressWithoutZip = address => String(address || '').replace(/(?:\bCEP\s*:?\s*)?\b\d{2}\.?\d{3}[\s-]?\d{3}\b/gi, '').replace(/[\s,;–-]+$/, '').trim();
 
       async function load(prefetched = null) {
         let data = prefetched;
@@ -127,7 +128,7 @@
           </div>
           <div class="tournament-facts" aria-label="Informações principais">
             <div class="tournament-fact"><span>${BX.icon('calendar', 18)} Data e horário</span><strong>${BX.dateFmt(t.startsAt, { day: '2-digit', month: 'short', year: 'numeric' })}<br>${BX.dateFmt(t.startsAt, { hour: '2-digit', minute: '2-digit' })}</strong></div>
-            <div class="tournament-fact"><span>${BX.icon('pin', 20)} Local</span><strong>${BX.esc(t.storeName || t.address || 'A definir')}</strong>${t.storeName && t.address ? `<small>${BX.esc(t.address)}</small>` : ''}</div>
+            <div class="tournament-fact"><span>${BX.icon('pin', 20)} Local</span><strong>${BX.esc(t.storeName || addressWithoutZip(t.address) || 'A definir')}</strong>${t.storeName && addressWithoutZip(t.address) ? `<small>${BX.esc(addressWithoutZip(t.address))}</small>` : ''}</div>
             <div class="tournament-fact"><span>${BX.icon('money', 20)} Inscrição</span><strong>${feeLabel(t.entryFeeCents)}</strong></div>
             <div class="tournament-fact"><span>${BX.icon('users', 20)} Jogadores</span><strong>${data.players.length} inscritos</strong></div>
           </div>
