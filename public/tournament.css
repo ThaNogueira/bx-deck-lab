@@ -54,6 +54,14 @@
 @media(max-width:760px){#viewBox[data-manager-section] .manager-table .row-actions .btn{min-height:44px;padding:6px;font-size:10px}#viewBox[data-manager-section] .manager-table .row-actions .accept-result{min-height:44px;font-size:10px}}
 
 /* Compact public header and focused tournament operations. */
+#app #viewBox[data-manager-section] .tournament-control-card{position:relative}
+#app #viewBox[data-manager-section] .tournament-control-head{padding-right:76px;min-height:34px;flex-wrap:wrap;justify-content:flex-start}
+#app #viewBox[data-manager-section] .tournament-control-head small{text-align:left}
+.manager-tools{position:absolute;top:10px;right:10px;display:flex;gap:5px}
+#app #viewBox .manager-tools .btn{width:32px;height:34px;min-height:34px;padding:6px;border-radius:7px;display:grid;place-items:center}
+#app #viewBox .manager-tools .btn[aria-pressed=true]{color:var(--accent);border-color:var(--accent);background:#29351e}
+#app #viewBox[data-manager-section=divulgacao] .manager-main,#app #viewBox[data-manager-section=configuracao] .manager-main{display:flex!important}
+#app #viewBox[data-manager-section=divulgacao] .manager-main>:not(.tournament-control-card),#app #viewBox[data-manager-section=configuracao] .manager-main>:not(.tournament-control-card),#app #viewBox[data-manager-section=divulgacao] .tournament-control-actions,#app #viewBox[data-manager-section=configuracao] .tournament-control-actions{display:none!important}
 #viewBox .pairings-single{overflow:visible;max-height:none}#viewBox .pairings-single .bracket{display:block;min-width:0;width:100%}#viewBox .pairings-single .bracket-round{width:100%;min-width:0}
 #app #viewBox .bracket-match .competitor.winner{outline:1px solid #edcf70;outline-offset:-2px;background:#433b1c;color:#fff1b8;border-radius:7px}
 #app #viewBox .tournament-control-card{padding:12px;border-radius:12px}

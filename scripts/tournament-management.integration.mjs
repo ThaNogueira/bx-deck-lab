@@ -44,8 +44,10 @@ try {
    assert.equal(await page.locator('.tournament-cover').isVisible(),false);
    assert.equal(await page.locator('[data-payment-state=paid]').count(),4);
    await page.screenshot({path:`artifacts/tournament-manager/management-${width}.png`,fullPage:true});
-   await page.locator('[data-view=divulgacao]').click();assert(await page.locator('#copyLink').isVisible());assert.equal(await page.locator('#startBtn').isVisible(),false);
-   await page.locator('[data-view=configuracao]').click();assert(await page.locator('#saveT').isVisible());
+   assert.equal(await page.locator('[data-view=divulgacao],[data-view=configuracao]').count(),0);
+   await page.locator('[data-manager-panel=divulgacao]').click();assert(await page.locator('#copyLink').isVisible());assert.equal(await page.locator('#startBtn').isVisible(),false);
+   await page.locator('[data-manager-panel=configuracao]').click();assert(await page.locator('#saveT').isVisible());
+   await page.locator('[data-manager-panel=configuracao]').click();assert(await page.locator('#startBtn').isVisible());
    await page.locator('[data-view=geral]').click();assert(await page.locator('.tournament-cover').isVisible());
    const compact = await page.evaluate(()=>({blocks:[...document.querySelectorAll('.tournament-fact')].map(el=>el.getBoundingClientRect().height),size:parseFloat(getComputedStyle(document.querySelector('.tournament-fact strong')).fontSize),tags:[...document.querySelectorAll('.tournament-hero p>span')].map(el=>el.getBoundingClientRect().y),flag:document.querySelector('#reportBtn').getBoundingClientRect().bottom,cover:document.querySelector('.tournament-cover').getBoundingClientRect().top}));
    assert(compact.blocks.every(height=>height<140));assert(compact.size>=16);assert.equal(new Set(compact.tags).size,1);assert(compact.flag<=compact.cover);

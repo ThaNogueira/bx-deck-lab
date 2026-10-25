@@ -25,9 +25,10 @@
       BX.renderTopbar('/torneios');
       const slug = BX.pathPart(1);
       const app = document.getElementById('app');
-      const VIEWS = ['geral', 'pairings', 'partida', 'gestao', 'divulgacao', 'configuracao'];
+      const VIEWS = ['geral', 'pairings', 'partida', 'gestao'];
+      let managerPanel = ['divulgacao','configuracao'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'gestao';
       let manageRound = null;
-      const hashView = () => { const v = location.hash.slice(1); return VIEWS.includes(v) ? v : 'geral'; };
+      const hashView = () => { const v = location.hash.slice(1); return VIEWS.includes(v) ? v : ['divulgacao','configuracao'].includes(v) ? 'gestao' : 'geral'; };
       let view = hashView(); // geral | partida | gestao — fica no hash: recarregar/voltar não perde a aba
       const reportExitKey = `bx_exit_match_report_${slug}`;
       let pollTimer = null;
@@ -91,7 +92,6 @@
           ...(data.matches?.length ? [['pairings', 'Pairings']] : []),
           ...(joined && t.status === 'RUNNING' ? [['partida', `${BX.ic('target', 14)} Minha partida`]] : []),
           ...(t.canManage ? [['gestao', `${BX.ic('settings', 14)} Gestão`]] : []),
-          ...(t.canManage ? [['divulgacao', BX.ic('share', 14) + ' Divulgação'], ['configuracao', BX.ic('edit', 16)]] : []),
         ];
 
         // Foco de jogo: preserva o mesmo report responsivo, mas remove capa,
@@ -104,7 +104,7 @@
           return;
         }
 
-        const managementView = t.canManage && ['gestao', 'divulgacao', 'configuracao'].includes(view);
+        const managementView = t.canManage && view === 'gestao';
         app.classList.toggle('management-view', managementView);
         app.innerHTML = `
           <nav class="tabs" style="justify-content:flex-start;margin:0 0 12px" aria-label="Seções do torneio">${tabs.map(([k, label]) => `<button class="tab${view === k ? ' active' : ''}" data-view="${k}" aria-selected="${view === k}">${label}</button>`).join('')}</nav>
@@ -148,7 +148,7 @@
         const box = document.getElementById('viewBox');
         if (view === 'pairings') renderPairings(box, t, data);
         else if (view === 'partida') renderMatch(box, t, { ...myData, paymentPending: data.me?.paymentPending });
-        else if (['gestao', 'divulgacao', 'configuracao'].includes(view) && t.canManage) renderManage(box, t, data);
+        else if (view === 'gestao' && t.canManage) renderManage(box, t, data);
         else renderGeneral(box, t, data);
       }
 
@@ -305,6 +305,7 @@
           <div class="profile-grid">
             <div style="display:flex;flex-direction:column;gap:16px">
               <div class="panel-card tournament-control-card">
+                <div class="manager-tools"><button type="button" class="btn ghost icon-only" data-manager-panel="divulgacao" title="Divulgação e compartilhamento" aria-label="Divulgação e compartilhamento" aria-pressed="${managerPanel === 'divulgacao'}">${BX.ic('share',17)}</button><button type="button" class="btn ghost icon-only" data-manager-panel="configuracao" title="Configurações do torneio" aria-label="Configurações do torneio" aria-pressed="${managerPanel === 'configuracao'}">${BX.ic('edit',17)}</button></div>
                 <div class="tournament-control-head"><h2>${t.status === 'OPEN' ? 'Inscrições abertas' : t.status === 'RUNNING' ? `Rodada ${t.currentRound}/${t.roundsPlanned}` : t.status === 'FINISHED' ? 'Torneio encerrado' : 'Torneio cancelado'}</h2><small>${t.status === 'OPEN' ? `${data.players.filter(p=>!p.dropped && (!t.entryFeeCents || p.paymentConfirmed)).length} jogadores aptos` : t.status === 'RUNNING' ? `${roundMatches.filter(m=>m.status === 'DONE').length}/${roundMatches.length} mesas concluídas` : ''}</small></div>
                 <div class="inline-actions tournament-control-actions" style="justify-content:flex-start;margin-top:16px">
                   ${t.status === 'OPEN' ? `<button class="btn primary" id="startBtn">${BX.ic('play', 14)} Começar (rodada 1)</button>` : ''}
@@ -399,7 +400,8 @@
           <div class="modal-backdrop" id="manageDeckModal" hidden><div class="modal"></div></div>`;
 
         const act = (fn) => async () => { try { await fn(); load(); } catch (e) { BX.toast(e.message); } };
-        box.dataset.managerSection = view;
+        box.dataset.managerSection = managerPanel;
+        box.querySelectorAll('[data-manager-panel]').forEach(button => button.onclick = () => { managerPanel = managerPanel === button.dataset.managerPanel ? 'gestao' : button.dataset.managerPanel; renderManage(box,t,data); });
         const grid = box.querySelector('.profile-grid'), columns = grid ? [...grid.children] : [];
         if (columns[0]) columns[0].classList.add('manager-main');
         if (columns[1]) {
