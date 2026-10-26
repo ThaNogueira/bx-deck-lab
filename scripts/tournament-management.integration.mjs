@@ -63,6 +63,11 @@ try {
    assert(compact.blocks.every(height=>height<140));assert(compact.size>=16);assert.equal(new Set(compact.tags).size,1);assert(compact.flag<=compact.cover);
    await page.screenshot({path:`artifacts/tournament-manager/public-${width}.png`,fullPage:true});
    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.deepEqual(errors,[]);await page.close();
+   const joinedPage=await browser.newPage({viewport:{width,height:900},extraHTTPHeaders:{'x-test-user':users[1].id}});
+   await joinedPage.goto(base+'/torneio/qa-manager');await joinedPage.locator('#leaveBtn').waitFor();
+   const leaveLayout=await joinedPage.evaluate(()=>{const tags=document.querySelector('.tournament-hero p').getBoundingClientRect(),button=document.querySelector('#leaveBtn').getBoundingClientRect();return {tagsY:tags.y,buttonY:button.y,heroHeight:document.querySelector('.tournament-hero').getBoundingClientRect().height};});
+   assert(leaveLayout.heroHeight<80);if(width>760)assert(Math.abs(leaveLayout.tagsY-leaveLayout.buttonY)<12);
+   await joinedPage.screenshot({path:`artifacts/tournament-manager/joined-${width}.png`,animations:'disabled'});await joinedPage.close();
   }
  }
  assert.equal((await call('/start')).status,200);
