@@ -51,6 +51,8 @@ try {
    await page.goto(base+'/torneio/qa-manager#gestao');await page.locator('[data-payment]').first().waitFor();
    assert.equal(await page.locator('.tournament-cover').isVisible(),false);
    assert.equal(await page.locator('[data-payment-state=paid]').count(),4);
+   assert.equal(await page.locator('.manager-player-deck:visible').count(),0);
+   const playerOptions=page.locator('.manager-player-options').first();await playerOptions.locator('summary').click();assert(await playerOptions.locator('.manager-player-deck').isVisible());assert.match(await playerOptions.locator('.manager-player-deck').innerText(),/Sem deck declarado/);await playerOptions.locator('summary').click();
    await page.screenshot({path:`artifacts/tournament-manager/management-${width}.png`,fullPage:true});
    assert.equal(await page.locator('[data-view=divulgacao],[data-view=configuracao]').count(),0);
    await page.locator('[data-manager-panel=divulgacao]').click();assert(await page.locator('#copyLink').isVisible());assert.equal(await page.locator('#startBtn').isVisible(),false);

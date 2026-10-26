@@ -369,7 +369,8 @@
                 <div class="manager-players" style="margin-top:10px">${data.players.map((p) => `
                   <div class="org-match-row manager-player ${t.entryFeeCents && !p.paymentConfirmed ? 'payment-pending' : ''}" data-payment-state="${!p.dropped && (!t.entryFeeCents || p.paymentConfirmed) ? 'paid' : 'pending'}">
                     ${BX.avatarHtml(p.user, { size: 34 })}
-                    <div style="font-size:12px"><b>${BX.esc(p.user.name)}</b>${p.dropped ? ' <small style="color:var(--muted)">(removido/drop)</small>' : ''}<small style="display:block;color:var(--muted)">${p.deck?.title ? `Deck: ${BX.esc(p.deck.title)}${p.deck.managed ? ' (gestão)' : ''}` : p.deckDeclared ? 'Deck do jogador (privado)' : 'Sem deck declarado'}</small>${p.deck?.beys?.length ? `<div class="manage-deck-preview">${BX.deckPreview(p.deck.beys, { u: 27 })}</div>` : ''}</div>
+                    <div class="manager-player-identity" style="font-size:12px"><b>${BX.esc(p.user.name)}</b>${p.dropped ? ' <small style="color:var(--muted)">(removido/drop)</small>' : ''}</div>
+                    <div class="manager-player-deck"><small style="display:block;color:var(--muted)">${p.deck?.title ? `Deck: ${BX.esc(p.deck.title)}${p.deck.managed ? ' (gestão)' : ''}` : p.deckDeclared ? 'Deck do jogador (privado)' : 'Sem deck declarado'}</small>${p.deck?.beys?.length ? `<div class="manage-deck-preview">${BX.deckPreview(p.deck.beys, { u: 27 })}</div>` : ''}</div>
                     ${t.entryFeeCents ? `<label class="payment-check" title="${p.paymentConfirmed ? 'Pagamento confirmado' : 'Marcar como pago'}"><input type="checkbox" data-payment="${p.id}" aria-label="Pagamento de ${BX.esc(p.user.name)} confirmado" ${p.paymentConfirmed ? 'checked' : ''} ${t.status !== 'OPEN' ? 'disabled' : ''}><span>Pago</span></label>` : ''}
                     <button class="btn secondary" data-build-deck="${p.id}">${BX.icon('decks', 14)} Montar deck</button>
                     <button class="btn secondary" data-pick-deck="${p.id}">${BX.icon('community', 14)} Escolher deck</button>
@@ -433,6 +434,7 @@
         box.querySelectorAll('.manager-player').forEach(row => {
           const options=document.createElement('details'); options.className='manager-player-options';
           options.innerHTML='<summary>Deck e opções</summary>';
+          options.append(row.querySelector('.manager-player-deck'));
           row.querySelectorAll('button').forEach(button=>options.append(button)); row.append(options);
         });
         const central = box.querySelector('.tournament-control-card'), next = box.querySelector('.next-round-card');

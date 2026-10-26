@@ -97,11 +97,13 @@
 @media(max-width:760px){#app #viewBox .pairings-single .bm-head{padding:8px;gap:4px;flex-wrap:wrap}#app #viewBox .pairings-single .bm-head small{font-size:10px}#app #viewBox .pairings-single .m-status{font-size:8px;padding:3px 5px}#app #viewBox .pairings-single .competitor{grid-template-columns:24px minmax(0,1fr) auto auto;gap:5px;padding:7px;min-height:48px}#app #viewBox .pairings-single .competitor>span:nth-child(2){font-size:11px;white-space:normal;overflow-wrap:anywhere;line-height:1.3}#app #viewBox .pairings-single .competitor .avatar{width:24px!important;height:24px!important}#app #viewBox .pairings-single .match-winner-trophy{width:21px;height:21px}#app #viewBox .pairings-single .competitor .rep{display:none}#app #viewBox .pairings-single .tournament-score{font-size:15px;min-width:12px}}
 @media(prefers-reduced-motion:reduce){#app #viewBox :is(#tRounds,.manager-rounds) button.current,.round-live-dot{animation:none}}
 #app #viewBox .manager-player{position:relative;padding:8px;gap:5px 7px;margin-bottom:0;align-content:start;align-items:start;grid-template-columns:26px minmax(0,1fr)}
-#app #viewBox .manager-player:has(.payment-check)>div{padding-right:30px}
+#app #viewBox .manager-player:has(.payment-check)>.manager-player-identity{padding-right:30px;min-height:40px}
 #app #viewBox .manager-player>.avatar{width:26px!important;height:26px!important}
 #app #viewBox .manager-player .payment-check{position:absolute;top:6px;right:5px;display:flex;flex-direction:column;justify-content:center;gap:2px;width:36px;min-height:44px;margin:0;font-size:9px;line-height:1.1;cursor:pointer}
 #app #viewBox .manager-player .payment-check input{width:22px;height:22px;margin:0;cursor:pointer}
-#app #viewBox .manager-player-options summary{min-height:32px;font-size:10px}
+#app #viewBox .manager-player-options summary{min-height:28px;font-size:10px;line-height:1.2}
+#app #viewBox .manager-player-identity{line-height:1.3;align-self:center;overflow-wrap:anywhere}
+#app #viewBox .manager-player-deck{padding:3px 0 6px;font-size:11px;line-height:1.4;overflow-wrap:anywhere}
 #app #viewBox[data-manager-section] .tournament-control-card{position:relative}
 #app #viewBox[data-manager-section] .tournament-control-head{padding-right:76px;min-height:34px;flex-wrap:wrap;justify-content:flex-start}
 #app #viewBox[data-manager-section] .tournament-control-head small{text-align:left}
