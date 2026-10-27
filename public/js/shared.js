@@ -20,7 +20,22 @@
   }
 
   let mePromise = null;
-  const me = (force) => (mePromise && !force ? mePromise : (mePromise = api('/api/me').then((d) => d.user)));
+  async function fetchMe() {
+    try { return (await api('/api/me', { cache: 'no-store' })).user; }
+    catch (error) {
+      if (error.status && error.status < 500) throw error;
+      // Uma interrupção curta de rede ou atualização do servidor não é logout.
+      await new Promise(resolve => setTimeout(resolve, 400));
+      return (await api('/api/me', { cache: 'no-store' })).user;
+    }
+  }
+  const me = (force) => {
+    if (mePromise && !force) return mePromise;
+    const pending = fetchMe();
+    mePromise = pending;
+    pending.catch(() => { if (mePromise === pending) mePromise = null; });
+    return pending;
+  };
   let sitePromise = null;
   const site = () => sitePromise || (sitePromise = api('/api/site'));
 

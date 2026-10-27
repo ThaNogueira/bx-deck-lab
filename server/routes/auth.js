@@ -169,6 +169,8 @@ router.post('/api/auth/dev-login', ah(async (req, res) => {
 }));
 
 router.get('/api/me', ah(async (req, res) => {
+  res.set('Cache-Control', 'private, no-store');
+  res.vary('Cookie');
   if (!req.user) return res.json({ user: null });
   const grants = await prisma.cosmeticGrant.findMany({
     where: { userId: req.user.id },
