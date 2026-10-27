@@ -16,6 +16,7 @@ const {default:express}=await import('express');
 const {default:router}=await import('../server/routes/tournaments.js');
 const {default:community}=await import('../server/routes/community.js');
 const {default:admin}=await import('../server/routes/admin.js');
+const {default:decksRouter}=await import('../server/routes/decks.js');
 const {normalizeTicketUrl}=await import('../server/store-links.js');
 const {publicUser}=await import('../server/auth.js');
 const users=[];
@@ -32,13 +33,17 @@ const confirmExit = async (page, answers) => {
 try {
  for(let i=0;i<7;i++) users.push(await prisma.user.create({data:{name:i===1?'Tharcísio Nogueira':i===2?'Lucas Magalhães':`Jogador ${i+1}`,slug:`player-${i}`,email:`player-${i}@test.invalid`}}));
  users[0].role='ADMIN';
+ const parts=[];for(const [kind,name] of [['BLADE','Shark Scale'],['RATCHET','3-60'],['BIT','Rush']])parts.push(await prisma.part.create({data:{slug:name.toLowerCase().replaceAll(' ','-'),kind,name,displayName:name}}));
+ const combo=parts.map(p=>p.id),ownDecks=[];
+ for(let i=0;i<6;i++)ownDecks.push(await prisma.communityDeck.create({data:{slug:`meu-deck-${i}`,authorId:users[1].id,title:`Meu deck ${i+1}`,beysJson:JSON.stringify([combo,combo,combo]),isPublic:i!==0}}));
+ const foreignDeck=await prisma.communityDeck.create({data:{slug:'outro-deck',authorId:users[2].id,title:'Deck de outra pessoa',beysJson:JSON.stringify([combo])}});
  const t=await prisma.tournament.create({data:{slug:'qa-manager',name:'Copa BeyXLab — Teste de gestão',organizerId:users[0].id,startsAt:new Date(),entryFeeCents:2500,roundsPlanned:5,coverUrl:'/assets/profiles/default-blader.png'}});
  const app=express();app.use(express.json());
  app.use((req,res,next)=>{req.user=users.find(u=>u.id===req.headers['x-test-user'])||users[0];next();});
  app.get('/api/me',(req,res)=>res.json({user:publicUser(req.user)}));
  app.get('/api/site',(req,res)=>res.json({site:{name:'BeyXLab'},flags:{}}));
- app.get('/api/parts-index',(req,res)=>res.json({parts:[]}));
- app.use(router,community,admin);app.get('/t/:slug',(req,res)=>res.sendFile(path.resolve('public/inscricao.html')));app.get('/torneios/novo',(req,res)=>res.sendFile(path.resolve('public/novo-torneio.html')));app.get('/torneio/:slug',(req,res)=>res.sendFile(path.resolve('public/torneio.html')));app.use(express.static('public'));
+ app.get('/api/parts-index',(req,res)=>res.json({parts:parts.map(p=>({...p,display:p.displayName,aliases:[]}))}));
+ app.use(router,decksRouter,community,admin);app.get('/t/:slug',(req,res)=>res.sendFile(path.resolve('public/inscricao.html')));app.get('/torneios/novo',(req,res)=>res.sendFile(path.resolve('public/novo-torneio.html')));app.get('/torneio/:slug',(req,res)=>res.sendFile(path.resolve('public/torneio.html')));app.use(express.static('public'));
  app.use((err,req,res,next)=>{console.error(err);res.status(500).json({error:err.message});});
  server=app.listen(0,'127.0.0.1');await new Promise(r=>server.on('listening',r));
  const base=`http://127.0.0.1:${server.address().port}`;
@@ -113,6 +118,30 @@ try {
    await joinedPage.setViewportSize({width,height:900});
    await joinedPage.screenshot({path:`artifacts/tournament-manager/joined-${width}.png`,animations:'disabled'});await joinedPage.close();
   }
+  const deckPage=await browser.newPage({viewport:{width:390,height:900},extraHTTPHeaders:{'x-test-user':users[1].id}});
+  await deckPage.goto(base+'/torneio/qa-manager');await deckPage.locator('#myTourDeckSelect').waitFor();
+  assert.equal(await deckPage.locator('.my-deck-box .bey-mini.empty').count(),3);
+  assert(await deckPage.locator('.my-deck-box').evaluate(el=>el.getBoundingClientRect().height<100));
+  await deckPage.locator('#myTourDeckSelect').click();await deckPage.locator('[data-use-my-deck]').first().waitFor();assert.equal(await deckPage.locator('[data-use-my-deck]').count(),5);
+  assert(!await deckPage.locator('.tournament-deck-picker').innerText().then(t=>t.includes(foreignDeck.title)));
+  await deckPage.locator('[data-my-deck-page="2"]').click();assert.equal(await deckPage.locator('[data-use-my-deck]').count(),1);await deckPage.locator('[data-my-deck-page="1"]').click();
+  for(const width of [320,390,1440]){await deckPage.setViewportSize({width,height:900});assert(await deckPage.locator('.tournament-deck-picker').evaluate(el=>el.scrollWidth<=el.clientWidth));assert(await deckPage.locator('[data-create-my-deck]').evaluate(el=>el.getBoundingClientRect().top>=document.querySelector('[data-picker-close]').getBoundingClientRect().bottom));await deckPage.screenshot({path:`artifacts/tournament-manager/my-deck-picker-${width}.png`,animations:'disabled'});}await deckPage.setViewportSize({width:390,height:900});
+  await deckPage.locator('[data-my-deck-page="2"]').click();
+  await deckPage.locator(`[data-use-my-deck="${ownDecks[0].id}"]`).click();await deckPage.locator('.tournament-deck-picker').waitFor({state:'detached'});await deckPage.locator('.my-tournament-deck small').waitFor();
+  assert.equal((await prisma.tournamentPlayer.findFirst({where:{tournamentId:t.id,userId:users[1].id}})).deckId,ownDecks[0].id);
+  assert.equal((await call('/my-deck',{deckId:foreignDeck.id},users[1])).status,403);
+  await deckPage.locator('#myTourDeckSelect').click();await deckPage.locator('[data-clear-my-deck]').click();await deckPage.locator('.tournament-deck-picker').waitFor({state:'detached'});assert.equal((await prisma.tournamentPlayer.findFirst({where:{tournamentId:t.id,userId:users[1].id}})).deckId,null);
+  await deckPage.locator('#myTourDeckSelect').click();await deckPage.locator('[data-create-my-deck]').click();await deckPage.locator('#miniDeckTitle').fill('Meu trio no torneio');
+  for(let slot=0;slot<3;slot++){await deckPage.locator(`[data-mini-slot="${slot}"]`).click();for(const part of parts)await deckPage.locator(`[data-mini-add="${part.id}"]`).click();}
+  for(const width of [320,390,1440]){await deckPage.setViewportSize({width,height:900});assert(await deckPage.locator('.tournament-deck-editor').evaluate(el=>el.scrollWidth<=el.clientWidth));await deckPage.screenshot({path:`artifacts/tournament-manager/my-deck-editor-${width}.png`,animations:'disabled'});}await deckPage.setViewportSize({width:390,height:900});
+  let rejectDeclaration=true;await deckPage.route('**/api/tournaments/qa-manager/my-deck',async route=>{if(rejectDeclaration){rejectDeclaration=false;await route.fulfill({status:503,json:{error:'Tente novamente'}});}else await route.continue();});
+  await deckPage.locator('[data-mini-save]').click();await deckPage.getByText('Tente novamente',{exact:true}).waitFor();await deckPage.locator('[data-mini-save]').click();await deckPage.locator('.tournament-deck-editor').waitFor({state:'detached'});
+  const created=await prisma.communityDeck.findFirst({where:{title:'Meu trio no torneio'}});assert.equal(created.authorId,users[1].id);assert.equal(JSON.parse(created.beysJson).length,3);assert.equal(await prisma.communityDeck.count({where:{title:'Meu trio no torneio'}}),1);assert.equal((await prisma.tournamentPlayer.findFirst({where:{tournamentId:t.id,userId:users[1].id}})).deckId,created.id);
+  assert.match(deckPage.url(),/\/torneio\/qa-manager/);assert.equal(await deckPage.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+  await deckPage.screenshot({path:'artifacts/tournament-manager/my-deck-saved-390.png',animations:'disabled'});await deckPage.close();
+  const managerDeckPage=await browser.newPage({viewport:{width:390,height:900}});await managerDeckPage.goto(base+'/torneio/qa-manager#gestao');await managerDeckPage.locator('.manager-player-options summary').first().click();await managerDeckPage.locator('[data-build-deck]').first().click();await managerDeckPage.locator('#miniDeckTitle').waitFor();
+  for(const part of parts)await managerDeckPage.locator(`[data-mini-add="${part.id}"]`).click();await managerDeckPage.locator('[data-mini-save]').click();await managerDeckPage.locator('.tournament-deck-editor').waitFor({state:'detached'});
+  const managed=await prisma.tournamentPlayer.findUnique({where:{id:ps[0].id},include:{deck:{include:{author:true}}}});assert.equal(managed.deck.author.slug,'beyxlab');await managerDeckPage.close();
  }
  assert.equal((await call('/start')).status,200);
  let matches=await prisma.tMatch.findMany({where:{tournamentId:t.id,round:1}});assert.equal(matches.length,2);
