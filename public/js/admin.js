@@ -802,6 +802,7 @@
           <div class="form-grid" style="margin-top:10px">
             <div><label>Nome<input id="storeName" maxlength="80" placeholder="Nome da loja" /></label></div>
             <div><label>Endereço<input id="storeAddress" maxlength="200" placeholder="Rua, número, bairro, cidade" /></label></div>
+            <div><label>Página do ingresso <small class="muted">opcional</small><input id="storeTicketUrl" type="url" maxlength="2000" placeholder="https://loja.com/ingresso" /></label></div>
             <label class="config-check"><input id="storeActive" type="checkbox" checked> <span>Loja ativa (aparece ao criar torneio)</span></label>
             <label class="config-check"><input id="storeSync" type="checkbox"> <span>Sincroniza torneios com o TamerLeague</span></label>
             <div class="inline-actions"><button class="btn primary" id="storeCreate">Adicionar loja</button></div>
@@ -810,14 +811,14 @@
         <div class="panel-card">
           <p class="eyebrow">LOJAS CADASTRADAS</p>
           <p class="muted" style="font-size:12px;margin:8px 0 14px">A integração só é enviada para lojas ativas marcadas abaixo.</p>
-          <div class="table-wrap"><table class="data-table"><thead><tr><th>Loja</th><th>Endereço</th><th>Status</th><th>TamerLeague</th><th>Ações</th></tr></thead><tbody>
-            ${stores.map((s) => `<tr><td><input data-store-name="${s.id}" value="${esc(s.name)}" maxlength="80"></td><td><input data-store-address="${s.id}" value="${esc(s.address || '')}" maxlength="200"></td><td><label class="config-check"><input data-store-active="${s.id}" type="checkbox" ${s.active ? 'checked' : ''}> <span>${s.active ? 'Ativa' : 'Inativa'}</span></label></td><td><label class="config-check"><input data-store-sync="${s.id}" type="checkbox" ${s.tamerLeagueSync ? 'checked' : ''}> <span>${s.tamerLeagueSync ? 'Integrada' : 'Não integrada'}</span></label></td><td><button class="btn secondary" data-store-save="${s.id}">Salvar</button></td></tr>`).join('') || '<tr><td colspan="5">Nenhuma loja cadastrada.</td></tr>'}
+          <div class="table-wrap"><table class="data-table"><thead><tr><th>Loja</th><th>Endereço</th><th>Página do ingresso</th><th>Status</th><th>TamerLeague</th><th>Ações</th></tr></thead><tbody>
+            ${stores.map((s) => `<tr><td><input data-store-name="${s.id}" value="${esc(s.name)}" maxlength="80"></td><td><input data-store-address="${s.id}" value="${esc(s.address || '')}" maxlength="200"></td><td><input aria-label="Página do ingresso de ${esc(s.name)}" data-store-ticket="${s.id}" value="${esc(s.ticketUrl || '')}" type="url" maxlength="2000"></td><td><label class="config-check"><input data-store-active="${s.id}" type="checkbox" ${s.active ? 'checked' : ''}> <span>${s.active ? 'Ativa' : 'Inativa'}</span></label></td><td><label class="config-check"><input data-store-sync="${s.id}" type="checkbox" ${s.tamerLeagueSync ? 'checked' : ''}> <span>${s.tamerLeagueSync ? 'Integrada' : 'Não integrada'}</span></label></td><td><button class="btn secondary" data-store-save="${s.id}">Salvar</button></td></tr>`).join('') || '<tr><td colspan="6">Nenhuma loja cadastrada.</td></tr>'}
           </tbody></table></div>
         </div>`;
-      box.querySelector('#storeCreate').onclick = act(() => BX.api('/api/admin/stores', { method: 'POST', body: { name: box.querySelector('#storeName').value, address: box.querySelector('#storeAddress').value, active: box.querySelector('#storeActive').checked, tamerLeagueSync: box.querySelector('#storeSync').checked } }));
+      box.querySelector('#storeCreate').onclick = act(() => BX.api('/api/admin/stores', { method: 'POST', body: { name: box.querySelector('#storeName').value, address: box.querySelector('#storeAddress').value, ticketUrl: box.querySelector('#storeTicketUrl').value, active: box.querySelector('#storeActive').checked, tamerLeagueSync: box.querySelector('#storeSync').checked } }));
       on('[data-store-save]', 'click', act((el) => {
         const id = el.dataset.storeSave;
-        return BX.api(`/api/admin/stores/${id}`, { method: 'PATCH', body: { name: box.querySelector(`[data-store-name="${id}"]`).value, address: box.querySelector(`[data-store-address="${id}"]`).value, active: box.querySelector(`[data-store-active="${id}"]`).checked, tamerLeagueSync: box.querySelector(`[data-store-sync="${id}"]`).checked } });
+        return BX.api(`/api/admin/stores/${id}`, { method: 'PATCH', body: { name: box.querySelector(`[data-store-name="${id}"]`).value, address: box.querySelector(`[data-store-address="${id}"]`).value, ticketUrl: box.querySelector(`[data-store-ticket="${id}"]`).value, active: box.querySelector(`[data-store-active="${id}"]`).checked, tamerLeagueSync: box.querySelector(`[data-store-sync="${id}"]`).checked } });
       }));
     },
 

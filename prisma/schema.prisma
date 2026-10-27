@@ -257,6 +257,7 @@ model Store {
   name            String   @unique
   address         String?
   website         String?
+  ticketUrl       String?
   active          Boolean  @default(true)
   tamerLeagueSync Boolean  @default(false)
   createdAt       DateTime @default(now())

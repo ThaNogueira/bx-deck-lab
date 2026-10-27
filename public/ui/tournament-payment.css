@@ -3,10 +3,10 @@
 .payment-notice-ticket .payment-notice-copy{min-width:0;flex:1}
 .payment-notice-ticket .payment-notice-copy strong{font-size:13px}
 .payment-notice-ticket .payment-notice-copy p{margin:4px 0 0;font-size:12px;line-height:1.4;color:#ded5bb}
-.tamer-ticket{display:flex;align-items:center;justify-content:center;gap:10px;flex:0 0 auto;min-height:52px;padding:8px 12px;border:1px solid #dbf3a0;border-radius:8px;background:#bafa65;color:#15230b;text-decoration:none;transition:background .15s,box-shadow .15s}
-.tamer-ticket img{width:80px;height:34px;object-fit:contain;border-radius:4px;background:white;flex-shrink:0}
-.tamer-ticket span{display:flex;flex-direction:column;gap:2px;text-align:left}
-.tamer-ticket b{font-size:13px;line-height:1.2}.tamer-ticket small{font-size:10px;line-height:1.2;color:#30451b}
-.tamer-ticket svg{flex-shrink:0}.tamer-ticket:hover{background:#d0ff91;box-shadow:0 0 0 2px #bafa652b}.tamer-ticket:focus-visible{outline:2px solid #fff;outline-offset:3px}
-@media(max-width:600px){.payment-notice.payment-notice-ticket{flex-direction:column;align-items:stretch;gap:9px;padding:10px}.tamer-ticket{width:100%;box-sizing:border-box;padding:8px 10px}.tamer-ticket span{flex:1}}
-@media(prefers-reduced-motion:reduce){.tamer-ticket{transition:none}}
+.ticket-purchase{display:flex;align-items:center;justify-content:center;gap:10px;flex:0 0 auto;min-height:52px;padding:8px 12px;border:1px solid #dbf3a0;border-radius:8px;background:#bafa65;color:#15230b;text-decoration:none;transition:background .15s,box-shadow .15s}
+.ticket-purchase img{width:80px;height:34px;object-fit:contain;border-radius:4px;background:white;flex-shrink:0}
+.ticket-purchase span{display:flex;flex-direction:column;gap:2px;text-align:left;min-width:0;overflow-wrap:anywhere}
+.ticket-purchase b{font-size:13px;line-height:1.2}.ticket-purchase small{font-size:10px;line-height:1.2;color:#30451b}
+.ticket-purchase svg{flex-shrink:0}.ticket-purchase:hover{background:#d0ff91;box-shadow:0 0 0 2px #bafa652b}.ticket-purchase:focus-visible{outline:2px solid #fff;outline-offset:3px}
+@media(max-width:600px){.payment-notice.payment-notice-ticket{flex-direction:column;align-items:stretch;gap:9px;padding:10px}.ticket-purchase{width:100%;box-sizing:border-box;padding:8px 10px}.ticket-purchase span{flex:1}}
+@media(prefers-reduced-motion:reduce){.ticket-purchase{transition:none}}

@@ -12,6 +12,7 @@ import { siteUrl, uniqueSlug } from '../util.js';
 import { UPLOADS_DIR, uploadTournamentImages, uploadedUrl } from '../uploads.js';
 import { pushTamerLeagueTournament } from '../tamerleague.js';
 import { queueDeckAnalysis } from '../deck-analysis.js';
+import { normalizeTicketUrl } from '../store-links.js';
 
 const router = Router();
 const ah = (fn) => (req, res, next) => fn(req, res, next).catch(next);
@@ -30,6 +31,7 @@ function tournamentDto(t, user) {
     storeName: t.storeName,
     address: t.address,
     storeId: t.storeId,
+    ticketUrl: t.store?.ticketUrl || null,
     startsAt: t.startsAt,
     format: t.format,
     roundsPlanned: t.roundsPlanned,
@@ -272,7 +274,7 @@ router.get('/api/tournaments', ah(async (req, res) => {
   if (!isStaff(req.user)) where.AND = [{ visibility: 'PUBLIC' }, { OR: [{ description: null }, { NOT: { description: { startsWith: '[ADMIN TEST]' } } }] }];
   let list = await prisma.tournament.findMany({
     where,
-    include: { organizer: true, players: true },
+    include: { organizer: true, players: true, store: true },
     orderBy: { startsAt: 'asc' },
     take: 200,
   });
@@ -282,7 +284,7 @@ router.get('/api/tournaments', ah(async (req, res) => {
 }));
 
 router.get('/api/stores', ah(async (_req, res) => {
-  const stores = await prisma.store.findMany({ where: { active: true }, select: { id: true, name: true, address: true, website: true }, orderBy: { name: 'asc' } });
+  const stores = await prisma.store.findMany({ where: { active: true }, select: { id: true, name: true, address: true, website: true, ticketUrl: true }, orderBy: { name: 'asc' } });
   res.json({ stores });
 }));
 
@@ -290,12 +292,14 @@ router.post('/api/stores', requireUser, moderateFields('name', 'address', 'websi
   const name = String(req.body?.name || '').trim().slice(0, 80);
   const address = String(req.body?.address || '').trim().slice(0, 200) || null;
   const website = String(req.body?.website || '').trim().slice(0, 240) || null;
+  let ticketUrl;
+  try { ticketUrl = normalizeTicketUrl(req.body?.ticketUrl); } catch (error) { return res.status(422).json({ error: error.message }); }
   if (!name) return res.status(422).json({ error: 'Informe o nome da loja.' });
   let normalizedWebsite = null;
   if (website) { try { normalizedWebsite = new URL(/^https?:\/\//i.test(website) ? website : `https://${website}`).toString(); } catch { return res.status(422).json({ error: 'Informe um site válido.' }); } }
   if (await prisma.store.findUnique({ where: { name } })) return res.status(409).json({ error: 'Já existe uma loja com esse nome.' });
-  const store = await prisma.store.create({ data: { name, address, website: normalizedWebsite, active: true } });
-  res.json({ store: { id: store.id, name: store.name, address: store.address, website: store.website } });
+  const store = await prisma.store.create({ data: { name, address, website: normalizedWebsite, ticketUrl, active: true } });
+  res.json({ store: { id: store.id, name: store.name, address: store.address, website: store.website, ticketUrl: store.ticketUrl } });
 }));
 
 router.post('/api/tournaments', requireUser, moderateFields('name', 'description'), ah(async (req, res) => {
@@ -323,7 +327,7 @@ router.post('/api/tournaments', requireUser, moderateFields('name', 'description
       entryFeeCents: Number.isInteger(Number(b.entryFeeCents)) ? Math.max(0, Math.min(10000000, Number(b.entryFeeCents))) : 0,
       organizerId: req.user.id,
     },
-    include: { organizer: true, players: true },
+    include: { organizer: true, players: true, store: true },
   });
   await audit(req.user, 'tournament.create', 'TOURNAMENT', t.id, { name });
   import('../meta.js').then((m) => m.onTournamentCreated(t)).catch(() => {});
@@ -663,7 +667,7 @@ router.patch('/api/tournaments/:slug', requireManage(bySlug), moderateFields('na
     if (!['PUBLIC', 'LINK_ONLY', 'PRIVATE'].includes(visibility)) return res.status(422).json({ error: 'Visibilidade inválida.' });
     data.visibility = visibility;
   }
-  const t = await prisma.tournament.update({ where: { id: req.tournament.id }, data, include: { organizer: true, players: true } });
+  const t = await prisma.tournament.update({ where: { id: req.tournament.id }, data, include: { organizer: true, players: true, store: true } });
   await audit(req.user, 'tournament.update', 'TOURNAMENT', t.id);
   if ('visibility' in data) {
     if (data.visibility !== 'PUBLIC') await prisma.post.deleteMany({ where: { systemKey: { in: [`t-open:${t.slug}`, `t-finished:${t.slug}`] } } });
