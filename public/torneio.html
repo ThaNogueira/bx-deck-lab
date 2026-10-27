@@ -64,7 +64,7 @@
         // Participante vai direto para a aba "Minha partida", que é o report
         // integrado e responsivo desta própria página. Mantemos a aba aberta
         // mesmo após o reporte, para a pessoa ver o estado da sua partida.
-        if (!data.tournament.canManage && data.tournament.status === 'RUNNING' && myMatch?.match && !myMatch.match.bye && !sessionStorage.getItem(reportExitKey) && view !== 'partida') {
+        if (!data.tournament.canManage && !data.me?.dropped && data.tournament.status === 'RUNNING' && myMatch?.match && !myMatch.match.bye && !sessionStorage.getItem(reportExitKey) && view !== 'partida') {
           view = 'partida';
           history.replaceState(null, '', '#partida');
         }
@@ -97,17 +97,29 @@
         const tabs = [
           ['geral', 'Torneio'],
           ...(data.matches?.length ? [['pairings', 'Pairings']] : []),
-          ...(joined && t.status === 'RUNNING' ? [['partida', `${tournamentTabIcon('match')}<span>Minha partida</span>`]] : []),
+          ...(joined && !data.me?.dropped && t.status === 'RUNNING' ? [['partida', `${tournamentTabIcon('match')}<span>Minha partida</span>`]] : []),
           ...(t.canManage ? [['gestao', `${tournamentTabIcon('manage')}<span>Gestão</span>`]] : []),
         ];
         const matchNeedsReport = t.status === 'RUNNING' && myData?.round === t.currentRound && myData?.match && !myData.match.bye && !myData.match.myReport && !['DONE','VOID','CONFLICT'].includes(myData.match.status);
         const renderTabs = () => tabs.map(([k,label]) => `<button class="tab${view === k ? ' active' : ''}${k === 'partida' && matchNeedsReport ? ' match-awaiting-report' : ''}" data-view="${k}" aria-selected="${view === k}"${k === 'partida' && matchNeedsReport ? ' title="Partida em andamento · reporte seu resultado" aria-label="Minha partida · resultado pendente"' : ''}>${label}</button>`).join('');
+        const renderNavigation = () => `<div class="tournament-navigation"><nav class="tabs" aria-label="Seções do torneio">${renderTabs()}</nav>${joined && !data.me.dropped && ['OPEN','RUNNING'].includes(t.status) ? `<button type="button" class="btn danger-outline tournament-exit" id="leaveBtn" aria-label="${t.status === 'RUNNING' ? 'Dropar do torneio' : 'Sair do torneio'}" title="${t.status === 'RUNNING' ? 'Dropar do torneio' : 'Sair do torneio'}">${t.status === 'RUNNING' ? 'Dropar' : 'Sair<span class="exit-long"> do torneio</span>'}</button>` : ''}</div>`;
+        const wireExit = () => document.getElementById('leaveBtn')?.addEventListener('click', async event => {
+          const dropping = t.status === 'RUNNING';
+          if (!confirm(dropping ? 'Dropar deste torneio?' : 'Sair deste torneio?')) return;
+          if (!confirm(dropping ? 'Confirmar drop? Você não será pareado nas próximas rodadas. Se houver uma partida em andamento, seu oponente receberá a vitória por desistência.' : 'Confirmar saída? Sua inscrição neste torneio será removida.')) return;
+          const button = event.currentTarget; button.disabled = true;
+          try {
+            await BX.api(`/api/tournaments/${slug}/leave`, { method: 'POST' });
+            view = 'geral'; history.replaceState(null, '', '#geral'); await load();
+          } catch (error) { BX.toast(error.message); if (button.isConnected) button.disabled = false; }
+        });
 
         // Foco de jogo: preserva o mesmo report responsivo, mas remove capa,
         // resumo e rolagem antes dele. As abas mantêm a saída para o torneio.
         if (view === 'partida' && myData?.match) {
           app.classList.remove('management-view');
-          app.innerHTML = `<section class="match-focus" style="min-height:calc(100vh - 90px);display:flex;flex-direction:column"><nav class="tabs" style="justify-content:flex-start;margin:10px 0 18px" aria-label="Navegação do torneio">${renderTabs()}</nav><div id="viewBox" style="flex:1;display:grid;place-items:center"></div></section>`;
+          app.innerHTML = `<section class="match-focus" style="min-height:calc(100vh - 90px);display:flex;flex-direction:column">${renderNavigation()}<div id="viewBox" style="flex:1;display:grid;place-items:center"></div></section>`;
+          wireExit();
           document.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => { view = b.dataset.view; if (view === 'partida') sessionStorage.removeItem(reportExitKey); else sessionStorage.setItem(reportExitKey, '1'); history.replaceState(null, '', '#' + view); render(data, me, myData); }));
           renderMatch(document.getElementById('viewBox'), t, myData);
           return;
@@ -116,7 +128,7 @@
         const managementView = t.canManage && view === 'gestao';
         app.classList.toggle('management-view', managementView);
         app.innerHTML = `
-          <nav class="tabs" style="justify-content:flex-start;margin:0 0 12px" aria-label="Seções do torneio">${renderTabs()}</nav>
+          ${renderNavigation()}
           ${view === 'geral' ? `
           <div class="tournament-heading"><h1 class="tournament-title" title="${BX.esc(t.name)}">${BX.esc(t.name)}</h1><button class="btn ghost icon-only" id="reportBtn" aria-label="Denunciar torneio" title="Denunciar torneio">${BX.icon('flag', 18)}</button></div>
           <div class="tournament-cover ${t.coverUrl ? 'has-image' : ''}">
@@ -131,7 +143,6 @@
             </div>
             <div class="hero-actions">
               ${t.status === 'OPEN' && !joined ? `<button class="btn primary" id="joinBtn">Entrar no torneio</button>` : ''}
-              ${t.status === 'OPEN' && joined ? `<button class="btn danger-outline" id="leaveBtn">Sair do torneio</button>` : ''}
             </div>
           </div>
           <div class="tournament-facts" aria-label="Informações principais">
@@ -147,11 +158,7 @@
 
         document.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => { view = b.dataset.view; if (view === 'partida') sessionStorage.removeItem(reportExitKey); else sessionStorage.setItem(reportExitKey, '1'); history.replaceState(null, '', '#' + view); render(data, me, myData); }));
         document.getElementById('joinBtn')?.addEventListener('click', () => { location.href = `/t/${t.slug}`; });
-        document.getElementById('leaveBtn')?.addEventListener('click', async () => {
-          if (!confirm('Sair deste torneio?')) return;
-          await BX.api(`/api/tournaments/${slug}/leave`, { method: 'POST' }).catch((e) => BX.toast(e.message));
-          load();
-        });
+        wireExit();
         document.getElementById('reportBtn')?.addEventListener('click', () => BX.report('TOURNAMENT', t.id, 'este torneio'));
 
         const box = document.getElementById('viewBox');

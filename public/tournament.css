@@ -124,9 +124,12 @@
 #app .manager-table .manager-competitor.match-winner{border-color:#edcf70;outline:1px solid #edcf7040;background:#433b1c;box-shadow:0 0 8px #e6c85816}
 #app .manager-table .match-winner b{color:#fff1b8}
 .match-winner-trophy{flex-shrink:0;width:28px;height:28px;object-fit:contain;margin-left:auto;filter:drop-shadow(0 0 3px #ffd54a44)}
-#app:has(>.tabs),#app:has(>.match-focus){padding-top:8px}
-#app>nav.tabs[aria-label],#app .match-focus>nav.tabs{margin:0 0 4px!important;padding:2px 0;align-items:center;min-height:0}
-#app>nav.tabs button.tab,#app .match-focus>nav.tabs .tab{display:inline-flex;align-items:center;justify-content:center;gap:4px;min-height:36px;padding:6px 8px;font-size:12px;line-height:1.25;border-radius:7px}
+#app:has(>.tournament-navigation),#app:has(>.match-focus){padding-top:8px}
+#app .tournament-navigation{display:flex;align-items:center;gap:8px;min-width:0;margin-bottom:4px}
+#app .tournament-navigation>nav.tabs{display:flex;flex:1;min-width:0;flex-wrap:nowrap;overflow-x:auto;gap:6px;scrollbar-width:thin;margin:0!important;padding:2px 0;align-items:center;min-height:0}
+#app .tournament-navigation>nav.tabs button.tab{display:inline-flex;align-items:center;justify-content:center;gap:4px;flex-shrink:0;min-height:36px;padding:6px 8px;font-size:12px;line-height:1.25;border-radius:7px}
+#app .tournament-navigation .tournament-exit{flex:0 0 auto;min-height:36px;padding:6px 9px;font-size:11px;line-height:1.25;border-radius:7px;white-space:nowrap}
+@media(max-width:760px){.tournament-exit .exit-long{display:none}}
 #app .tabs .tab .tournament-tab-icon{display:block;flex:0 0 15px;width:15px;height:15px;margin:0}
 #app .tabs .tab.match-awaiting-report{background:#143d46;color:#b7f3ff;border-color:#68d5eb;animation:match-tab-glow 2.8s ease-in-out infinite}
 #app .tabs .tab.match-awaiting-report.active{background:#205969;color:#fff;border-color:#91e8fa}

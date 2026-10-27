@@ -414,14 +414,23 @@ router.post('/api/tournaments/:slug/join', requireUser, ah(async (req, res) => {
 router.post('/api/tournaments/:slug/leave', requireUser, ah(async (req, res) => {
   const t = await loadTournament(req.params.slug);
   if (!t) return res.status(404).json({ error: 'Torneio não encontrado.' });
-  if (t.status === 'OPEN') {
-    await prisma.tournamentPlayer.deleteMany({ where: { tournamentId: t.id, userId: req.user.id } });
-  } else {
-    await prisma.tournamentPlayer.updateMany({
-      where: { tournamentId: t.id, userId: req.user.id },
-      data: { dropped: true },
-    });
-  }
+  const result = await prisma.$transaction(async tx => {
+    const current = await tx.tournament.findUnique({ where: { id: t.id }, select: { status: true, currentRound: true } });
+    if (!current || !['OPEN', 'RUNNING'].includes(current.status)) return false;
+    const player = await tx.tournamentPlayer.findFirst({ where: { tournamentId: t.id, userId: req.user.id } });
+    if (!player || player.dropped) return true;
+    if (current.status === 'OPEN') await tx.tournamentPlayer.delete({ where: { id: player.id } });
+    else {
+      const match = await tx.tMatch.findFirst({ where: { tournamentId: t.id, round: current.currentRound, status: { not: 'DONE' }, p2Id: { not: null }, OR: [{ p1Id: player.id }, { p2Id: player.id }] } });
+      if (match) {
+        await tx.tMatch.update({ where: { id: match.id }, data: { winnerId: match.p1Id === player.id ? match.p2Id : match.p1Id, status: 'DONE', resolvedBy: 'FORFEIT' } });
+        await tx.matchRound.updateMany({ where: { matchId: match.id, status: { in: ['PENDING','CONFIRMED','DISPUTED'] } }, data: { status: 'VOID', resolvedBy: 'FORFEIT' } });
+      }
+      await tx.tournamentPlayer.update({ where: { id: player.id }, data: { dropped: true } });
+    }
+    return true;
+  });
+  if (!result) return res.status(409).json({ error: 'Este torneio não aceita mais saída ou drop.' });
   res.json({ ok: true });
 }));
 

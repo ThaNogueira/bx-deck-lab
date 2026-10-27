@@ -20,6 +20,15 @@ const {normalizeTicketUrl}=await import('../server/store-links.js');
 const {publicUser}=await import('../server/auth.js');
 const users=[];
 let server,browser;
+const confirmExit = async (page, answers) => {
+ let pending = page.waitForEvent('dialog'); const click = page.locator('#leaveBtn').click();
+ for (let i=0;i<answers.length;i++) {
+  const dialog=await pending;
+  pending=answers[i] && i+1<answers.length ? page.waitForEvent('dialog') : null;
+  if(answers[i])await dialog.accept();else await dialog.dismiss();
+ }
+ await click;
+};
 try {
  for(let i=0;i<7;i++) users.push(await prisma.user.create({data:{name:i===1?'Tharcísio Nogueira':i===2?'Lucas Magalhães':`Jogador ${i+1}`,slug:`player-${i}`,email:`player-${i}@test.invalid`}}));
  users[0].role='ADMIN';
@@ -58,7 +67,9 @@ try {
    await ticketPage.screenshot({path:`artifacts/tournament-manager/ticket-pending-${width}.png`,animations:'disabled'});
   }
   await prisma.tournamentPlayer.updateMany({where:{tournamentId:ticketEvent.id},data:{paymentConfirmed:true}});
-  await ticketPage.reload();await ticketPage.locator('.tournament-title').waitFor();assert.equal(await ticketPage.locator('.tamer-ticket,.payment-notice').count(),0);await ticketPage.close();
+  await ticketPage.reload();await ticketPage.locator('.tournament-title').waitFor();assert.equal(await ticketPage.locator('.tamer-ticket,.payment-notice').count(),0);
+  for(const answers of [[false],[true,false]]){await confirmExit(ticketPage,answers);assert.equal(await prisma.tournamentPlayer.count({where:{tournamentId:ticketEvent.id}}),1);}
+  await confirmExit(ticketPage,[true,true]);await ticketPage.locator('#leaveBtn').waitFor({state:'detached'});assert.equal(await prisma.tournamentPlayer.count({where:{tournamentId:ticketEvent.id}}),0);await ticketPage.close();
   await prisma.store.create({data:{name:'Loja de teste',address:'Rua Teste, 10'}});
   const creation=await browser.newPage({viewport:{width:390,height:900}});
   await creation.route('**/api/stores',async route=>{const response=await route.fetch();await new Promise(r=>setTimeout(r,200));await route.fulfill({response});});
@@ -93,8 +104,8 @@ try {
    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.deepEqual(errors,[]);await page.close();
    const joinedPage=await browser.newPage({viewport:{width,height:900},extraHTTPHeaders:{'x-test-user':users[1].id}});
    await joinedPage.goto(base+'/torneio/qa-manager');await joinedPage.locator('#leaveBtn').waitFor();
-   const leaveLayout=await joinedPage.evaluate(()=>{const tags=document.querySelector('.tournament-hero p').getBoundingClientRect(),button=document.querySelector('#leaveBtn').getBoundingClientRect();return {tagsY:tags.y,buttonY:button.y,heroHeight:document.querySelector('.tournament-hero').getBoundingClientRect().height};});
-   assert(leaveLayout.heroHeight<80);if(width>760)assert(Math.abs(leaveLayout.tagsY-leaveLayout.buttonY)<12);
+   const leaveLayout=await joinedPage.evaluate(()=>{const nav=document.querySelector('.tournament-navigation').getBoundingClientRect(),button=document.querySelector('#leaveBtn').getBoundingClientRect();return {navY:nav.y,buttonY:button.y,navRight:nav.right,buttonRight:button.right,heroHeight:document.querySelector('.tournament-hero').getBoundingClientRect().height};});
+   assert(leaveLayout.heroHeight<40);assert(Math.abs(leaveLayout.navY-leaveLayout.buttonY)<5);assert.equal(leaveLayout.buttonRight,leaveLayout.navRight);
    await joinedPage.screenshot({path:`artifacts/tournament-manager/joined-${width}.png`,animations:'disabled'});await joinedPage.close();
   }
  }
@@ -150,7 +161,7 @@ try {
    assert.equal(await page.locator('.standings th').last().textContent(),'Deck');
    assert(await page.locator('.standings-wrap').evaluate(el=>el.querySelectorAll('th')[7].getBoundingClientRect().right<=el.getBoundingClientRect().right+1));
    await page.screenshot({path:`artifacts/tournament-manager/standings-${width}.png`,animations:'disabled'});
-   assert.equal(await page.locator('#app>:first-child').getAttribute('class'),'tabs');
+   assert.equal(await page.locator('#app>:first-child').getAttribute('class'),'tournament-navigation');
    await page.locator('[data-view=gestao]').click();await page.locator('.manager-table.reported').waitFor();
    assert.equal(await page.locator('.manager-table-head [data-accept]').count(),1);
    assert.equal(await page.locator('.manager-table.reported .row-actions').count(),0);
@@ -185,6 +196,23 @@ try {
  assert.equal((await prisma.tMatch.findUnique({where:{id:m.id}})).status,'PENDING');
  assert.equal((await call('/report',{matchId:m.id,result:'LOSS'},u2)).status,200);
  assert.equal((await prisma.tMatch.findUnique({where:{id:m.id}})).status,'DONE');
+ const dropEvent=await prisma.tournament.create({data:{slug:'qa-drop',name:'Copa drop',organizerId:users[1].id,startsAt:new Date(),status:'RUNNING',currentRound:2,roundsPlanned:3}});
+ const dropPlayers=[];for(const u of users.slice(1,3))dropPlayers.push(await prisma.tournamentPlayer.create({data:{tournamentId:dropEvent.id,userId:u.id}}));
+ const oldMatch=await prisma.tMatch.create({data:{tournamentId:dropEvent.id,round:1,tableNo:1,p1Id:dropPlayers[0].id,p2Id:dropPlayers[1].id,status:'DONE',winnerId:dropPlayers[0].id}});
+ const liveMatch=await prisma.tMatch.create({data:{tournamentId:dropEvent.id,round:2,tableNo:1,p1Id:dropPlayers[0].id,p2Id:dropPlayers[1].id}});
+ if(browser){
+  const page=await browser.newPage({viewport:{width:320,height:900},extraHTTPHeaders:{'x-test-user':users[1].id}});
+  await page.goto(base+'/torneio/qa-drop#partida');await page.locator('#leaveBtn').waitFor();assert.equal(await page.locator('#leaveBtn').innerText(),'Dropar');
+  assert(await page.locator('#leaveBtn').evaluate(el=>el.getBoundingClientRect().right<=innerWidth));
+  await page.screenshot({path:'artifacts/tournament-manager/drop-top-320.png',animations:'disabled'});
+  for(const answers of [[false],[true,false]]){await confirmExit(page,answers);assert.equal((await prisma.tournamentPlayer.findUnique({where:{id:dropPlayers[0].id}})).dropped,false);}
+  await confirmExit(page,[true,true]);await page.locator('#leaveBtn').waitFor({state:'detached'});await page.close();
+ }else assert.equal((await fetch(base+'/api/tournaments/qa-drop/leave',{method:'POST',headers:{'x-test-user':users[1].id}})).status,200);
+ assert.equal((await prisma.tournamentPlayer.findUnique({where:{id:dropPlayers[0].id}})).dropped,true);
+ const forfeited=await prisma.tMatch.findUnique({where:{id:liveMatch.id}});assert.equal(forfeited.status,'DONE');assert.equal(forfeited.winnerId,dropPlayers[1].id);assert.equal(forfeited.resolvedBy,'FORFEIT');
+ assert.equal((await prisma.tMatch.findUnique({where:{id:oldMatch.id}})).winnerId,dropPlayers[0].id);
+ await prisma.tournament.update({where:{id:dropEvent.id},data:{status:'FINISHED'}});
+ assert.equal((await fetch(base+'/api/tournaments/qa-drop/leave',{method:'POST',headers:{'x-test-user':users[2].id}})).status,409);
  const free=await prisma.tournament.create({data:{slug:'free',name:'Free',organizerId:users[0].id,startsAt:new Date()}});
  const rr=await fetch(base+'/api/tournaments/free/join',{method:'POST',headers:{'x-test-user':users[1].id,'Content-Type':'application/json'},body:'{}'});assert.equal(rr.status,200);
  assert.equal((await prisma.tournamentPlayer.findFirst({where:{tournamentId:free.id}})).paymentConfirmed,true);
