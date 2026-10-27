@@ -34,7 +34,7 @@ for (const file of readdirSync('public').filter(name => name.endsWith('.html')))
       assert(html.includes('href="/torneios/novo"'));
       assert(!html.includes('newModal') && !html.includes('tCreate'));
     } else if(file === 'inscricao.html') {
-      for (const hook of ['paymentPending','Pagamento pendente','/join','joinBtn','/js/shared.js']) assert(html.includes(hook));
+      for (const hook of ['paymentPending','BX.tournamentPaymentNotice','/join','joinBtn','/js/shared.js']) assert(html.includes(hook));
     } else {
       for (const id of ['id="form"', 'id="store"', 'id="cover"', '/api/stores', 'storeId']) assert(html.includes(id));
     }

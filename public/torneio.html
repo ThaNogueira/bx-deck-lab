@@ -14,12 +14,14 @@
   <link rel="stylesheet" href="/styles.css" />
   <link rel="stylesheet" href="/design-system.css" />
   <link rel="stylesheet" href="/tournament.css" />
+  <link rel="stylesheet" href="/ui/tournament-payment.css" />
 </head>
 <body>
   <div class="noise"></div>
   <header id="topbar"></header>
   <main id="app"><div class="empty-state">Carregando torneio…</div></main>
   <script src="/js/shared.js"></script>
+  <script src="/js/tournament-payment.js"></script>
   <script>
     (async () => {
       BX.renderTopbar('/torneios');
@@ -138,7 +140,7 @@
             <div class="tournament-fact"><span>${BX.icon('money', 20)} Inscrição</span><strong>${feeLabel(t.entryFeeCents)}</strong></div>
             <div class="tournament-fact"><span>${BX.icon('users', 20)} Jogadores</span><strong>${data.players.length} inscritos</strong></div>
           </div>
-          ${data.me?.paymentPending ? '<div class="payment-notice">Inscrito no torneio · <strong>Pagamento pendente</strong><p>Faça o pagamento na loja ou com o organizador. Sua participação nas rodadas depende da confirmação do gestor.</p></div>' : ''}
+          ${data.me?.paymentPending ? BX.tournamentPaymentNotice(t) : ''}
           ${t.description ? `<section class="tournament-intro"><p class="eyebrow">SOBRE O EVENTO</p><p>${BX.esc(t.description)}</p></section>` : ''}
           ` : ''}
           <div id="viewBox"></div>`;

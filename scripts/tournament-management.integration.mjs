@@ -26,7 +26,7 @@ try {
  app.get('/api/me',(req,res)=>res.json({user:publicUser(req.user)}));
  app.get('/api/site',(req,res)=>res.json({site:{name:'BeyXLab'},flags:{}}));
  app.get('/api/parts-index',(req,res)=>res.json({parts:[]}));
- app.use(router,community);app.get('/torneios/novo',(req,res)=>res.sendFile(path.resolve('public/novo-torneio.html')));app.get('/torneio/:slug',(req,res)=>res.sendFile(path.resolve('public/torneio.html')));app.use(express.static('public'));
+ app.use(router,community);app.get('/t/:slug',(req,res)=>res.sendFile(path.resolve('public/inscricao.html')));app.get('/torneios/novo',(req,res)=>res.sendFile(path.resolve('public/novo-torneio.html')));app.get('/torneio/:slug',(req,res)=>res.sendFile(path.resolve('public/torneio.html')));app.use(express.static('public'));
  app.use((err,req,res,next)=>{console.error(err);res.status(500).json({error:err.message});});
  server=app.listen(0,'127.0.0.1');await new Promise(r=>server.on('listening',r));
  const base=`http://127.0.0.1:${server.address().port}`;
@@ -39,6 +39,23 @@ try {
  for(const p of ps.slice(0,4)) assert.equal((await call(`/players/${p.id}/payment`,{paid:true},users[0],'PATCH')).status,200);
  if(process.argv.includes('--visual')) {
   const {chromium}=await import('playwright');browser=await chromium.launch({headless:true,channel:'msedge'});mkdirSync('artifacts/tournament-manager',{recursive:true});
+  const ticketEvent=await prisma.tournament.create({data:{slug:'qa-ticket',name:'Semanal Tamer Shop #8',storeName:'Tamer Shop',organizerId:users[1].id,startsAt:new Date(),entryFeeCents:1500}});
+  const ticketPage=await browser.newPage({viewport:{width:390,height:900}});
+  await ticketPage.goto(base+'/t/qa-ticket');await ticketPage.locator('#joinBtn').click();await ticketPage.locator('.tamer-ticket').waitFor();
+  assert.match(await ticketPage.locator('.big-join').innerText(),/Inscrição confirmada/i);
+  assert.equal(await ticketPage.locator('.tamer-ticket').getAttribute('href'),'https://www.tamershop.com.br/?view=ecom/item&ing=46575');
+  assert.equal(await ticketPage.locator('.tamer-ticket img').evaluate(img=>img.complete&&img.naturalWidth>0),true);
+  await ticketPage.screenshot({path:'artifacts/tournament-manager/ticket-confirmed-390.png',animations:'disabled'});
+  for(const width of [320,390,1440]){
+   await ticketPage.setViewportSize({width,height:1000});
+   await ticketPage.goto(base+'/t/qa-ticket');await ticketPage.locator('.tamer-ticket').waitFor();assert.match(await ticketPage.locator('.big-join').innerText(),/já está inscrito/);
+   await ticketPage.goto(base+'/torneio/qa-ticket');await ticketPage.locator('.payment-notice .tamer-ticket').waitFor();
+   assert.equal(await ticketPage.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+   assert(await ticketPage.locator('.payment-notice').evaluate(el=>el.getBoundingClientRect().height<180));
+   await ticketPage.screenshot({path:`artifacts/tournament-manager/ticket-pending-${width}.png`,animations:'disabled'});
+  }
+  await prisma.tournamentPlayer.updateMany({where:{tournamentId:ticketEvent.id},data:{paymentConfirmed:true}});
+  await ticketPage.reload();await ticketPage.locator('.tournament-title').waitFor();assert.equal(await ticketPage.locator('.tamer-ticket,.payment-notice').count(),0);await ticketPage.close();
   await prisma.store.create({data:{name:'Loja de teste',address:'Rua Teste, 10'}});
   const creation=await browser.newPage({viewport:{width:390,height:900}});
   await creation.route('**/api/stores',async route=>{const response=await route.fetch();await new Promise(r=>setTimeout(r,200));await route.fulfill({response});});
@@ -162,5 +179,8 @@ try {
  assert.equal((await prisma.tournamentPlayer.findFirst({where:{tournamentId:free.id}})).paymentConfirmed,true);
  // Parse inline client scripts too; HTML is not covered by node --check.
  const vm=await import('node:vm');for(const file of ['public/torneio.html','public/inscricao.html'])for(const match of readFileSync(file,'utf8').matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g))new vm.Script(match[1],{filename:file});
+ const paymentContext={BX:{}};vm.runInNewContext(readFileSync('public/js/tournament-payment.js','utf8'),paymentContext);
+ assert(!paymentContext.BX.tournamentPaymentNotice({storeName:'Outra loja',name:'Tamer convidado',entryFeeCents:1000}).includes('tamer-ticket'));
+ assert(!paymentContext.BX.tournamentPaymentNotice({storeName:'Tamer Shop',entryFeeCents:0}).includes('tamer-ticket'));
  console.log('PASS: payment permissions, paid-only pairing, free entry, past correction, report protection, UI syntax.');
 }finally{await browser?.close();if(server)await new Promise(r=>server.close(r));await prisma.$disconnect();}
