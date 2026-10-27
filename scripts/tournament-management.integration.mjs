@@ -104,8 +104,13 @@ try {
    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.deepEqual(errors,[]);await page.close();
    const joinedPage=await browser.newPage({viewport:{width,height:900},extraHTTPHeaders:{'x-test-user':users[1].id}});
    await joinedPage.goto(base+'/torneio/qa-manager');await joinedPage.locator('#leaveBtn').waitFor();
-   const leaveLayout=await joinedPage.evaluate(()=>{const nav=document.querySelector('.tournament-navigation').getBoundingClientRect(),button=document.querySelector('#leaveBtn').getBoundingClientRect();return {navY:nav.y,buttonY:button.y,navRight:nav.right,buttonRight:button.right,heroHeight:document.querySelector('.tournament-hero').getBoundingClientRect().height};});
-   assert(leaveLayout.heroHeight<40);assert(Math.abs(leaveLayout.navY-leaveLayout.buttonY)<5);assert.equal(leaveLayout.buttonRight,leaveLayout.navRight);
+   const leaveLayout=await joinedPage.evaluate(()=>{const nav=document.querySelector('.tournament-navigation').getBoundingClientRect(),button=document.querySelector('#leaveBtn').getBoundingClientRect(),tabs=document.querySelector('.tournament-navigation nav').getBoundingClientRect();return {navY:nav.y,buttonY:button.y,navRight:nav.right,buttonRight:button.right,heroHeight:document.querySelector('.tournament-hero').getBoundingClientRect().height,tabsX:tabs.x,firstTabX:document.querySelector('[data-view]').getBoundingClientRect().x};});
+   assert(leaveLayout.heroHeight<40);assert(Math.abs(leaveLayout.tabsX-leaveLayout.firstTabX)<2);
+   if(width>760){assert.equal(await joinedPage.locator('#leaveBtn').evaluate(el=>el.nextElementSibling.id),'reportBtn');}
+   else{assert(Math.abs(leaveLayout.navY-leaveLayout.buttonY)<5);assert.equal(leaveLayout.buttonRight,leaveLayout.navRight);}
+   await joinedPage.setViewportSize({width:1440,height:900});assert.equal(await joinedPage.locator('#leaveBtn').evaluate(el=>el.nextElementSibling?.id),'reportBtn');
+   await joinedPage.setViewportSize({width:320,height:900});assert.equal(await joinedPage.locator('.tournament-navigation #leaveBtn').count(),1);
+   await joinedPage.setViewportSize({width,height:900});
    await joinedPage.screenshot({path:`artifacts/tournament-manager/joined-${width}.png`,animations:'disabled'});await joinedPage.close();
   }
  }

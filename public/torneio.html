@@ -40,6 +40,15 @@
       const editing = () => { const el = document.activeElement; return !!el && app.contains(el) && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName); };
       let pairingRound = null;
       const opponentStatsCache = new Map();
+      const desktopLayout = matchMedia('(min-width: 761px)');
+      function placeExitButton() {
+        const button = app.querySelector('#leaveBtn');
+        if (!button) return;
+        const heading = app.querySelector('.tournament-heading');
+        if (desktopLayout.matches && heading) heading.insertBefore(button, heading.querySelector('#reportBtn'));
+        else app.querySelector('.tournament-navigation')?.append(button);
+      }
+      desktopLayout.addEventListener('change', placeExitButton);
       BX.partTagReady().then(() => { if (last) render(last.data, last.me, last.myData); }).catch(() => {});
 
       const STATUS_PT = { OPEN: 'inscrições abertas', RUNNING: 'em andamento', FINISHED: 'encerrado', CANCELED: 'cancelado' };
@@ -103,7 +112,9 @@
         const matchNeedsReport = t.status === 'RUNNING' && myData?.round === t.currentRound && myData?.match && !myData.match.bye && !myData.match.myReport && !['DONE','VOID','CONFLICT'].includes(myData.match.status);
         const renderTabs = () => tabs.map(([k,label]) => `<button class="tab${view === k ? ' active' : ''}${k === 'partida' && matchNeedsReport ? ' match-awaiting-report' : ''}" data-view="${k}" aria-selected="${view === k}"${k === 'partida' && matchNeedsReport ? ' title="Partida em andamento · reporte seu resultado" aria-label="Minha partida · resultado pendente"' : ''}>${label}</button>`).join('');
         const renderNavigation = () => `<div class="tournament-navigation"><nav class="tabs" aria-label="Seções do torneio">${renderTabs()}</nav>${joined && !data.me.dropped && ['OPEN','RUNNING'].includes(t.status) ? `<button type="button" class="btn danger-outline tournament-exit" id="leaveBtn" aria-label="${t.status === 'RUNNING' ? 'Dropar do torneio' : 'Sair do torneio'}" title="${t.status === 'RUNNING' ? 'Dropar do torneio' : 'Sair do torneio'}">${t.status === 'RUNNING' ? 'Dropar' : 'Sair<span class="exit-long"> do torneio</span>'}</button>` : ''}</div>`;
-        const wireExit = () => document.getElementById('leaveBtn')?.addEventListener('click', async event => {
+        const wireExit = () => {
+          placeExitButton();
+          document.getElementById('leaveBtn')?.addEventListener('click', async event => {
           const dropping = t.status === 'RUNNING';
           if (!confirm(dropping ? 'Dropar deste torneio?' : 'Sair deste torneio?')) return;
           if (!confirm(dropping ? 'Confirmar drop? Você não será pareado nas próximas rodadas. Se houver uma partida em andamento, seu oponente receberá a vitória por desistência.' : 'Confirmar saída? Sua inscrição neste torneio será removida.')) return;
@@ -112,7 +123,8 @@
             await BX.api(`/api/tournaments/${slug}/leave`, { method: 'POST' });
             view = 'geral'; history.replaceState(null, '', '#geral'); await load();
           } catch (error) { BX.toast(error.message); if (button.isConnected) button.disabled = false; }
-        });
+          });
+        };
 
         // Foco de jogo: preserva o mesmo report responsivo, mas remove capa,
         // resumo e rolagem antes dele. As abas mantêm a saída para o torneio.
