@@ -11,7 +11,9 @@ async function picture(c,url,x,y,size,round=false){
 }
 function ring(c,wr,x,y,r=72){
   c.lineWidth=r<50?6:10;c.strokeStyle=c.artTheme?.monthly?'#47202b':'#193143';c.beginPath();c.arc(x,y,r,0,Math.PI*2);c.stroke();if(wr!==null){c.strokeStyle=c.artTheme?.accent||cyan;c.lineCap='round';c.beginPath();c.arc(x,y,r,-Math.PI/2,-Math.PI/2+Math.PI*2*wr/100);c.stroke();c.lineCap='butt';}
-  const small=r<50;text(c,wr===null?'—':wr+'%',x,y+(small?3:10),small?21:34,white,r*1.7,'center');text(c,'WIN RATE',x,y+(small?19:34),small?8:12,muted,r*1.7,'center');
+  const numberSize=Math.round(Math.max(15,Math.min(28,r*.5))),labelSize=Math.round(Math.max(8,Math.min(11,r*.18)));
+  text(c,wr===null?'—':wr+'%',x,y-r*.14,numberSize,white,r*1.64,'center','ChampionBlock',true);
+  text(c,'WIN RATE',x,y+r*.3,labelSize,muted,r*1.64,'center','ChampionBlock',true);
 }
 function metric(c,value,label,x,y,w=212,h=120,tone=null){panel(c,x,y,w,h,tone);text(c,value,x+w/2,y+h*.4,50,tone?.ink||white,w-28,'center','ChampionBlock',true);text(c,label.toUpperCase(),x+w/2,y+h*.77,15,tone?.ink||muted,w-24,'center','ChampionBlock',true);}
 export const CHIBIS=['witch-wave','witch-cheer','witch-point','blue-wave','blue-cheer','blue-point','blond-wave','blond-cheer','blond-point','red-wave','red-cheer','red-point','cat-wave','cat-cheer','cat-point'];

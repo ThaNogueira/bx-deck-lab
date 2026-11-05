@@ -70,7 +70,7 @@
   const RENDER = {
     async rankingArt() {
       if(!isAdmin)throw Error('Este gerador é exclusivo para admins.');
-      const {mountRankingArt}=await import('/js/ranking-art.mjs?v=6');await mountRankingArt(box);
+      const {mountRankingArt}=await import('/js/ranking-art.mjs?v=7');await mountRankingArt(box);
     },
     async champion() {
       if(!isAdmin)throw Error('Este gerador é exclusivo para admins.');
