@@ -1,7 +1,7 @@
 /* Admin-only editor; images stay in the browser until the artwork is saved. */
 (() => {
   BX.mountChampionGenerator = async root => {
-    const renderer=await import('/js/champion-renderer.mjs'),index=await BX.partTagReady();await renderer.loadChampionFonts();
+    const renderer=await import('/js/champion-renderer.mjs?v=nameplate-3'),index=await BX.partTagReady();await renderer.loadChampionFonts();
     const localDay=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
     const state={name:'',eventName:'SEMANAL TAMER',eventDate:localDay,beys:[[],[],[]],portrait:null,zoom:1,offsetX:0,offsetY:0,tournamentId:null,championUserId:null};
     let saved=null,busy=false,rendering=false,pending=false,dirty=true,renderPromise=Promise.resolve(),missing=[],players=[],timer,revision=0;

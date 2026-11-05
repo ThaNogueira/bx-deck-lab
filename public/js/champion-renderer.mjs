@@ -33,7 +33,7 @@ export async function loadChampionFonts(){
 function contain(ctx,image,x,y,w,h){const scale=Math.min(w/image.width,h/image.height),iw=image.width*scale,ih=image.height*scale;ctx.drawImage(image,x+(w-iw)/2,y+(h-ih)/2,iw,ih);}
 function fitText(ctx,text,x,y,width,size,family,color,align='center',centerY=false){
   ctx.textAlign=align;ctx.fillStyle=color;let font=size;do{ctx.font=`${font}px ${family}`;if(ctx.measureText(text).width<=width)break;font-=1;}while(font>10);
-  const metrics=ctx.measureText(text);ctx.fillText(text,x,centerY?y+(metrics.actualBoundingBoxAscent-metrics.actualBoundingBoxDescent)/2:y);
+  const metrics=ctx.measureText(text);ctx.fillText(text,centerY?x+(metrics.actualBoundingBoxLeft-metrics.actualBoundingBoxRight)/2:x,centerY?y+(metrics.actualBoundingBoxAscent-metrics.actualBoundingBoxDescent)/2:y);
 }
 export function cropPortrait(image){
   const canvas=document.createElement('canvas'),scale=Math.min(1,1800/Math.max(image.width,image.height));canvas.width=Math.round(image.width*scale);canvas.height=Math.round(image.height*scale);
@@ -59,8 +59,9 @@ export async function renderChampion(canvas,state,byId,{size=2160}={}){
     for(const rect of layout){const part=byId.get(rect.id);try{contain(ctx,await imageAsset(`/api/admin/champion/parts/${encodeURIComponent(rect.id)}/image`),rect.x,rect.y,rect.w,rect.h);}catch{missing.push(part?.display||part?.name||rect.id);ctx.strokeStyle='#18dcff';ctx.lineWidth=1;ctx.beginPath();ctx.arc(rect.x+rect.w/2,rect.y+rect.h/2,rect.w*.42,0,Math.PI*2);ctx.stroke();fitText(ctx,partAbbreviation(part),rect.x+rect.w/2,rect.y+rect.h*.55,rect.w*.8,20,'ChampionBlock','#c1edff');}}
     fitText(ctx,comboLabel(ids,byId),230,[477,662,837][row],370,ids.length>3?28:34,'ChampionBlock','#fff');
   }
-  // Follow the cyan strip's rising edges, then center the actual letter shapes within it.
-  ctx.save();ctx.translate(344,260);ctx.rotate(-Math.atan(48/450));ctx.transform(1,0,-.16,1,0,0);ctx.textBaseline='alphabetic';fitText(ctx,(state.name||'').toUpperCase(),0,0,310,51,'ChampionBlock','#02070a','center',true);ctx.restore();
+  // Match both axes of the cyan parallelogram: rising baseline and slanted sides.
+  // Rotation followed by skew counteracted the italic slant, so use one affine transform.
+  ctx.save();ctx.translate(344.7,260.8);ctx.transform(1,-46/447.5,-33.5/76,1,0,0);ctx.textBaseline='alphabetic';fitText(ctx,(state.name||'').toUpperCase(),0,0,310,51,'ChampionBlock','#02070a','center',true);ctx.restore();
   contain(ctx,bs,19,861,129,120);contain(ctx,tamer,205,859,147,122);ctx.strokeStyle='#0757e9';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(175,875);ctx.lineTo(175,972);ctx.stroke();
   fitText(ctx,(state.eventName||'').toUpperCase(),983,909,395,52,'ChampionWide','#fff','right');
   const date=state.eventDate?.split('-'),label=date?.length===3?`${date[2]}/${date[1]}`:'';fitText(ctx,label,983,972,240,56,'ChampionWide','#fff','right');
