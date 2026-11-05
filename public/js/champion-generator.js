@@ -1,38 +1,39 @@
 /* Admin-only editor; images stay in the browser until the artwork is saved. */
 (() => {
   BX.mountChampionGenerator = async root => {
-    const renderer=await import('/js/champion-renderer.mjs?v=nameplate-3'),index=await BX.partTagReady();await renderer.loadChampionFonts();
+    const [renderer,{mountChampionPhotoEditor}]=await Promise.all([import('/js/champion-renderer.mjs?v=photo-editor-4'),import('/js/champion-photo-editor.mjs?v=photo-editor-4')]),index=await BX.partTagReady();await renderer.loadChampionFonts();
     const localDay=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
-    const state={name:'',eventName:'SEMANAL TAMER',eventDate:localDay,beys:[[],[],[]],portrait:null,zoom:1,offsetX:0,offsetY:0,tournamentId:null,championUserId:null};
-    let saved=null,busy=false,rendering=false,pending=false,dirty=true,renderPromise=Promise.resolve(),missing=[],players=[],timer,revision=0;
+    const state={name:'',eventName:'SEMANAL TAMER',eventDate:localDay,beys:[[],[],[]],portrait:null,zoom:1,offsetX:0,offsetY:0,saturation:1.4,glow:.75,shadow:.3,tournamentId:null,championUserId:null};
+    let saved=null,busy=false,rendering=false,pending=false,dirty=true,renderPromise=Promise.resolve(),missing=[],players=[],timer,revision=0,paintRequest=0,photoEditor;
     root.innerHTML=`<section class="champion-generator"><div class="champion-form panel-card"><p class="eyebrow">ARTE DO CAMPEÃO</p><h2>Gerador de campeão</h2>
       <label>Torneio<select id="championTournament"><option value="">Sem vínculo</option></select></label>
       <label id="championPlayerLabel" hidden>Jogador<select id="championPlayer"></select></label>
       <div class="champion-form-row"><label>Nome na arte<input id="championName" maxlength="60" placeholder="Nome do campeão"></label><label>Data<input id="championDate" type="date" value="${localDay}"></label></div>
       <label>Evento<input id="championEvent" maxlength="80" value="SEMANAL TAMER"></label>
       <label class="champion-photo-input">Foto do campeão<input id="championPhoto" type="file" accept="image/png,image/jpeg,image/webp"></label>
-      <button type="button" class="btn secondary" id="championRetry" hidden>Tentar recortar novamente</button>
-      <fieldset class="champion-framing" disabled><legend>Enquadramento</legend><label>Tamanho<input id="championZoom" type="range" min="0.65" max="1.6" step="0.01" value="1"></label><label>Horizontal<input id="championX" type="range" min="-180" max="180" step="1" value="0"></label><label>Vertical<input id="championY" type="range" min="-160" max="160" step="1" value="0"></label></fieldset>
+      <div class="champion-cutout-options"><label>Recorte<select id="championCutoutQuality"><option value="quality">Qualidade alta</option><option value="fast">Rápido</option></select></label><button type="button" class="btn secondary" id="championRetry" hidden>Refazer recorte</button></div>
+      <details class="champion-position"><summary>Posição e tamanho</summary><fieldset class="champion-framing" disabled><label>Tamanho<input id="championZoom" type="range" min="0.3" max="2.5" step="0.01" value="1"></label><label>Horizontal<input id="championX" type="range" min="-600" max="600" step="1" value="0"></label><label>Vertical<input id="championY" type="range" min="-600" max="600" step="1" value="0"></label></fieldset></details>
       <button type="button" class="champion-deck-button" id="championDeck"><span><b>Deck List</b><small>Montar / cores</small></span><span id="championDeckPreview"></span></button>
       <div id="championComboLabels" class="champion-combo-labels"></div>
       <p id="championStatus" role="status">Adicione a foto e monte as três Beys.</p>
       <div class="champion-buttons"><button class="btn primary" id="championDownload" disabled>Baixar PNG 2160 × 2160</button><button class="btn secondary" id="championSave" disabled>Salvar arte</button><button class="btn secondary" id="championPublish" disabled>Publicar na comunidade</button></div><a id="championPostLink" hidden target="_blank" rel="noopener">Ver publicação</a>
-      </div><div class="champion-preview"><canvas id="championCanvas" aria-label="Prévia da arte do campeão"></canvas></div><section class="champion-history panel-card"><p class="eyebrow">ARTES SALVAS</p><div id="championHistory"></div></section></section>`;
+      </div><div class="champion-preview"><div class="champion-stage"><canvas id="championCanvas" aria-label="Prévia da arte do campeão; arraste a foto para posicionar"></canvas></div></div><section class="champion-history panel-card"><p class="eyebrow">ARTES SALVAS</p><div id="championHistory"></div></section></section>`;
     const el=id=>root.querySelector('#'+id),canvas=el('championCanvas'),alive=()=>canvas.isConnected&&root.contains(canvas);
     const ready=()=>state.portrait&&state.name.trim()&&state.eventName.trim()&&state.eventDate&&state.beys.every(ids=>ids.length)&&!missing.length;
     const status=(message,error=false)=>{if(!alive())return;el('championStatus').textContent=message;el('championStatus').classList.toggle('error',error);};
-    const controls=()=>{if(!alive())return;for(const id of ['championDownload','championSave','championPublish'])el(id).disabled=busy||rendering||dirty||!ready();root.querySelectorAll('.champion-form input,.champion-form select,#championDeck').forEach(input=>input.disabled=busy);};
-    const change=()=>{revision++;saved=null;el('championPostLink').hidden=true;dirty=true;clearTimeout(timer);timer=setTimeout(draw,160);controls();};
+    const controls=()=>{if(!alive())return;for(const id of ['championDownload','championSave','championPublish'])el(id).disabled=busy||rendering||dirty||!ready();root.querySelectorAll('.champion-form input,.champion-form select,#championDeck,#championRetry').forEach(input=>input.disabled=busy);photoEditor?.sync();};
+    const change=(immediate=false)=>{revision++;saved=null;el('championPostLink').hidden=true;dirty=true;clearTimeout(timer);if(!photoEditor?.isLive()){if(immediate){if(!paintRequest)paintRequest=requestAnimationFrame(()=>{paintRequest=0;draw();});}else timer=setTimeout(draw,120);}controls();};
     const deckPreview=()=>{el('championDeckPreview').innerHTML=BX.deckPreview(state.beys,{u:32});el('championComboLabels').innerHTML=state.beys.map(ids=>`<span>${BX.esc(renderer.comboLabel(ids,index.byId)||'—')}</span>`).join('');};
+    const previewFrame=document.createElement('canvas');
     async function draw(){
-      if(!alive())return;if(rendering){pending=true;return renderPromise;}
+      if(!alive()||photoEditor?.isLive())return;if(rendering){pending=true;return renderPromise;}
       rendering=true;controls();renderPromise=(async()=>{
-        do{pending=false;const frame=document.createElement('canvas'),version=revision;const snapshot={...state,beys:state.beys.map(ids=>[...ids])};
-          try{const result=await renderer.renderChampion(frame,snapshot,index.byId);if(!alive())return;if(version!==revision){pending=true;continue;}canvas.width=frame.width;canvas.height=frame.height;canvas.getContext('2d').drawImage(frame,0,0);missing=result.missing;dirty=false;if(!busy)status(missing.length?`Peças sem imagem: ${missing.join(', ')}`:ready()?'Arte pronta.':'Adicione nome, foto e as três Beys.',missing.length>0);}catch(error){status(error.message,true);}
+        do{pending=false;const version=revision;const snapshot={...state,beys:state.beys.map(ids=>[...ids])};
+          try{const result=await renderer.renderChampion(previewFrame,snapshot,index.byId,{size:1000});if(!alive())return;if(version!==revision){if(photoEditor?.isLive())return;pending=true;continue;}if(canvas.width!==previewFrame.width)canvas.width=previewFrame.width;if(canvas.height!==previewFrame.height)canvas.height=previewFrame.height;canvas.getContext('2d').drawImage(previewFrame,0,0);photoEditor?.finishPreview();missing=result.missing;dirty=false;if(!busy)status(missing.length?`Peças sem imagem: ${missing.join(', ')}`:ready()?'Arte pronta.':'Adicione nome, foto e as três Beys.',missing.length>0);}catch(error){status(error.message,true);}
         }while(pending&&alive());
       })().finally(()=>{rendering=false;controls();});return renderPromise;
     }
-    async function output(){clearTimeout(timer);if(dirty)await draw();await renderPromise;if(!ready())throw Error('Complete nome, foto, data e as três Beys.');return new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(Error('Não foi possível gerar o PNG.')),'image/png'));}
+    async function output(){clearTimeout(timer);if(dirty)await draw();await renderPromise;if(dirty||!ready())throw Error('Complete nome, foto, data e as três Beys.');const final=document.createElement('canvas'),result=await renderer.renderChampion(final,state,index.byId,{size:2160});if(result.missing.length)throw Error('Há peças sem imagem.');return new Promise((resolve,reject)=>final.toBlob(blob=>blob?resolve(blob):reject(Error('Não foi possível gerar o PNG.')),'image/png'));}
     async function save(){
       if(saved)return saved;const image=await output(),form=new FormData();
       for(const key of ['name','eventName','eventDate'])form.append(key,state[key]);form.append('beys',JSON.stringify(state.beys));if(state.tournamentId)form.append('tournamentId',state.tournamentId);if(state.championUserId)form.append('championUserId',state.championUserId);form.append('image',image,'campeao.png');
@@ -43,15 +44,18 @@
       root.querySelectorAll('[data-publish-art]').forEach(b=>b.onclick=()=>action(async()=>{const result=await BX.api(`/api/admin/champion/artworks/${b.dataset.publishArt}/publish`,{method:'POST'});status('Imagem publicada na comunidade.');await history();el('championPostLink').href=result.url;el('championPostLink').hidden=false;}));
     }
     for(const [id,key] of [['championName','name'],['championEvent','eventName'],['championDate','eventDate']])el(id).oninput=e=>{state[key]=e.target.value;change();};
-    for(const [id,key] of [['championZoom','zoom'],['championX','offsetX'],['championY','offsetY']])el(id).oninput=e=>{state[key]=Number(e.target.value);change();};
+    photoEditor=mountChampionPhotoEditor({root:root.querySelector('.champion-preview'),state,renderer,byId:index.byId,enabled:()=>!busy,changed:immediate=>{for(const [id,key] of [['championZoom','zoom'],['championX','offsetX'],['championY','offsetY']])el(id).value=state[key];change(immediate);}});
+    for(const [id,key] of [['championZoom','zoom'],['championX','offsetX'],['championY','offsetY']])el(id).oninput=e=>{state[key]=Number(e.target.value);photoEditor.sync();change(true);};
     let photoFile=null;
     async function processPhoto(){
-      if(!photoFile||busy)return;busy=true;state.portrait=null;root.querySelector('.champion-framing').disabled=true;change();controls();el('championPhoto').disabled=true;el('championRetry').hidden=true;status('Recortando foto, aguarde…');
+      if(!photoFile||busy)return;busy=true;state.portrait=null;root.querySelector('.champion-framing').disabled=true;change();controls();el('championPhoto').disabled=true;el('championRetry').hidden=true;status('Recortando foto em alta qualidade, aguarde…');
       try{
         if(photoFile.size>20*1024*1024)throw Error('Use uma foto de até 20 MB.');let cutout=photoFile;
-        if(!await renderer.alreadyTransparent(photoFile)){const {removeChampionBackground}=await import('/react/champion-cutout.js');cutout=await removeChampionBackground(photoFile,(_key,current,total)=>status(total?`Preparando recorte… ${Math.round(current/total*100)}%`:'Recortando foto…'));}
-        if(!alive())return;const bitmap=await createImageBitmap(cutout);state.portrait=renderer.cropPortrait(bitmap);bitmap.close();state.zoom=1;state.offsetX=0;state.offsetY=0;el('championZoom').value=1;el('championX').value=0;el('championY').value=0;root.querySelector('.champion-framing').disabled=false;change();await draw();status(missing.length?`Peças sem imagem: ${missing.join(', ')}`:'Foto recortada. Ajuste o enquadramento se precisar.',missing.length>0);
-      }catch(error){status(`Não foi possível recortar a foto: ${error.message}`,true);if(alive())el('championRetry').hidden=false;}finally{busy=false;if(alive())el('championPhoto').disabled=false;controls();}
+        const {removeChampionBackground,enhanceChampionPortrait}=await import('/react/champion-cutout.js');
+        if(!await renderer.alreadyTransparent(photoFile))cutout=await removeChampionBackground(photoFile,(key,current,total)=>status(total?`Preparando recorte… ${Math.round(current/total*100)}%`:key==='upscale'?'Ajustando resolução e nitidez…':'Recortando foto…'),el('championCutoutQuality').value==='fast'?'fast':'quality');
+        else cutout=await enhanceChampionPortrait(photoFile);
+        if(!alive())return;const bitmap=await createImageBitmap(cutout);state.portrait=renderer.cropPortrait(bitmap);bitmap.close();state.zoom=1;state.offsetX=0;state.offsetY=0;el('championZoom').value=1;el('championX').value=0;el('championY').value=0;root.querySelector('.champion-framing').disabled=false;photoEditor.select();change();await draw();status(missing.length?`Peças sem imagem: ${missing.join(', ')}`:'Foto pronta. Arraste para posicionar.',missing.length>0);
+      }catch(error){status(`Não foi possível recortar a foto: ${error.message}`,true);}finally{busy=false;if(alive()){el('championPhoto').disabled=false;el('championRetry').hidden=false;}controls();}
     }
     el('championPhoto').onchange=e=>{photoFile=e.target.files[0];processPhoto();};el('championRetry').onclick=processPhoto;
     el('championDeck').onclick=()=>BX.openTournamentDeckEditor({title:'Deck do campeão',heading:'Deck do campeão',beys:state.beys,enableRecolors:true,requireThree:true,showTitle:false,slotLabel:ids=>renderer.comboLabel(ids,index.byId),onSave:async draft=>{state.beys=Array.from({length:3},(_,i)=>draft.beys[i]||[]);deckPreview();change();}}).catch(error=>status(error.message,true));

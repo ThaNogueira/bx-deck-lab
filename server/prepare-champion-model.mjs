@@ -1,11 +1,11 @@
-// Download only the pinned small portrait model and its runtime, with integrity checks.
+// Pin both portrait model qualities and their runtime, with integrity checks.
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 const version='1.7.0',base=`https://staticimgly.com/@imgly/background-removal-data/${version}/dist/`;
 const root=path.resolve(process.argv[2]||`public/assets/champion-model/${version}`);await fs.mkdir(root,{recursive:true});
 const response=await fetch(base+'resources.json',{signal:AbortSignal.timeout(60000)});if(!response.ok)throw Error('Model manifest unavailable: '+response.status);
-const all=await response.json(),resources=Object.fromEntries(Object.entries(all).filter(([key])=>key.startsWith('/onnxruntime-web/')||key==='/models/isnet_quint8'));
+const all=await response.json(),resources=Object.fromEntries(Object.entries(all).filter(([key])=>key.startsWith('/onnxruntime-web/')||['/models/isnet_quint8','/models/isnet_fp16'].includes(key)));
 const chunks=[...new Map(Object.values(resources).flatMap(r=>r.chunks).map(chunk=>[chunk.name,chunk])).values()];let position=0;
 const digest=data=>createHash('sha256').update(data).digest('hex');
 await Promise.all(Array.from({length:4},async()=>{while(position<chunks.length){const chunk=chunks[position++];if(!/^[a-f0-9]{64}$/.test(chunk.name))throw Error('Invalid asset name');const target=path.join(root,chunk.name);try{if(digest(await fs.readFile(target))===chunk.hash)continue;}catch{}

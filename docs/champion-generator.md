@@ -2,7 +2,13 @@
 
 Disponível exclusivamente para ADMIN em `/admin#champion`.
 
-O admin escolhe um torneio encerrado ou preenche o evento manualmente, envia a foto e monta as três Beys. O recorte roda em um worker no navegador com o modelo ISNet pequeno, hospedado no próprio site. A foto recebe saturação, contraste e contorno azul. Tamanho e posição podem ser ajustados antes do download.
+O admin escolhe um torneio encerrado ou preenche o evento manualmente, envia a foto e monta as três Beys. O recorte roda em um worker no navegador com ISNet FP16 por padrão; o modo rápido usa a versão quantizada. Os dois modelos ficam no próprio site. A versão de maior precisão evita os artefatos associados ao modelo compacto, descritos na [documentação oficial da IMG.LY](https://github.com/imgly/background-removal-js/blob/main/packages/web/README.md). O acabamento reforça a opacidade e corrige pequenos vazios internos, conservando aberturas maiores e bordas suaves. Isso melhora roupas claras, sem prometer um recorte perfeito para toda foto.
+
+Fotos pequenas recebem ampliação de até 2×, até 1800 px no lado maior, com suavização e nitidez moderada. Essa ampliação é interpolada; não inventa detalhes nem usa um modelo de super-resolução. Fotos maiores conservam até 2400 px. O processamento ocorre fora da interface, com limite de resolução e liberação do worker ao terminar.
+
+Saturação (padrão 140%), glow azul e sombra são ajustáveis. A foto fica atrás dos contornos reais das três caixas, da faixa do nome e dos elementos do cabeçalho. Não existe mais o corte vertical em x=437. O arrasto e os quatro cantos redimensionam mantendo proporção; há ajustes numéricos por sliders, teclado e um editor ampliado para celular ou desktop. Os controles e as bordas de seleção nunca entram no PNG.
+
+Durante arrasto/redimensionamento, o navegador compõe fundo, foto e frente em camadas e atualiza apenas a transformação da foto. Saturação, sombra e glow são preparados uma vez e reutilizados, sem recalcular filtros ou recorte ao mover. A prévia usa 1000 px e buffers reaproveitados; a exportação é renderizada separadamente em 2160 px. Há tratamento de cor e sombra para navegadores sem filtros de canvas. A validação com CPU limitada em 4× mediu cerca de 1,24 ms por evento de movimentação no ambiente local; isso não é garantia de FPS em outros dispositivos.
 
 O resultado é PNG quadrado de 2160 × 2160. Salvar cria um registro persistente; publicar cria um único post CHAMPION por arte, com mídia e vínculo ao torneio. A operação não altera partidas, classificação ou pontos. Uma arte ligada a torneio privado não pode ser publicada na comunidade.
 
@@ -36,6 +42,6 @@ npm run build
 node scripts/champion.integration.mjs
 ```
 
-O Docker prepara e verifica o modelo de recorte em uma etapa separada e inclui os arquivos no site. Eles ficam fora do Git. A versão 1.7.0 está fixada junto da dependência e cada fragmento é verificado com SHA-256. A biblioteca de recorte é IMG.LY Background Removal (AGPL-3.0); as fontes locais Russo One e Barlow Condensed incluem suas licenças OFL na pasta do modelo.
+O Docker prepara e verifica os dois modelos de recorte em uma etapa separada e inclui os arquivos no site. Eles ficam fora do Git. A versão 1.7.0 está fixada junto da dependência e cada fragmento é verificado com SHA-256. A biblioteca de recorte é IMG.LY Background Removal (AGPL-3.0); as fontes locais Russo One e Barlow Condensed incluem suas licenças OFL na pasta do modelo.
 
 O teste isolado verifica permissões, siglas, composição com duas e seis peças, recolors, download, persistência, vínculo ao torneio, publicação sem duplicidade e responsividade. O teste real de recorte pode ser executado com `--real-photo` quando existe `artifacts/champion/portrait-input.jpg`. As prévias e imagens usadas na validação ficam em `artifacts/champion/` e não são publicadas nem incluídas no Git.
