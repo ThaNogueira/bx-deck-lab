@@ -18,8 +18,8 @@ function ring(c,wr,x,y,r=72){
 function metric(c,value,label,x,y,w=212,h=120,tone=null){panel(c,x,y,w,h,tone);text(c,value,x+w/2,y+h*.4,50,tone?.ink||white,w-28,'center','ChampionBlock',true);text(c,label.toUpperCase(),x+w/2,y+h*.77,15,tone?.ink||muted,w-24,'center','ChampionBlock',true);}
 export const CHIBIS=['witch-wave','witch-cheer','witch-point','blue-wave','blue-cheer','blue-point','blond-wave','blond-cheer','blond-point','red-wave','red-cheer','red-point','cat-wave','cat-cheer','cat-point'];
 async function chibi(c,n,x,y,w,h=w){
-  let img;try{img=await imageAsset(`/assets/ranking/chibis-v3/${CHIBIS[((n%15)+15)%15]}.png`);}catch{return;}
-  const scale=Math.min(w/img.width,h/img.height),iw=img.width*scale,ih=img.height*scale;c.save();c.shadowColor=c.artTheme?.glow||'#008dff';c.shadowBlur=5*c.canvas.width/1000;c.drawImage(img,x+(w-iw)/2,y+(h-ih)/2,iw,ih);c.restore();
+  const selected=c.artTheme?.chibiIndex??n;let img;try{img=await imageAsset(`/assets/ranking/chibis-v3/${CHIBIS[((selected%15)+15)%15]}.png`);}catch{return;}
+  const scale=Math.min(w/img.width,h/img.height),iw=img.width*scale,ih=img.height*scale;c.save();c.shadowColor='#000000a6';c.shadowBlur=10*c.canvas.width/1000;c.shadowOffsetX=1*c.canvas.width/1000;c.shadowOffsetY=5*c.canvas.width/1000;c.drawImage(img,x+(w-iw)/2,y+(h-ih)/2,iw,ih);c.restore();
 }
 async function bey(c,p,x,y,size){
   if(!p.bey)return false;let img;try{img=await imageAsset(`/api/admin/champion/parts/${encodeURIComponent(p.bey.id)}/image`);}catch{return false;}
@@ -52,10 +52,12 @@ async function cover(c,data,index,total){
 export function pagesFor(data,count=12){
   const players=data.players.slice(0,count),pages=players.length?[{type:'cover',players:[]},...players.slice(0,3).map(p=>({type:'podium',players:[p]}))]:[];
   for(let i=3;i<players.length;i+=5)pages.push({type:'list',players:players.slice(i,i+5)});
-  if(players.length)pages.push({type:'insights',players});return pages;
+  if(players.length)pages.push({type:'insights',players});
+  const order=CHIBIS.map((_,i)=>i);for(let i=order.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[order[i],order[j]]=[order[j],order[i]];}
+  return pages.map((page,i)=>({...page,chibiIndex:order[i%order.length]}));
 }
 export async function renderRankingSlide(canvas,data,page,index,total,{size=2160}={}){
-  canvas.width=canvas.height=size;const c=canvas.getContext('2d');c.artTheme={monthly:!!data.month,accent:data.month?'#ff758b':cyan,glow:data.month?'#ff2349':'#047cdf'};c.scale(size/1000,size/1000);if(page.type==='cover'){await cover(c,data,index,total);return canvas;}await background(c);
+  canvas.width=canvas.height=size;const c=canvas.getContext('2d');c.artTheme={monthly:!!data.month,accent:data.month?'#ff758b':cyan,glow:data.month?'#ff2349':'#047cdf',chibiIndex:page.chibiIndex};c.scale(size/1000,size/1000);if(page.type==='cover'){await cover(c,data,index,total);return canvas;}await background(c);
   const monthly=!!data.month,date=new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date(data.generatedAt));
   const edition=monthly?new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',month:'long',year:'numeric'}).format(new Date(data.month+'-15T12:00:00Z')):'Atualizado em '+date;
   text(c,'BEYXLAB  /  ARENA COMPETITIVA',52,57,15,cyan);text(c,edition.toUpperCase(),948,57,13,muted,400,'right');

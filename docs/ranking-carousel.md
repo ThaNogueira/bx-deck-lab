@@ -22,4 +22,6 @@ Somente um chibi por página, em um canto. No top 3, fica no canto direito junto
 
 Na revisão v5, ouro, prata e bronze recebem blocos separados com fundo e borda na cor de cada medalha e um pequeno troféu correspondente no canto superior direito. O total de pódios conserva a cor da edição.
 
+Cada geração embaralha os 15 chibis e fixa a escolha por página, sem repetição no carrossel atual. Navegar, baixar PNG ou exportar ZIP reutiliza essa escolha; clicar novamente para gerar faz um novo sorteio. Os chibis recebem sombra preta discreta deslocada para baixo, sem glow adicional do renderizador.
+
 Validação: `node scripts/ranking-art.integration.mjs`. Usa banco isolado e cobre permissões, fronteira do mês, campos públicos, cinco páginas, navegação, PNG 2160 px, ZIP e layout de celular. As prévias em `artifacts/ranking-art` usam jogadores de teste e não são publicadas.
