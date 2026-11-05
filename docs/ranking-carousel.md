@@ -24,4 +24,8 @@ Na revisão v5, ouro, prata e bronze recebem blocos separados com fundo e borda 
 
 Cada geração embaralha os 15 chibis e fixa a escolha por página, sem repetição no carrossel atual. Navegar, baixar PNG ou exportar ZIP reutiliza essa escolha; clicar novamente para gerar faz um novo sorteio. Os chibis recebem sombra preta discreta deslocada para baixo, sem glow adicional do renderizador.
 
+## Legenda automática
+
+Após gerar o carrossel, uma legenda editável aparece abaixo da prévia. Usa o mesmo período e dados da imagem: top 3 por nome, vitórias e aproveitamento do líder, chamada para deslizar, link do ranking, BeyStyle/BeyXLab e parceira Tamer. Os identificadores do site não viram marcações de Instagram. “Gerar outra legenda” alterna frases simples e “Copiar legenda” copia o texto editado; se o navegador bloquear a cópia, seleciona o texto para cópia manual. Alterar categoria/período invalida a legenda anterior. O texto é montado localmente, sem chamada de LLM ou consumo de cota.
+
 Validação: `node scripts/ranking-art.integration.mjs`. Usa banco isolado e cobre permissões, fronteira do mês, campos públicos, cinco páginas, navegação, PNG 2160 px, ZIP e layout de celular. As prévias em `artifacts/ranking-art` usam jogadores de teste e não são publicadas.
