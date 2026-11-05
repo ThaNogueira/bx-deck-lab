@@ -25,6 +25,7 @@
     ['products', I('package') + 'Produtos', isAdmin],
     ['tournaments', I('trophy') + 'Torneios', true],
     ['champion', I('champion') + 'Arte do campeão', isAdmin],
+    ['rankingArt', I('trophy') + 'Carrossel do ranking', isAdmin],
     ['stores', I('store') + 'Lojas', isAdmin],
     ['market', I('money') + 'Vendas', true],
     ['cosmetics', I('palette') + 'Cosméticos', isAdmin],
@@ -67,6 +68,10 @@
   }
 
   const RENDER = {
+    async rankingArt() {
+      if(!isAdmin)throw Error('Este gerador é exclusivo para admins.');
+      const {mountRankingArt}=await import('/js/ranking-art.mjs?v=1');await mountRankingArt(box);
+    },
     async champion() {
       if(!isAdmin)throw Error('Este gerador é exclusivo para admins.');
       await BX.mountChampionGenerator(box);

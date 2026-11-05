@@ -10,10 +10,22 @@ import { uploadChampionImage, UPLOADS_DIR } from '../uploads.js';
 import { loadTournament, standingsOf, validManualBey } from './tournaments.js';
 import { audit } from '../audit.js';
 import { siteUrl } from '../util.js';
+import { buildPlayerRanking } from './home.js';
 
 const router=Router(), ADMIN=requireRole('ADMIN');
 const ah=fn=>(req,res,next)=>fn(req,res,next).catch(next);
 const dto=a=>({...a,beys:JSON.parse(a.beysJson),beysJson:undefined,postUrl:a.postId?`/comunidade/p/${a.postId}`:null});
+router.get('/api/admin/ranking-art/data',ADMIN,ah(async(req,res)=>{
+  const month=String(req.query.month||'');let from=null,to=null;
+  if(month){if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month))return res.status(422).json({error:'Mês inválido.'});from=new Date(month+'-01T03:00:00Z');to=new Date(from);to.setUTCMonth(to.getUTCMonth()+1);}
+  const data=await buildPlayerRanking({from,to});
+  const rows=month?[...data.ranking].sort((a,b)=>b.points-a.points||b.gold-a.gold||b.wins-a.wins||a.user.name.localeCompare(b.user.name)):data.ranking;
+  res.set('Cache-Control','no-store').json({generatedAt:new Date().toISOString(),month:month||null,totals:data.totals,players:rows.slice(0,20).map((r,i)=>({position:i+1,user:publicUser(r.user),wins:r.wins,losses:r.losses,events:r.events,gold:r.gold,silver:r.silver,bronze:r.bronze,circuitPoints:r.points,rating:{points:r.rating.points,provisional:r.rating.provisional,tier:r.rating.tier,onFire:r.rating.onFire},winRate:r.wins+r.losses?Math.round(r.wins/(r.wins+r.losses)*100):null}))});
+}));
+router.get('/api/admin/ranking-art/avatar/:id',ADMIN,ah(async(req,res)=>{
+  const user=await prisma.user.findUnique({where:{id:req.params.id},select:{avatarUrl:true}});if(!user)return res.sendStatus(404);
+  try{const png=await sharp(await readPartImage(user.avatarUrl||'/assets/profiles/default-blader.png'),{limitInputPixels:40e6}).rotate().resize(600,600,{fit:'cover'}).png().toBuffer();res.set('Cache-Control','private, max-age=300').type('png').send(png);}catch{res.sendFile(path.resolve('public/assets/profiles/default-blader.png'));}
+}));
 router.get('/api/admin/champion/artworks',ADMIN,ah(async(req,res)=>res.json({artworks:(await prisma.championArtwork.findMany({orderBy:{createdAt:'desc'},take:24})).map(dto)})));
 router.get('/api/admin/champion/tournaments',ADMIN,ah(async(req,res)=>res.json({tournaments:await prisma.tournament.findMany({where:{status:'FINISHED'},select:{id:true,slug:true,name:true,startsAt:true,storeName:true,visibility:true},orderBy:{startsAt:'desc'},take:200})})));
 router.get('/api/admin/champion/tournaments/:slug',ADMIN,ah(async(req,res)=>{
