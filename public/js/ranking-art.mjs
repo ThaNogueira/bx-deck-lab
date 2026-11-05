@@ -74,10 +74,11 @@ export async function renderRankingSlide(canvas,data,page,index,total,{size=2160
     metric(c,p.wins,'vitórias',52,460,212,152,{fill:'#08291ff5',border:'#37ac7f',ink:'#a1f3cd'});
     metric(c,p.losses,'derrotas',280,460,212,152,{fill:'#30121bf5',border:'#bc526c',ink:'#ffb0be'});
     metric(c,p.events,monthly?'torneios no mês':'torneios',508,460,212,152);panel(c,736,460,212,152);ring(c,p.winRate,842,536,50);
-    const medalY=642,medalH=p.bey?92:140;panel(c,52,medalY,896,medalH);
-    for(const [i,[value,label,color]] of [[p.gold,'OURO','#f7d06b'],[p.silver,'PRATA','#dce9f4'],[p.bronze,'BRONZE','#e8ac83'],[p.gold+p.silver+p.bronze,'PÓDIOS',white]].entries()){
-      const x=52+i*224;if(i){c.save();c.lineWidth=1;c.strokeStyle='#6f839344';c.beginPath();c.moveTo(x,medalY+18);c.lineTo(x,medalY+medalH-18);c.stroke();c.restore();}
-      text(c,value,x+112,medalY+medalH*.38,34,color,185,'center','ChampionBlock',true);text(c,label,x+112,medalY+medalH*.76,13,muted,185,'center','ChampionBlock',true);
+    const medalY=642,medalH=p.bey?92:140;
+    for(const [i,[value,label,color,fill,border,suffix]] of [[p.gold,'OURO','#f7d06b','#30240ef5','#ae873b',''],[p.silver,'PRATA','#dce9f4','#202a33f5','#8a9eae','-silver'],[p.bronze,'BRONZE','#e8ac83','#301e15f5','#ad704a','-bronze'],[p.gold+p.silver+p.bronze,'PÓDIOS',white,null,null,null]].entries()){
+      const x=52+i*228;panel(c,x,medalY,212,medalH,fill?{fill,border}:null);
+      if(suffix!==null)await picture(c,`/assets/achievements/trophy-minimal${suffix}.svg`,x+178,medalY+8,24);
+      text(c,value,x+106,medalY+medalH*.38,34,color,160,'center','ChampionBlock',true);text(c,label,x+106,medalY+medalH*.76,13,i<3?color:muted,160,'center','ChampionBlock',true);
     }
     if(p.bey){panel(c,52,758,896,98);if(await bey(c,p,76,770,74)){text(c,p.bey.source==='used'?'BEY MAIS USADA':'BEY FAVORITA',176,787,13,cyan,710);text(c,p.bey.name,176,824,25,white,710);}}
   }else if(page.type==='list'){

@@ -20,4 +20,6 @@ A Bey mais usada é derivada do primeiro combo frequente encontrado pelo ranking
 
 Somente um chibi por página, em um canto. No top 3, fica no canto direito junto da colocação: número grande e troféu à esquerda, sem card em volta. A identidade e as métricas ficam mais próximas; vitórias usam bloco verde e derrotas bloco vermelho. Torneios e win rate completam a primeira linha. Medalhas ocupam uma faixa única com divisórias finas e a Bey, quando disponível, uma faixa inferior. Os 15 desenhos continuam disponíveis para variação entre páginas, sem acumular personagens no mesmo slide. O teste verifica uma única ilustração chibi desenhada em cada página de ambas as categorias.
 
+Na revisão v5, ouro, prata e bronze recebem blocos separados com fundo e borda na cor de cada medalha e um pequeno troféu correspondente no canto superior direito. O total de pódios conserva a cor da edição.
+
 Validação: `node scripts/ranking-art.integration.mjs`. Usa banco isolado e cobre permissões, fronteira do mês, campos públicos, cinco páginas, navegação, PNG 2160 px, ZIP e layout de celular. As prévias em `artifacts/ranking-art` usam jogadores de teste e não são publicadas.
