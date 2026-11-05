@@ -1,21 +1,30 @@
 import {imageAsset,loadChampionFonts} from './champion-renderer.mjs?v=photo-editor-4';
 const cyan='#37e7ff',white='#effaff',muted='#8faebb';
-function text(c,s,x,y,size=24,color=white,width=930,align='left',font='ChampionBlock'){
-  c.save();c.fillStyle=color;c.textAlign=align;let n=size;do{c.font=`${n}px ${font}`;if(c.measureText(String(s)).width<=width)break;n--;}while(n>12);if(n>=28){c.shadowColor='#047cdf';c.shadowBlur=10*c.canvas.width/1000;c.strokeStyle='#020815';c.lineWidth=2;c.strokeText(String(s),x,y);}c.fillText(String(s),x,y);c.restore();
+function text(c,s,x,y,size=24,color=white,width=930,align='left',font='ChampionBlock',centerY=false){
+  c.save();c.fillStyle=color===cyan?(c.artTheme?.accent||cyan):color;c.textAlign=align;let n=size;do{c.font=`${n}px ${font}`;if(c.measureText(String(s)).width<=width)break;n--;}while(n>12);if(centerY){const m=c.measureText(String(s));y+=(m.actualBoundingBoxAscent-m.actualBoundingBoxDescent)/2;if(align==='center')x+=(m.actualBoundingBoxLeft-m.actualBoundingBoxRight)/2;}if(n>=28){c.shadowColor=c.artTheme?.glow||'#047cdf';c.shadowBlur=8*c.canvas.width/1000;c.strokeStyle='#020815';c.lineWidth=2;c.strokeText(String(s),x,y);}c.fillText(String(s),x,y);c.restore();
 }
-function line(c,x,y,w,color='#1a4c69'){c.strokeStyle=color;c.lineWidth=1;c.beginPath();c.moveTo(x,y);c.lineTo(x+w,y);c.stroke();}
-function panel(c,x,y,w,h){c.save();c.fillStyle='#04101df2';c.strokeStyle='#258db1';c.lineWidth=1;c.shadowColor='#007aff';c.shadowBlur=15*c.canvas.width/1000;c.shadowOffsetY=4*c.canvas.width/1000;c.beginPath();c.roundRect(x,y,w,h,18);c.fill();c.stroke();c.restore();}
+function line(c,x,y,w,color='#1a4c69'){c.strokeStyle=c.artTheme?.monthly?c.artTheme.accent:color;c.lineWidth=1;c.beginPath();c.moveTo(x,y);c.lineTo(x+w,y);c.stroke();}
+function panel(c,x,y,w,h){c.save();c.fillStyle=c.artTheme?.monthly?'#18070df2':'#04101df2';c.strokeStyle=c.artTheme?.monthly?'#a83951':'#258db1';c.lineWidth=1;c.shadowColor=c.artTheme?.glow||'#007aff';c.shadowBlur=10*c.canvas.width/1000;c.shadowOffsetY=4*c.canvas.width/1000;c.beginPath();c.roundRect(x,y,w,h,18);c.fill();c.stroke();c.restore();}
 async function picture(c,url,x,y,size,round=false){
   let img;try{img=await imageAsset(url);}catch{img=await imageAsset('/assets/profiles/default-blader.png');}
   c.save();if(round){c.beginPath();c.arc(x+size/2,y+size/2,size/2,0,Math.PI*2);c.clip();const scale=Math.max(size/img.width,size/img.height);c.drawImage(img,x+(size-img.width*scale)/2,y+(size-img.height*scale)/2,img.width*scale,img.height*scale);}else c.drawImage(img,x,y,size,size);c.restore();
 }
 function ring(c,wr,x,y,r=72){
-  c.lineWidth=10;c.strokeStyle='#193143';c.beginPath();c.arc(x,y,r,0,Math.PI*2);c.stroke();if(wr!==null){c.strokeStyle=cyan;c.lineCap='round';c.beginPath();c.arc(x,y,r,-Math.PI/2,-Math.PI/2+Math.PI*2*wr/100);c.stroke();c.lineCap='butt';}
+  c.lineWidth=r<50?6:10;c.strokeStyle=c.artTheme?.monthly?'#47202b':'#193143';c.beginPath();c.arc(x,y,r,0,Math.PI*2);c.stroke();if(wr!==null){c.strokeStyle=c.artTheme?.accent||cyan;c.lineCap='round';c.beginPath();c.arc(x,y,r,-Math.PI/2,-Math.PI/2+Math.PI*2*wr/100);c.stroke();c.lineCap='butt';}
   const small=r<50;text(c,wr===null?'—':wr+'%',x,y+(small?3:10),small?21:34,white,r*1.7,'center');text(c,'WIN RATE',x,y+(small?19:34),small?8:12,muted,r*1.7,'center');
 }
-function metric(c,value,label,x,y,w=200){text(c,value,x,y,46,white,w);text(c,label.toUpperCase(),x,y+28,13,muted,w);}
+function metric(c,value,label,x,y,w=212,h=120){panel(c,x,y,w,h);text(c,value,x+w/2,y+h*.4,44,white,w-28,'center','ChampionBlock',true);text(c,label.toUpperCase(),x+w/2,y+h*.75,12,muted,w-24,'center','ChampionBlock',true);}
+export const CHIBIS=['witch-wave','witch-cheer','witch-point','blue-wave','blue-cheer','blue-point','blond-wave','blond-cheer','blond-point','red-wave','red-cheer','red-point','cat-wave','cat-cheer','cat-point'];
+async function chibi(c,n,x,y,w,h=w){
+  let img;try{img=await imageAsset(`/assets/ranking/chibis-v3/${CHIBIS[((n%15)+15)%15]}.png`);}catch{return;}
+  const scale=Math.min(w/img.width,h/img.height),iw=img.width*scale,ih=img.height*scale;c.save();c.shadowColor=c.artTheme?.glow||'#008dff';c.shadowBlur=5*c.canvas.width/1000;c.drawImage(img,x+(w-iw)/2,y+(h-ih)/2,iw,ih);c.restore();
+}
+async function bey(c,p,x,y,size){
+  if(!p.bey)return false;let img;try{img=await imageAsset(`/api/admin/champion/parts/${encodeURIComponent(p.bey.id)}/image`);}catch{return false;}
+  const scale=Math.min(size/img.width,size/img.height);c.save();c.shadowColor=c.artTheme?.glow||'#008dff';c.shadowBlur=8*c.canvas.width/1000;c.drawImage(img,x+(size-img.width*scale)/2,y+(size-img.height*scale)/2,img.width*scale,img.height*scale);c.restore();return true;
+}
 async function background(c){
-  c.drawImage(await imageAsset('/assets/ranking/background-v2.png'),0,0,1000,1000);
+  c.drawImage(await imageAsset(c.artTheme.monthly?'/assets/ranking/background-month-red-v3.png':'/assets/ranking/background-v2.png'),0,0,1000,1000);
   c.fillStyle='#02081448';c.fillRect(0,0,1000,1000);line(c,52,880,896,cyan);
 }
 async function branding(c,index,total){
@@ -24,16 +33,18 @@ async function branding(c,index,total){
   text(c,'PARCEIRA',790,919,11,muted,140,'right');await picture(c,'/assets/champion/tamer.png',820,894,80);text(c,`${String(index+1).padStart(2,'0')}/${String(total).padStart(2,'0')}`,948,954,16,cyan,90,'right');
 }
 async function cover(c,data,index,total){
-  c.drawImage(await imageAsset(`/assets/ranking/intro-${data.month?'month':'current'}-v2.png`),0,0,1000,1000);
+  c.drawImage(await imageAsset(data.month?'/assets/ranking/intro-month-red-v3.png':'/assets/ranking/intro-current-v2.png'),0,0,1000,1000);
   const shade=c.createLinearGradient(0,0,620,0);shade.addColorStop(0,'#010817c0');shade.addColorStop(1,'#01081700');c.fillStyle=shade;c.fillRect(0,0,650,880);
   await picture(c,'/assets/champion/beystyle.png',52,48,112);text(c,'BEYSTYLE',183,105,28,white,350);text(c,'APRESENTA',184,132,12,cyan);
   text(c,data.month?'DESTAQUES DO MÊS':'RANKING ATUAL',52,242,20,cyan,450);
   const edition=data.month?new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',month:'long',year:'numeric'}).format(new Date(data.month+'-15T12:00:00Z')):'CLASSIFICAÇÃO GERAL';text(c,edition.toUpperCase(),52,275,14,muted,440);
-  text(c,data.month?'OS NOMES':'QUEM DOMINA',52,381,data.month?87:74,white,455,'left','ChampionWide');text(c,data.month?'DO MÊS':'A ARENA?',52,472,100,cyan,450,'left','ChampionWide');
-  text(c,'Conheça os jogadores em destaque,',52,535,17,white,410);text(c,'seus elos e os números da disputa.',52,565,17,white,410);
+  text(c,data.month?'BLADERS':'QUEM DOMINA',52,375,data.month?90:74,white,455,'left','ChampionWide');text(c,data.month?'DO MÊS':'A ARENA?',52,463,95,cyan,450,'left','ChampionWide');
+  if(data.month){const monthName=new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',month:'long'}).format(new Date(data.month+'-15T12:00:00Z'));text(c,monthName.toUpperCase(),52,550,68,white,460,'left','ChampionWide');text(c,data.month.slice(0,4),52,584,20,cyan);}
+  else{text(c,'REPORTE GERAL SEMANAL',52,522,26,cyan,450,'left','ChampionWide');text(c,'Os elos e os números da disputa.',52,563,17,white,410);}
+  await chibi(c,data.month?12:3,66,643,120,130);
   const fade=c.createLinearGradient(0,720,0,880);fade.addColorStop(0,'#02071300');fade.addColorStop(1,'#020713fa');c.fillStyle=fade;c.fillRect(0,720,1000,160);
   text(c,'Arraste para conhecer os bladers!',52,817,26,white,710);
-  c.save();c.strokeStyle=cyan;c.shadowColor='#00baff';c.shadowBlur=15*c.canvas.width/1000;c.lineWidth=5;c.lineJoin='miter';for(let i=0;i<4;i++){const x=805+i*34;c.globalAlpha=.4+i*.2;c.beginPath();c.moveTo(x,786);c.lineTo(x+18,804);c.lineTo(x,822);c.stroke();}c.restore();
+  c.save();c.strokeStyle=c.artTheme.accent;c.shadowColor=c.artTheme.glow;c.shadowBlur=15*c.canvas.width/1000;c.lineWidth=5;c.lineJoin='miter';for(let i=0;i<4;i++){const x=805+i*34;c.globalAlpha=.4+i*.2;c.beginPath();c.moveTo(x,786);c.lineTo(x+18,804);c.lineTo(x,822);c.stroke();}c.restore();
   await branding(c,index,total);
 }
 export function pagesFor(data,count=12){
@@ -42,7 +53,7 @@ export function pagesFor(data,count=12){
   if(players.length)pages.push({type:'insights',players});return pages;
 }
 export async function renderRankingSlide(canvas,data,page,index,total,{size=2160}={}){
-  canvas.width=canvas.height=size;const c=canvas.getContext('2d');c.scale(size/1000,size/1000);if(page.type==='cover'){await cover(c,data,index,total);return canvas;}await background(c);
+  canvas.width=canvas.height=size;const c=canvas.getContext('2d');c.artTheme={monthly:!!data.month,accent:data.month?'#ff758b':cyan,glow:data.month?'#ff2349':'#047cdf'};c.scale(size/1000,size/1000);if(page.type==='cover'){await cover(c,data,index,total);return canvas;}await background(c);
   const monthly=!!data.month,date=new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date(data.generatedAt));
   const edition=monthly?new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',month:'long',year:'numeric'}).format(new Date(data.month+'-15T12:00:00Z')):'Atualizado em '+date;
   text(c,'BEYXLAB  /  ARENA COMPETITIVA',52,57,15,cyan);text(c,edition.toUpperCase(),948,57,13,muted,400,'right');
@@ -50,31 +61,35 @@ export async function renderRankingSlide(canvas,data,page,index,total,{size=2160
   text(c,monthly?'Pontos do circuito no mês · elos atuais':'Classificação geral por elo · torneios concluídos',52,158,15,muted);
   if(page.type==='podium'){
     const p=page.players[0],rank=p.rating.provisional?'Em classificação':p.rating.tier?.name||'Sem elo';
-    text(c,String(p.position).padStart(2,'0'),948,332,160,'#13344d',240,'right','ChampionWide');
-    await picture(c,`/api/admin/ranking-art/avatar/${encodeURIComponent(p.user.id)}`,76,222,224,true);
-    c.strokeStyle=p.position===1?'#f7d06b':cyan;c.lineWidth=3;c.beginPath();c.arc(188,334,120,0,Math.PI*2);c.stroke();
-    text(c,p.position===1?(monthly?'LÍDER DO MÊS':'1º DO SITE'):p.position+'º LUGAR',344,254,18,p.position===1?'#f7d06b':cyan);
-    text(c,p.user.name,344,315,43,white,590);text(c,'@'+p.user.slug,344,350,16,muted,590);
-    if(p.rating.tier?.icon&&!p.rating.provisional)await picture(c,p.rating.tier.icon,344,377,48);
-    text(c,rank,404,408,23,p.rating.tier?.color||cyan,520);text(c,p.rating.points+' PDL'+(p.rating.provisional?' · provisório':''),404,438,16,muted,520);
-    panel(c,52,505,896,174);metric(c,p.wins,'vitórias',82,570,170);metric(c,p.losses,'derrotas',280,570,170);metric(c,p.events,monthly?'torneios no mês':'torneios',475,570,210);ring(c,p.winRate,824,591,59);
-    panel(c,52,703,896,125);metric(c,p.gold,'ouro',82,759,175);metric(c,p.silver,'prata',296,759,175);metric(c,p.bronze,'bronze',510,759,175);metric(c,p.gold+p.silver+p.bronze,'pódios',725,759,175);
+    const medal=['#f7d06b','#dce9f4','#e8ac83'][p.position-1];panel(c,802,208,146,206);await picture(c,`/assets/achievements/trophy-minimal${p.position===2?'-silver':p.position===3?'-bronze':''}.svg`,831,226,88);text(c,p.position+'º',875,376,72,medal,130,'center','ChampionWide');
+    await picture(c,`/api/admin/ranking-art/avatar/${encodeURIComponent(p.user.id)}`,76,225,190,true);
+    c.strokeStyle=medal;c.lineWidth=3;c.beginPath();c.arc(171,320,103,0,Math.PI*2);c.stroke();
+    text(c,p.position===1?(monthly?'LÍDER DO MÊS':'1º DO SITE'):p.position+'º LUGAR',300,239,17,medal);
+    text(c,p.user.name,300,292,39,white,465);text(c,'@'+p.user.slug,300,325,15,muted,465);
+    if(p.rating.tier?.icon&&!p.rating.provisional)await picture(c,p.rating.tier.icon,300,345,44);
+    text(c,rank,355,375,22,p.rating.tier?.color||cyan,415);text(c,p.rating.points+' PDL'+(p.rating.provisional?' · provisório':''),355,404,15,muted,415);
+    await chibi(c,index*3,76,431,130,125);await chibi(c,index*3+1,757,428,130,125);
+    if(p.bey){panel(c,300,426,430,125);if(await bey(c,p,315,437,100)){text(c,p.bey.source==='used'?'BEY MAIS USADA':'BEY FAVORITA',434,454,12,cyan,277);text(c,p.bey.name,434,490,23,white,277);if(p.bey.source==='used')text(c,'Nos torneios deste período',434,520,11,muted,277);}}
+    metric(c,p.wins,'vitórias',52,578);metric(c,p.losses,'derrotas',280,578);metric(c,p.events,monthly?'torneios no mês':'torneios',508,578);panel(c,736,578,212,120);ring(c,p.winRate,842,638,40);
+    metric(c,p.gold,'ouro',52,720,212,108);metric(c,p.silver,'prata',280,720,212,108);metric(c,p.bronze,'bronze',508,720,212,108);metric(c,p.gold+p.silver+p.bronze,'pódios',736,720,212,108);
   }else if(page.type==='list'){
     text(c,'A DISPUTA CONTINUA',52,217,28,cyan);
+    await chibi(c,index+7,819,167,91,76);
     for(const [i,p] of page.players.entries()){
       const y=247+i*117;panel(c,52,y,896,102);text(c,String(p.position).padStart(2,'0'),72,y+61,31,muted,55);await picture(c,`/api/admin/ranking-art/avatar/${encodeURIComponent(p.user.id)}`,137,y+18,64,true);
-      text(c,p.user.name,221,y+36,23,white,410);text(c,p.rating.provisional?'Em classificação':p.rating.tier?.name||'Sem elo',221,y+63,14,p.rating.tier?.color||muted,410);text(c,`${p.wins}V · ${p.losses}D · ${p.events} torneios`,221,y+85,12,muted,410);
-      text(c,monthly?p.circuitPoints:p.rating.points,704,y+49,29,white,150,'center');text(c,monthly?'CIRCUITO':'PDL',704,y+72,11,muted,150,'center');ring(c,p.winRate,864,y+51,34);
+      text(c,p.user.name,221,y+36,23,white,320);text(c,p.rating.provisional?'Em classificação':p.rating.tier?.name||'Sem elo',221,y+63,14,p.rating.tier?.color||muted,320);text(c,`${p.wins}V · ${p.losses}D · ${p.events} torneios`,221,y+85,12,muted,320);
+      await chibi(c,index*3+i,552,y+9,75,82);await bey(c,p,635,y+17,63);
+      text(c,monthly?p.circuitPoints:p.rating.points,755,y+44,28,white,95,'center','ChampionBlock',true);text(c,monthly?'CIRCUITO':'PDL',755,y+74,10,muted,95,'center');ring(c,p.winRate,879,y+51,34);
     }
   }else{
     text(c,'OS NÚMEROS DA ARENA',52,222,32,cyan);
-    panel(c,52,254,896,138);metric(c,data.totals.players,'jogadores',82,317,235);metric(c,data.totals.tournaments,'torneios',377,317,235);metric(c,data.totals.matches,'partidas',672,317,235);
+    await chibi(c,index+8,826,163,90,76);metric(c,data.totals.players,'jogadores',52,254,288,138);metric(c,data.totals.tournaments,'torneios',356,254,288,138);metric(c,data.totals.matches,'partidas',660,254,288,138);
     const best=(key)=>[...page.players].sort((a,b)=>b[key]-a[key]||a.position-b.position)[0];
     const eligible=page.players.filter(p=>p.wins+p.losses>=10),wr=[...eligible].sort((a,b)=>b.winRate-a.winRate||b.wins-a.wins)[0];
     const highlights=[['MAIS VITÓRIAS',best('wins'),p=>`${p.wins} vitórias`],['MAIS PÓDIOS',[...page.players].sort((a,b)=>(b.gold+b.silver+b.bronze)-(a.gold+a.silver+a.bronze)||a.position-b.position)[0],p=>`${p.gold+p.silver+p.bronze} pódios`],['MELHOR WIN RATE',wr,p=>`${p.winRate}% · ${p.wins+p.losses} partidas`]];
     for(const [i,[label,p,value]] of highlights.entries()){
       const y=418+i*129;panel(c,52,y,896,111);if(p)await picture(c,`/api/admin/ranking-art/avatar/${encodeURIComponent(p.user.id)}`,77,y+20,70,true);
-      text(c,label,174,y+32,13,cyan);text(c,p?p.user.name:'Amostra ainda insuficiente',174,y+66,24,white,450);text(c,p?value(p):'Mínimo de 10 partidas',917,y+65,21,muted,290,'right');
+      text(c,label,174,y+32,13,cyan);text(c,p?p.user.name:'Amostra ainda insuficiente',174,y+66,24,white,420);await chibi(c,index*3+i+1,613,y+8,90,94);text(c,p?value(p):'Mínimo de 10 partidas',917,y+65,20,muted,207,'right');
     }
     text(c,`Destaques entre os ${page.players.length} jogadores exibidos · WR = vitórias ÷ (vitórias + derrotas)`,52,849,12,muted,896);
   }
