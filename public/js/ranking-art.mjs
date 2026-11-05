@@ -1,10 +1,10 @@
 import {imageAsset,loadChampionFonts} from './champion-renderer.mjs?v=photo-editor-4';
 const cyan='#37e7ff',white='#effaff',muted='#8faebb';
 function text(c,s,x,y,size=24,color=white,width=930,align='left',font='ChampionBlock'){
-  c.fillStyle=color;c.textAlign=align;let n=size;do{c.font=`${n}px ${font}`;if(c.measureText(String(s)).width<=width)break;n--;}while(n>12);c.fillText(String(s),x,y);
+  c.save();c.fillStyle=color;c.textAlign=align;let n=size;do{c.font=`${n}px ${font}`;if(c.measureText(String(s)).width<=width)break;n--;}while(n>12);if(n>=28){c.shadowColor='#047cdf';c.shadowBlur=10*c.canvas.width/1000;c.strokeStyle='#020815';c.lineWidth=2;c.strokeText(String(s),x,y);}c.fillText(String(s),x,y);c.restore();
 }
 function line(c,x,y,w,color='#1a4c69'){c.strokeStyle=color;c.lineWidth=1;c.beginPath();c.moveTo(x,y);c.lineTo(x+w,y);c.stroke();}
-function panel(c,x,y,w,h){c.fillStyle='#051221e8';c.strokeStyle='#1b5269';c.lineWidth=1;c.beginPath();c.roundRect(x,y,w,h,18);c.fill();c.stroke();}
+function panel(c,x,y,w,h){c.save();c.fillStyle='#04101df2';c.strokeStyle='#258db1';c.lineWidth=1;c.shadowColor='#007aff';c.shadowBlur=15*c.canvas.width/1000;c.shadowOffsetY=4*c.canvas.width/1000;c.beginPath();c.roundRect(x,y,w,h,18);c.fill();c.stroke();c.restore();}
 async function picture(c,url,x,y,size,round=false){
   let img;try{img=await imageAsset(url);}catch{img=await imageAsset('/assets/profiles/default-blader.png');}
   c.save();if(round){c.beginPath();c.arc(x+size/2,y+size/2,size/2,0,Math.PI*2);c.clip();const scale=Math.max(size/img.width,size/img.height);c.drawImage(img,x+(size-img.width*scale)/2,y+(size-img.height*scale)/2,img.width*scale,img.height*scale);}else c.drawImage(img,x,y,size,size);c.restore();
@@ -14,19 +14,35 @@ function ring(c,wr,x,y,r=72){
   const small=r<50;text(c,wr===null?'—':wr+'%',x,y+(small?3:10),small?21:34,white,r*1.7,'center');text(c,'WIN RATE',x,y+(small?19:34),small?8:12,muted,r*1.7,'center');
 }
 function metric(c,value,label,x,y,w=200){text(c,value,x,y,46,white,w);text(c,label.toUpperCase(),x,y+28,13,muted,w);}
-function background(c){
-  const g=c.createLinearGradient(0,0,1000,1000);g.addColorStop(0,'#020711');g.addColorStop(.6,'#06182c');g.addColorStop(1,'#020711');c.fillStyle=g;c.fillRect(0,0,1000,1000);
-  c.save();c.globalAlpha=.2;for(let i=-1000;i<1600;i+=210){c.fillStyle=i%420?'#0266cf':'#00b9e2';c.beginPath();c.moveTo(i,0);c.lineTo(i+55,0);c.lineTo(i-945,1000);c.lineTo(i-1000,1000);c.fill();}c.restore();
-  c.save();c.globalAlpha=.14;c.fillStyle=cyan;for(let x=730;x<1000;x+=15)for(let y=15;y<220;y+=15){c.beginPath();c.arc(x,y,2,0,7);c.fill();}c.restore();
-  line(c,52,880,896,cyan);
+async function background(c){
+  c.drawImage(await imageAsset('/assets/ranking/background-v2.png'),0,0,1000,1000);
+  c.fillStyle='#02081448';c.fillRect(0,0,1000,1000);line(c,52,880,896,cyan);
+}
+async function branding(c,index,total){
+  const fade=c.createLinearGradient(0,870,0,1000);fade.addColorStop(0,'#020713b0');fade.addColorStop(1,'#020713f5');c.fillStyle=fade;c.fillRect(0,880,1000,120);line(c,52,880,896,'#258ba8');
+  await picture(c,'/assets/champion/beystyle.png',52,893,89);text(c,'BEYSTYLE',158,932,25,white,360);text(c,'BEYXLAB.COM.BR · ENTRE NA ARENA',158,960,11,muted,490);
+  text(c,'PARCEIRA',790,919,11,muted,140,'right');await picture(c,'/assets/champion/tamer.png',820,894,80);text(c,`${String(index+1).padStart(2,'0')}/${String(total).padStart(2,'0')}`,948,954,16,cyan,90,'right');
+}
+async function cover(c,data,index,total){
+  c.drawImage(await imageAsset(`/assets/ranking/intro-${data.month?'month':'current'}-v2.png`),0,0,1000,1000);
+  const shade=c.createLinearGradient(0,0,620,0);shade.addColorStop(0,'#010817c0');shade.addColorStop(1,'#01081700');c.fillStyle=shade;c.fillRect(0,0,650,880);
+  await picture(c,'/assets/champion/beystyle.png',52,48,112);text(c,'BEYSTYLE',183,105,28,white,350);text(c,'APRESENTA',184,132,12,cyan);
+  text(c,data.month?'DESTAQUES DO MÊS':'RANKING ATUAL',52,242,20,cyan,450);
+  const edition=data.month?new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',month:'long',year:'numeric'}).format(new Date(data.month+'-15T12:00:00Z')):'CLASSIFICAÇÃO GERAL';text(c,edition.toUpperCase(),52,275,14,muted,440);
+  text(c,data.month?'OS NOMES':'QUEM DOMINA',52,381,data.month?87:74,white,455,'left','ChampionWide');text(c,data.month?'DO MÊS':'A ARENA?',52,472,100,cyan,450,'left','ChampionWide');
+  text(c,'Conheça os jogadores em destaque,',52,535,17,white,410);text(c,'seus elos e os números da disputa.',52,565,17,white,410);
+  const fade=c.createLinearGradient(0,720,0,880);fade.addColorStop(0,'#02071300');fade.addColorStop(1,'#020713fa');c.fillStyle=fade;c.fillRect(0,720,1000,160);
+  text(c,'Arraste para conhecer os bladers!',52,817,26,white,710);
+  c.save();c.strokeStyle=cyan;c.shadowColor='#00baff';c.shadowBlur=15*c.canvas.width/1000;c.lineWidth=5;c.lineJoin='miter';for(let i=0;i<4;i++){const x=805+i*34;c.globalAlpha=.4+i*.2;c.beginPath();c.moveTo(x,786);c.lineTo(x+18,804);c.lineTo(x,822);c.stroke();}c.restore();
+  await branding(c,index,total);
 }
 export function pagesFor(data,count=12){
-  const players=data.players.slice(0,count),pages=players.slice(0,3).map(p=>({type:'podium',players:[p]}));
+  const players=data.players.slice(0,count),pages=players.length?[{type:'cover',players:[]},...players.slice(0,3).map(p=>({type:'podium',players:[p]}))]:[];
   for(let i=3;i<players.length;i+=5)pages.push({type:'list',players:players.slice(i,i+5)});
   if(players.length)pages.push({type:'insights',players});return pages;
 }
 export async function renderRankingSlide(canvas,data,page,index,total,{size=2160}={}){
-  canvas.width=canvas.height=size;const c=canvas.getContext('2d');c.scale(size/1000,size/1000);background(c);
+  canvas.width=canvas.height=size;const c=canvas.getContext('2d');c.scale(size/1000,size/1000);if(page.type==='cover'){await cover(c,data,index,total);return canvas;}await background(c);
   const monthly=!!data.month,date=new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date(data.generatedAt));
   const edition=monthly?new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',month:'long',year:'numeric'}).format(new Date(data.month+'-15T12:00:00Z')):'Atualizado em '+date;
   text(c,'BEYXLAB  /  ARENA COMPETITIVA',52,57,15,cyan);text(c,edition.toUpperCase(),948,57,13,muted,400,'right');
@@ -62,9 +78,7 @@ export async function renderRankingSlide(canvas,data,page,index,total,{size=2160
     }
     text(c,`Destaques entre os ${page.players.length} jogadores exibidos · WR = vitórias ÷ (vitórias + derrotas)`,52,849,12,muted,896);
   }
-  await picture(c,'/assets/champion/beystyle.png',52,899,76);await picture(c,'/assets/champion/tamer.png',151,899,76);
-  text(c,'BEYXLAB.COM.BR',263,934,21,white,530);text(c,'Veja a classificação completa e entre na arena',263,962,13,muted,530);
-  text(c,`${String(index+1).padStart(2,'0')} / ${String(total).padStart(2,'0')}`,948,944,23,cyan,160,'right');return canvas;
+  await branding(c,index,total);return canvas;
 }
 // Uncompressed ZIP: PNGs are already compressed. No upload or third-party service is needed.
 export function zipImages(files){
