@@ -16,4 +16,8 @@ A edição mensal usa fundos e glows vermelhos, capa “Bladers do mês” e nom
 
 A Bey mais usada é derivada do primeiro combo frequente encontrado pelo ranking, escolhendo sua Blade/Main Blade; sem imagem disponível, usa a favorita cadastrada no perfil. Peças ocultas e jogadores sem essas informações não recebem Bey inventada. A informação identifica se é uso no período ou preferência do perfil. Chibis aparecem ao lado das Beys e nas áreas livres de todas as páginas.
 
+## Revisão v4
+
+Somente um chibi por página, em um canto. No top 3, fica no canto direito junto da colocação: número grande e troféu à esquerda, sem card em volta. A identidade e as métricas ficam mais próximas; vitórias usam bloco verde e derrotas bloco vermelho. Torneios e win rate completam a primeira linha. Medalhas ocupam uma faixa única com divisórias finas e a Bey, quando disponível, uma faixa inferior. Os 15 desenhos continuam disponíveis para variação entre páginas, sem acumular personagens no mesmo slide. O teste verifica uma única ilustração chibi desenhada em cada página de ambas as categorias.
+
 Validação: `node scripts/ranking-art.integration.mjs`. Usa banco isolado e cobre permissões, fronteira do mês, campos públicos, cinco páginas, navegação, PNG 2160 px, ZIP e layout de celular. As prévias em `artifacts/ranking-art` usam jogadores de teste e não são publicadas.
