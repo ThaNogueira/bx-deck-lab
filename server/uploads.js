@@ -61,5 +61,9 @@ export const uploadTournamentImages = multer({
 export function uploadedUrl(file) {
   return file ? `/uploads/${file.filename}` : null;
 }
+export const uploadChampionImage = multer({
+  storage, limits:{fileSize:20*1024*1024,files:1},
+  fileFilter:(_req,file,cb)=>['image/png','image/jpeg','image/webp'].includes(file.mimetype)?cb(null,true):cb(new Error('Use uma imagem PNG, JPG ou WebP.')),
+});
 
 export const isVideoUrl = (url) => /\.(mp4|webm)$/i.test(url || '');

@@ -1,0 +1,9 @@
+.git
+.env
+.env.*
+node_modules
+data
+artifacts
+public/react
+public/assets/champion-model
+*.log

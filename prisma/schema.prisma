@@ -52,6 +52,8 @@ model User {
   pollVotes      PollVote[]
   notifications  Notification[]    @relation("notifTarget")
   deckCopies     DeckCopy[]
+  championArtworks ChampionArtwork[] @relation("artworkCreator")
+  championPortraits ChampionArtwork[] @relation("artworkChampion")
 }
 
 model AuthSession {
@@ -250,6 +252,7 @@ model Tournament {
   matches       TMatch[]
   lateInvites   TournamentLateEntryInvite[]
   photos        TournamentPhoto[]
+  championArtworks ChampionArtwork[]
 }
 
 model Store {
@@ -484,11 +487,31 @@ model Post {
   deck          CommunityDeck? @relation(fields: [deckId], references: [id], onDelete: SetNull)
   comments      Comment[]
   votes         PollVote[]
+  championArtwork ChampionArtwork?
 
   @@index([status, createdAt])
   @@index([tag, status])
   @@index([kind, status, createdAt])
   @@index([authorId])
+}
+
+model ChampionArtwork {
+  id String @id @default(cuid())
+  createdById String
+  tournamentId String?
+  championUserId String?
+  name String
+  eventName String
+  eventDate String
+  beysJson String
+  imageUrl String
+  postId String? @unique
+  createdAt DateTime @default(now())
+  createdBy User @relation("artworkCreator", fields:[createdById], references:[id], onDelete:Cascade)
+  champion User? @relation("artworkChampion", fields:[championUserId], references:[id], onDelete:SetNull)
+  tournament Tournament? @relation(fields:[tournamentId], references:[id], onDelete:SetNull)
+  post Post? @relation(fields:[postId], references:[id], onDelete:SetNull)
+  @@index([createdAt])
 }
 
 model Comment {

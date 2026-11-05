@@ -23,3 +23,4 @@ artifacts/
 
 # Vite output (built locally or in Docker)
 public/react/
+public/assets/champion-model/

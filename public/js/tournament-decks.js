@@ -9,10 +9,10 @@
     el.showModal(); return el;
   };
   const role = p => !p ? null : p.kind === 'BLADE' ? (p.subKind === 'INTEGRATED' ? 'integrated' : 'blade') : p.kind === 'BIT' ? (p.subKind === 'RIB' ? 'rib' : 'bit') : ({ LOCK_CHIP:'lock', MAIN_BLADE:'main', ASSIST_BLADE:'assist', OVER_BLADE:'over', RATCHET:'ratchet' })[p.kind];
-  BX.openTournamentDeckEditor = async ({ title = '', beys = [], heading = 'Criar deck', onSave }) => {
+  BX.openTournamentDeckEditor = async ({ title = '', beys = [], heading = 'Criar deck', onSave, enableRecolors = false, requireThree = false, showTitle = true, slotLabel = null }) => {
     const index = await BX.partTagReady();
     if (document.querySelector('dialog.tournament-deck-dialog[open]')) return;
-    const state = { title, beys: Array.from({length:3},(_,i)=>[...(beys[i] || [])]), slot:0, query:'', filter:'', saving:false };
+    const state = { title, beys: Array.from({length:3},(_,i)=>[...(beys[i] || [])]), slot:0, query:'', filter:'', saving:false, colors:null };
     const modal = dialog('tournament-deck-editor');
     modal.addEventListener('cancel', event => { if(state.saving) event.preventDefault(); });
     const complete = ids => {
@@ -39,25 +39,28 @@
       const current=state.beys[state.slot], query=BX.norm(state.query);
       const parts=index.list.filter(p=>!p.parentId && role(p) && (!state.filter || (state.filter==='CX' ? ['LOCK_CHIP','MAIN_BLADE','ASSIST_BLADE','OVER_BLADE'].includes(p.kind) : p.kind===state.filter)) && (!query || [p.name,p.display,p.abbrev,...(p.aliases || [])].some(v=>BX.norm(v).includes(query)))).slice(0,80);
       modal.innerHTML=`<button type="button" class="modal-close" data-mini-close aria-label="Fechar">×</button><p class="eyebrow">DECK LIST</p><h2>${BX.esc(heading)}</h2>
-        <label>Nome do deck<input id="miniDeckTitle" value="${BX.esc(state.title)}" maxlength="80" placeholder="Meu deck"></label>
-        <div class="mini-builder-slots">${state.beys.map((ids,i)=>`<button type="button" class="${state.slot===i?'active':''}" data-mini-slot="${i}"><small>BEY ${i+1} · ${status(ids)}</small>${BX.beyMini(ids,{u:42})}</button>`).join('')}</div>
-        <div class="mini-builder-current"><b>Bey ${state.slot+1}</b><small>${status(current)}</small><div>${current.map(id=>{const p=index.byId.get(id);return `<button type="button" class="mini-part-chip" data-mini-remove="${BX.esc(id)}">${BX.partThumb(p,24)}<span>${BX.esc(p?.display || p?.name || '?')}</span> ×</button>`;}).join('')}</div></div>
+        ${showTitle?`<label>Nome do deck<input id="miniDeckTitle" value="${BX.esc(state.title)}" maxlength="80" placeholder="Meu deck"></label>`:''}
+        <div class="mini-builder-slots">${state.beys.map((ids,i)=>`<button type="button" class="${state.slot===i?'active':''}" data-mini-slot="${i}"><small>BEY ${i+1} · ${BX.esc(slotLabel?slotLabel(ids)||'Vazia':status(ids))}</small>${BX.beyMini(ids,{u:42})}</button>`).join('')}</div>
+        <div class="mini-builder-current"><b>Bey ${state.slot+1}</b><small>${status(current)}</small><div>${current.map(id=>{const p=index.byId.get(id),base=p?.parentId||id;return `<button type="button" class="mini-part-chip" data-mini-remove="${BX.esc(id)}">${BX.partThumb(p,24)}<span>${BX.esc(p?.display || p?.name || '?')}</span> ×</button>${enableRecolors&&index.variantsOf(base).length?`<button type="button" class="mini-part-chip" data-mini-colors="${BX.esc(base)}">Cores</button>`:''}`;}).join('')}</div></div>
+        ${enableRecolors&&state.colors?`<div class="mini-builder-colors">${[index.byId.get(state.colors),...index.variantsOf(state.colors)].filter(Boolean).map(p=>`<button type="button" data-mini-color="${BX.esc(p.id)}" aria-pressed="${current.includes(p.id)}">${BX.partThumb(p,30)}<span>${BX.esc(p.variantLabel||'Original')}</span></button>`).join('')}</div>`:''}
         <input id="miniDeckSearch" value="${BX.esc(state.query)}" placeholder="Buscar peça" aria-label="Buscar peça">
         <div class="picker-filters mini-builder-filters">${[['','Tudo'],['BLADE','Blades'],['RATCHET','Ratchets'],['BIT','Bits'],['CX','CX']].map(([key,label])=>`<button type="button" class="picker-chip ${state.filter===key?'active':''}" data-mini-filter="${key}">${label}</button>`).join('')}</div>
         <div class="mini-builder-parts">${parts.map(p=>`<button type="button" data-mini-add="${BX.esc(p.id)}" ${current.includes(p.id)?'disabled':''}>${BX.partThumb(p,28)}<span>${BX.esc(p.display || p.name)}</span><small>${BX.esc(BX.KIND_PT[p.kind] || p.kind)}</small></button>`).join('') || '<small>Nenhuma peça encontrada.</small>'}</div>
         <div class="tournament-deck-actions"><button type="button" class="btn primary" data-mini-save>Salvar deck</button><button type="button" class="btn ghost" data-mini-close>Cancelar</button></div>`;
       modal.querySelectorAll('[data-mini-close]').forEach(b=>b.onclick=()=>modal.close());
-      modal.querySelectorAll('[data-mini-slot]').forEach(b=>b.onclick=()=>{state.slot=Number(b.dataset.miniSlot);render();});
+      modal.querySelectorAll('[data-mini-slot]').forEach(b=>b.onclick=()=>{state.slot=Number(b.dataset.miniSlot);state.colors=null;render();});
       modal.querySelectorAll('[data-mini-filter]').forEach(b=>b.onclick=()=>{state.filter=b.dataset.miniFilter;render(true);});
       modal.querySelectorAll('[data-mini-add]').forEach(b=>b.onclick=()=>{add(index.byId.get(b.dataset.miniAdd));render();});
+      modal.querySelectorAll('[data-mini-colors]').forEach(b=>b.onclick=()=>{state.colors=state.colors===b.dataset.miniColors?null:b.dataset.miniColors;render();});
+      modal.querySelectorAll('[data-mini-color]').forEach(b=>b.onclick=()=>{add(index.byId.get(b.dataset.miniColor));render();});
       modal.querySelectorAll('[data-mini-remove]').forEach(b=>b.onclick=()=>{state.beys[state.slot]=current.filter(id=>id!==b.dataset.miniRemove);render();});
-      modal.querySelector('#miniDeckTitle').oninput=e=>{state.title=e.target.value;};
+      if(showTitle)modal.querySelector('#miniDeckTitle').oninput=e=>{state.title=e.target.value;};
       modal.querySelector('#miniDeckSearch').oninput=e=>{state.query=e.target.value;render(true);};
       modal.querySelector('[data-mini-save]').onclick=async()=>{
         if(state.saving)return;
-        if(!state.title.trim()){BX.toast('Dê um nome ao deck.');modal.querySelector('#miniDeckTitle').focus();return;}
+        if(showTitle&&!state.title.trim()){BX.toast('Dê um nome ao deck.');modal.querySelector('#miniDeckTitle').focus();return;}
         const selected=state.beys.filter(ids=>ids.length);
-        if(!selected.length || !selected.every(complete)){BX.toast('Complete as peças de cada Bey antes de salvar.');return;}
+        if(!selected.length || (requireThree&&selected.length!==3) || !selected.every(complete)){BX.toast(requireThree?'Complete as três Beys antes de salvar.':'Complete as peças de cada Bey antes de salvar.');return;}
         state.saving=true;modal.setAttribute('aria-busy','true');modal.querySelectorAll('button,input').forEach(el=>el.disabled=true);modal.querySelector('[data-mini-save]').textContent='Salvando…';
         try {await onSave({title:state.title.trim(),beys:selected});modal.close();}
         catch(error){state.saving=false;modal.removeAttribute('aria-busy');BX.toast(error.message);render();}

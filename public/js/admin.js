@@ -24,6 +24,7 @@
     ['parts', I('wrench') + 'Peças', isAdmin],
     ['products', I('package') + 'Produtos', isAdmin],
     ['tournaments', I('trophy') + 'Torneios', true],
+    ['champion', I('champion') + 'Arte do campeão', isAdmin],
     ['stores', I('store') + 'Lojas', isAdmin],
     ['market', I('money') + 'Vendas', true],
     ['cosmetics', I('palette') + 'Cosméticos', isAdmin],
@@ -66,6 +67,10 @@
   }
 
   const RENDER = {
+    async champion() {
+      if(!isAdmin)throw Error('Este gerador é exclusivo para admins.');
+      await BX.mountChampionGenerator(box);
+    },
     // ----------------------------------------------------------- 2.1 Dashboard
     async dash() {
       const s = await BX.api('/api/admin/stats');

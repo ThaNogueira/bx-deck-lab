@@ -64,7 +64,7 @@ const manualRole = (p) => {
   if (p.kind === 'BIT') return p.subKind === 'RIB' ? 'rib' : 'bit';
   return ({ LOCK_CHIP: 'lock', MAIN_BLADE: 'main', ASSIST_BLADE: 'assist', OVER_BLADE: 'over', RATCHET: 'ratchet' })[p.kind] || null;
 };
-const validManualBey = (parts) => {
+export const validManualBey = (parts) => {
   const roles = parts.map(manualRole);
   if (roles.some((r) => !r) || new Set(roles).size !== roles.length) return 'há peças repetidas ou incompatíveis';
   const set = new Set(roles);

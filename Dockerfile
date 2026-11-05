@@ -6,6 +6,11 @@ COPY frontend ./frontend
 COPY tsconfig.json vite.config.ts ./
 RUN npm run build
 
+FROM node:22-alpine AS champion-model
+WORKDIR /model
+COPY server/prepare-champion-model.mjs ./prepare.mjs
+RUN node prepare.mjs /models
+
 FROM node:22-alpine
 WORKDIR /app
 
@@ -23,6 +28,7 @@ RUN npm ci --omit=dev && npx prisma generate
 COPY server ./server
 COPY public ./public
 COPY --from=frontend /build/public/react ./public/react
+COPY --from=champion-model /models ./public/assets/champion-model/1.7.0
 
 ENV NODE_ENV=production
 EXPOSE 3000
