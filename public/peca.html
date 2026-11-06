@@ -28,7 +28,9 @@
       const app = document.getElementById('app');
       let data;
       try {
-        data = await BX.api(`/api/parts/${encodeURIComponent(slug)}`);
+        // Nova versão do detalhe: evita reutilizar o cache anterior sem modos
+        // e sem os vínculos corrigidos dos produtos.
+        data = await BX.api(`/api/parts/${encodeURIComponent(slug)}?v=2`);
       } catch (e) {
         app.innerHTML = `<div class="empty-state">${BX.esc(e.message)} — <a href="/pecas" style="color:var(--cyan)">voltar ao catálogo</a></div>`;
         return;
