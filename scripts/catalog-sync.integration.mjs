@@ -14,6 +14,7 @@ const migration = spawnSync(process.execPath, ['node_modules/prisma/build/index.
 assert.equal(migration.status, 0, migration.stderr);
 const { prisma } = await import('../server/db.js');
 const { syncParts, parseByyParts } = await import('../server/sync.js');
+const { parseCardCategory } = await import('../server/beycommunity.js');
 const { applyCatalogSupplements, AERO_BX53 } = await import('../server/catalog-supplements.js');
 const card = (id, folder, filename, name, extra = '') => `<div id="${id}" class="card"><div><img src="https://img.beybladehub.app/${folder}/${filename}.webp"/></div><div><span translate="no">${name}</span><span>Attack</span>${extra}</div></div>`;
 const html = {
@@ -32,6 +33,8 @@ const originalFetch = globalThis.fetch;
 let server;
 try {
   assert.equal(parseByyParts(byy).length, 1, 'CX assemblies must never become standalone blades');
+  const reversible = parseCardCategory('"href":"/en/x/main-blades/eclipse/","src":"https://cdn.shopify.com/eclipse.png","alt":"Upper Mode","alt":"Smash Mode"', 'main-blades');
+  assert.equal(reversible[0].name, 'Eclipse', 'an image mode label must not become a part name');
   const bits = parseHubHtml(html.bits, 'bits');
   assert.equal(bits.find(p => p.name === 'Zap').kind, 'bit', 'footer metadata must not leak into the last card');
   assert.equal(bits.find(p => p.name === 'Turbo').kind, 'rib');
@@ -60,6 +63,9 @@ try {
 
   await prisma.part.create({ data: { name: 'SolEclipse', displayName: 'Sol Eclipse', slug: 'soleclipse', kind: 'BLADE', hidden: true } });
   await prisma.part.create({ data: { name: 'Eclipse', displayName: 'Eclipse', slug: 'eclipse', kind: 'MAIN_BLADE', imageUrl: 'https://img.beybladehub.app/blades-cx/main-Ec.webp' } });
+  const eclipseStarter = await prisma.product.create({ data: { name: 'Sol Eclipse D5-70TK', slug: 'cx-09-sol-eclipse-d5-70tk', code: 'CX-09', category: 'STARTER' } });
+  const wrongMode = await prisma.part.create({ data: { name: 'Upper Mode', displayName: 'Upper Mode', slug: 'upper-mode', kind: 'ASSIST_BLADE', imageUrl: 'https://cdn.shopify.com/Main-Blade-Eclipse.png' } });
+  await prisma.productPart.create({ data: { productId: eclipseStarter.id, partId: wrongMode.id } });
 
   const product = await prisma.product.create({ data: { name: 'All-in-One Set', slug: 'bx53', code: 'BX-53' } });
   const old = await prisma.part.create({ data: { name: parent.name, displayName: parent.displayName, slug: 'aero-old-color', kind: parent.kind, parentId: parent.id, imageUrl: 'old.png' } });
@@ -88,7 +94,14 @@ try {
     const result = await api.json();
     assert.equal(api.status, 200); assert.equal(result.part.kind, 'MAIN_BLADE');
     assert.equal(result.part.slug, 'eclipse'); assert.equal(result.part.imageUrl, '/assets/parts/eclipse.webp');
+    assert.equal(result.part.imageModes.length, 2);
+    assert.equal(result.part.imageModes[1].id, 'smash');
+    assert(result.products.some(p => p.id === eclipseStarter.id));
   }
+  const starter = await (await originalFetch(base + '/api/products/cx-09-sol-eclipse-d5-70tk')).json();
+  assert(starter.partsByKind.find(g => g.kind === 'MAIN_BLADE').parts.some(p => p.slug === 'eclipse'));
+  assert(!starter.partsByKind.some(g => g.parts.some(p => p.slug === 'upper-mode')));
+  assert.equal((await prisma.part.findUnique({ where: { id: wrongMode.id } })).hidden, true);
 
   globalThis.fetch = async () => new Response('changed layout');
   const failed = await syncParts();

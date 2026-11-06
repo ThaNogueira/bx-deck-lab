@@ -183,14 +183,16 @@ const CARD_CATEGORIES = [
   ['ribs', 'BIT', 'RIB'], // Ratchet-Integrated Bits (Turbo, Operate)
 ];
 
-function parseCardCategory(text, path) {
+export function parseCardCategory(text, path) {
   const out = [];
   const re = new RegExp(`"href":"/en/x/${path}/([^/"]+)/"`, 'g');
   let m;
   while ((m = re.exec(text))) {
     const tail = text.slice(m.index, m.index + 900);
     const img = tail.match(/"src":"(https:\/\/cdn\.shopify\.com[^"]+)"/)?.[1] || null;
-    const name = tail.match(/"alt":"([^"]+)"/)?.[1] || titleFromSlug(m[1]);
+    // Em peças reversíveis o alt é "Upper Mode"/"Smash Mode", não o
+    // nome da peça. A identidade é o slug do link do próprio card.
+    const name = titleFromSlug(m[1]);
     if (!out.some((x) => x.slug === m[1])) out.push({ slug: m[1], name, image: img });
   }
   return out;

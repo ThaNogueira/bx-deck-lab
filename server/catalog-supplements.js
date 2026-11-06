@@ -14,13 +14,34 @@ export const AERO_BX53 = {
 export const ECLIPSE_RENDER = {
   image: '/assets/parts/eclipse.webp',
   source: 'https://img.beybladehub.app/blades-cx/main-Ec.webp',
+  frontSource: 'https://cdn.shopify.com/s/files/1/0257/5410/7976/files/Main-Blade-Eclipse-ad9d3c-750.png',
+  reverseSource: 'https://cdn.shopify.com/s/files/1/0257/5410/7976/files/Eclipse-Smash-Mode-ea0693-750.png',
+  officialSource: 'https://beyblade.takaratomy.co.jp/beyblade-x/lineup/cx09.html',
+  modes: [
+    { id: 'upper', label: 'Upper · Vermelho', imageUrl: '/assets/parts/eclipse.webp' },
+    { id: 'smash', label: 'Smash · Azul', imageUrl: '/assets/parts/eclipse-smash.png' },
+  ],
 };
 
 export async function applyCatalogSupplements(db = prisma) {
   return db.$transaction(async tx => {
     const eclipse = await tx.part.updateMany({ where: { kind: 'MAIN_BLADE', name: 'Eclipse', parentId: null,
-      OR: [{ imageUrl: null }, { imageUrl: ECLIPSE_RENDER.source }] },
+      OR: [{ imageUrl: null }, { imageUrl: ECLIPSE_RENDER.source }, { imageUrl: ECLIPSE_RENDER.frontSource }] },
     data: { imageUrl: ECLIPSE_RENDER.image } });
+    const eclipsePart = await tx.part.findFirst({ where: { kind: 'MAIN_BLADE', name: 'Eclipse', parentId: null } });
+    const eclipseStarter = await tx.product.findFirst({ where: { code: 'CX-09', slug: 'cx-09-sol-eclipse-d5-70tk' } });
+    if (eclipsePart && eclipseStarter) {
+      await tx.productPart.upsert({ where: { productId_partId: { productId: eclipseStarter.id, partId: eclipsePart.id } },
+        create: { productId: eclipseStarter.id, partId: eclipsePart.id, qty: 1 }, update: { qty: 1 } });
+      const wrongModes = await tx.part.findMany({ where: { kind: 'ASSIST_BLADE', name: 'Upper Mode',
+        imageUrl: { contains: 'Main-Blade-Eclipse' } }, select: { id: true } });
+      if (wrongModes.length) {
+        const ids = wrongModes.map(p => p.id);
+        await tx.productPart.deleteMany({ where: { productId: eclipseStarter.id, partId: { in: ids } } });
+        // Mantém IDs históricos; este modo nunca foi uma Assist Blade.
+        await tx.part.updateMany({ where: { id: { in: ids } }, data: { hidden: true } });
+      }
+    }
     const parent = await tx.part.findFirst({ where: { kind: 'BLADE', parentId: null,
       name: { in: ['AeroPegasus', 'Aero Pegasus'] } }, orderBy: { createdAt: 'asc' } });
     let variant = null;

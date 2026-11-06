@@ -13,6 +13,7 @@
   <title>Peça — BX Deck Lab</title>
   <link rel="stylesheet" href="/styles.css" />
   <link rel="stylesheet" href="/design-system.css" />
+  <link rel="stylesheet" href="/css/part-modes.css" />
 </head>
 <body>
   <div class="noise"></div>
@@ -36,6 +37,7 @@
       document.title = `${part.displayName} — BX Deck Lab`;
       const aliases = (part.aliases || []).filter(Boolean);
       const variants = part.variants || [];
+      const modes = part.imageModes || [];
       const gallery = variants.length
         ? variants.map((v) => v.imageUrl).filter(Boolean)
         : [...new Set([part.imageUrl, ...(part.images || [])].filter(Boolean))];
@@ -88,10 +90,12 @@
       app.innerHTML = `
         <div class="part-page-hero">
           <div class="part-gallery">
-            <div class="part-main-img" id="mainImg">
+            ${modes.length === 2 ? `<button type="button" class="part-main-img part-mode-toggle" id="mainImg" aria-pressed="false">
+              <span class="part-mode-stage"><span class="part-mode-rotor">${modes.map((m, i) => `<span class="part-mode-face ${i ? 'back' : 'front'}"><img src="${BX.esc(m.imageUrl)}" alt="Eclipse — ${BX.esc(m.label)}" decoding="async" draggable="false"></span>`).join('')}</span>
+            </button><div class="part-mode-caption"><strong id="partModeStatus" aria-live="polite">${BX.esc(modes[0].label)}</strong><span>Toque na imagem para virar ↔</span></div>` : `<div class="part-main-img" id="mainImg">
               ${gallery.length ? `<img src="${BX.esc(gallery[0])}" alt="${BX.esc(part.displayName)}">` : `<span class="fallback" style="font:800 42px var(--display);color:#6f7787">${BX.esc((part.abbrev || part.displayName.slice(0, 2)).toUpperCase())}</span>`}
-            </div>
-            ${gallery.length > 1 ? `<div class="variant-thumbs">${gallery.map((url, i) => `
+            </div>`}
+            ${modes.length !== 2 && gallery.length > 1 ? `<div class="variant-thumbs">${gallery.map((url, i) => `
               <button class="variant-thumb ${i === 0 ? 'selected' : ''}" data-img="${BX.esc(url)}" title="${BX.esc(variantByImg.get(url)?.label || '')}"><img loading="lazy" src="${BX.esc(url)}" alt=""></button>`).join('')}</div>` : ''}
             <div id="colorInfo">${colorInfo(gallery[0])}</div>
           </div>
@@ -119,6 +123,11 @@
           <small>Os botões abrem uma busca do Google — confira sempre o vendedor.</small>
         </div>
         ${productsHtml}`;
+
+      if (modes.length === 2) {
+        const { mountPartModes } = await import('/js/part-modes.mjs');
+        mountPartModes(document.getElementById('mainImg'), modes, document.getElementById('partModeStatus'));
+      }
 
       document.querySelectorAll('.variant-thumb').forEach((btn) => btn.addEventListener('click', () => {
         document.querySelectorAll('.variant-thumb').forEach((b) => b.classList.toggle('selected', b === btn));

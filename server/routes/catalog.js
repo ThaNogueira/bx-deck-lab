@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { prisma } from '../db.js';
 import { isStaff } from '../auth.js';
 import { googleSearchUrl, json, KIND_ORDER } from '../util.js';
+import { ECLIPSE_RENDER } from '../catalog-supplements.js';
 
 const router = Router();
 const ah = (fn) => (req, res, next) => fn(req, res, next).catch(next);
@@ -21,6 +22,7 @@ export function partDto(p) {
     note: p.note,
     behavior: p.behavior,
     imageUrl: p.imageUrl,
+    imageModes: p.kind === 'MAIN_BLADE' && p.name === 'Eclipse' ? ECLIPSE_RENDER.modes : [],
     images: json(p.imagesJson, []),
     weightGrams: p.weightGrams,
     banned: p.banned,

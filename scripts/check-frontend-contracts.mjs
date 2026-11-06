@@ -22,6 +22,11 @@ for (const file of readdirSync('public').filter(name => name.endsWith('.html')))
     for (const hook of ['BX.requireLogin', 'id="app"', 'data-frame', 'frameId: current.frameId', 'Automática · elo', 'rating: competition?.rating']) assert(html.includes(hook));
     continue;
   }
+  if (file === 'peca.html') {
+    const html = readFileSync(`public/${file}`, 'utf8');
+    for (const hook of ['id="topbar"', 'id="app"', 'id="mainImg"', '/js/shared.js', '/api/parts/', 'part.imageModes', '/js/part-modes.mjs', 'variant-thumb', 'productsHtml']) assert(html.includes(hook), `Missing part-page hook: ${hook}`);
+    continue; // Product links: catalog-sync.integration; flip/responsiveness: part-modes.integration.
+  }
   if (['icones.html','entrar.html','index.html'].includes(file)) {
     const html=readFileSync(`public/${file}`,'utf8');
     assert(html.includes('id="topbar"') && html.includes(file==='index.html'?'id="view-builder"':'id="app"'));
