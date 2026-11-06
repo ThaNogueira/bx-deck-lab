@@ -11,8 +11,16 @@ export const AERO_BX53 = {
   officialSource: 'https://beyblade.takaratomy.co.jp/beyblade-x/lineup/bx53.html',
 };
 
+export const ECLIPSE_RENDER = {
+  image: '/assets/parts/eclipse.webp',
+  source: 'https://img.beybladehub.app/blades-cx/main-Ec.webp',
+};
+
 export async function applyCatalogSupplements(db = prisma) {
   return db.$transaction(async tx => {
+    const eclipse = await tx.part.updateMany({ where: { kind: 'MAIN_BLADE', name: 'Eclipse', parentId: null,
+      OR: [{ imageUrl: null }, { imageUrl: ECLIPSE_RENDER.source }] },
+    data: { imageUrl: ECLIPSE_RENDER.image } });
     const parent = await tx.part.findFirst({ where: { kind: 'BLADE', parentId: null,
       name: { in: ['AeroPegasus', 'Aero Pegasus'] } }, orderBy: { createdAt: 'asc' } });
     let variant = null;
@@ -55,6 +63,6 @@ export async function applyCatalogSupplements(db = prisma) {
     const repaired = await tx.part.updateMany({ where: { kind: 'BLADE', parentId: null,
       name: 'Tusk Mammoth', imageUrl: { startsWith: 'https://static.wikia.nocookie.net/beyblade/images/e/e2/Tusk_Mammoth_' } },
     data: { imageUrl: 'https://img.beybladehub.app/blades-db/MmTs.webp' } });
-    return { aeroVariant: variant?.id || null, repairedImages: repaired.count + repairedVariants };
+    return { aeroVariant: variant?.id || null, repairedImages: repaired.count + repairedVariants + eclipse.count };
   });
 }

@@ -29,6 +29,7 @@ const byy = '| Blade | Code | ATK/DEF/STA | Weight | Spin | Geometry | Notes |\n
   + '| Attack Type Blades |\n| Aero Pegasus | UX-00 | 60/25/30 | 38g | Right | 3 pts | Attack |\n'
   + '| Pegasus Blast | CX-07 | 60/20/20 | 40g | Right | 3 pts | assembled |';
 const originalFetch = globalThis.fetch;
+let server;
 try {
   assert.equal(parseByyParts(byy).length, 1, 'CX assemblies must never become standalone blades');
   const bits = parseHubHtml(html.bits, 'bits');
@@ -57,6 +58,9 @@ try {
   await syncParts();
   assert.equal(await prisma.part.count(), count, 'repeat imports must be idempotent');
 
+  await prisma.part.create({ data: { name: 'SolEclipse', displayName: 'Sol Eclipse', slug: 'soleclipse', kind: 'BLADE', hidden: true } });
+  await prisma.part.create({ data: { name: 'Eclipse', displayName: 'Eclipse', slug: 'eclipse', kind: 'MAIN_BLADE', imageUrl: 'https://img.beybladehub.app/blades-cx/main-Ec.webp' } });
+
   const product = await prisma.product.create({ data: { name: 'All-in-One Set', slug: 'bx53', code: 'BX-53' } });
   const old = await prisma.part.create({ data: { name: parent.name, displayName: parent.displayName, slug: 'aero-old-color', kind: parent.kind, parentId: parent.id, imageUrl: 'old.png' } });
   const placeholder = await prisma.part.create({ data: { name: parent.name, displayName: parent.displayName, slug: 'aero-placeholder', kind: parent.kind, parentId: parent.id, imageUrl: '/coming.png', variantLabel: 'Coming' } });
@@ -72,6 +76,20 @@ try {
   assert.equal(await prisma.productPart.count({ where: { productId: product.id, partId: old.id } }), 0);
   assert.equal(await prisma.productPart.count({ where: { productId: product.id, partId: variant.id } }), 1);
 
+  const { default: express } = await import('express');
+  const { default: catalog } = await import('../server/routes/catalog.js');
+  const app = express(); app.use((req, _res, next) => { if (req.headers['x-test-staff']) req.user = { role: 'ADMIN' }; next(); }); app.use(catalog);
+  server = await new Promise(resolve => { const listener = app.listen(0, '127.0.0.1', () => resolve(listener)); });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  for (const headers of [{}, { 'x-test-staff': '1' }]) {
+    const page = await originalFetch(base + '/peca/soleclipse', { redirect: 'manual', headers });
+    assert.equal(page.status, 301); assert.equal(page.headers.get('location'), '/peca/eclipse');
+    const api = await originalFetch(base + '/api/parts/soleclipse', { headers });
+    const result = await api.json();
+    assert.equal(api.status, 200); assert.equal(result.part.kind, 'MAIN_BLADE');
+    assert.equal(result.part.slug, 'eclipse'); assert.equal(result.part.imageUrl, '/assets/parts/eclipse.webp');
+  }
+
   globalThis.fetch = async () => new Response('changed layout');
   const failed = await syncParts();
   assert.equal(failed.sources.filter(s => s.error).length, 4);
@@ -79,5 +97,6 @@ try {
   console.log('Catalog sync: parsing, categories, manual images, idempotence, BX-53 color/link and failure logging passed.');
 } finally {
   globalThis.fetch = originalFetch;
+  if (server) await new Promise(resolve => server.close(resolve));
   await prisma.$disconnect();
 }

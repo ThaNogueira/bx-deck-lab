@@ -83,6 +83,11 @@ export function invalidatePartsIndex() {
   indexCache = { at: 0, body: null };
 }
 
+// Cadastro legado de um conjunto CX que foi confundido com uma Blade avulsa.
+// O link público e os clientes antigos passam a usar a Main Blade correta.
+router.get('/peca/soleclipse', (_req, res) => res.redirect(301, '/peca/eclipse'));
+router.get('/api/parts/soleclipse', (_req, res) => res.redirect(301, '/api/parts/eclipse'));
+
 router.get('/api/parts', ah(async (req, res) => {
   const { query = '', kind = '', all = '' } = req.query;
   const where = {};
