@@ -1,8 +1,7 @@
 /* BX Deck Lab — service worker: cache de imagens de peças (cache-first), dados do catálogo
  * (stale-while-revalidate) e aquecimento em segundo plano na primeira visita. */
-// v2 elimina a resposta antiga de /api/parts-index que ainda podia trazer os
-// vínculos de foto anteriores à correção do montador.
-const VERSION = 'v2';
+// v3 revalida o índice antes de responder e descarta catálogos/imagens antigos.
+const VERSION = 'v3';
 const IMG_CACHE = 'bx-img-' + VERSION;
 const API_CACHE = 'bx-api-' + VERSION;
 const IMG_HOSTS = ['cdn.shopify.com', 'img.beybladehub.app', 'static.wikia.nocookie.net', 'beybladehub.app'];
@@ -45,6 +44,16 @@ self.addEventListener('fetch', (e) => {
     e.respondWith((async () => {
       const cache = await caches.open(API_CACHE);
       const hit = await cache.match(req);
+      // O índice decide quais peças aparecem no montador. Revalidar antes
+      // de responder evita devolver um catálogo antigo na primeira abertura.
+      if (url.pathname === '/api/parts-index') {
+        try {
+          const fresh = await fetch(req, { cache: 'no-cache', signal: AbortSignal.timeout(8000) });
+          if (fresh.ok) { await cache.put(req, fresh.clone()); return fresh; }
+          if (!hit) return fresh;
+        } catch { /* offline: usa a última versão boa */ }
+        return hit || Response.error();
+      }
       const refresh = fetch(req).then((res) => { if (res.ok) cache.put(req, res.clone()).catch(() => {}); return res; }).catch(() => null);
       if (hit) { e.waitUntil(refresh); return hit; }
       const res = await refresh;

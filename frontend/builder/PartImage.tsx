@@ -11,6 +11,9 @@ export function PartImage({part,size,resolveImage}:{part:Part;size:string;resolv
   const element=useRef<HTMLDivElement>(null);
   useEffect(()=>{
     let active=true;
+    // O catálogo do servidor pode chegar depois do primeiro render.
+    setUrl(part.image||'');
+    setFailed(false);
     const load=()=>{queue.push(async()=>{if(!active)return;try{const value=await resolveImage(part.id);if(active&&value)setUrl(value);}catch{/* Keep the readable fallback. */}});pump();};
     let observer:IntersectionObserver|undefined;
     if(!part.image){

@@ -46,7 +46,7 @@
   let partsPromise = null;
   function partsIndex() {
     if (partsPromise) return partsPromise;
-    partsPromise = api('/api/parts-index').then(({ parts }) => {
+    partsPromise = api('/api/parts-index', { cache: 'no-cache' }).then(({ parts }) => {
       const byId = new Map();
       const byName = new Map();
       const byParent = new Map(); // peça-pai -> recolors (peças-filhas)
@@ -68,6 +68,7 @@
       }
       return { list: parts, byId, byName, byParent, variantsOf: (id) => byParent.get(id) || [] };
     });
+    partsPromise.catch(() => { partsPromise = null; });
     return partsPromise;
   }
 

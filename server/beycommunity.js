@@ -215,16 +215,17 @@ async function loadPartIndex() {
 
 async function upsertBCPart(idx, kind, rec, subKind = null) {
   rec.slug = rec.slug || slugify(rec.name); // ratchets não têm slug no payload
-  const existing =
-    idx.byBcSlug.get(rec.slug) ||
-    idx.byKey.get(normKey(rec.name)) ||
-    null;
+  const compatible = p => p && p.kind === kind && (!subKind || p.subKind === subKind);
+  const fromSlug = idx.byBcSlug.get(rec.slug);
+  const existing = (compatible(fromSlug) && fromSlug) || idx.parts.find(p => compatible(p)
+    && [p.name, p.displayName, ...JSON.parse(p.aliasesJson || '[]')].some(n => normKey(n) === normKey(rec.name))) || null;
 
   const stats = rec.attack != null || rec.defense != null || rec.stamina != null
     ? { atk: rec.attack ?? undefined, def: rec.defense ?? undefined, sta: rec.stamina ?? undefined, dash: rec.dash ?? undefined, burst: rec.burst_resistance ?? undefined }
     : null;
-  const images = (rec.variants || []).map((v) => v.image_url).filter(Boolean);
-  const image = rec.image || images[0] || null;
+  const usableImage = url => url && !/\/(?:coming|placeholder|no-image)\.(?:png|webp|jpe?g)(?:\?|$)/i.test(url);
+  const images = (rec.variants || []).map((v) => v.image_url).filter(usableImage);
+  const image = (usableImage(rec.image) && rec.image) || images[0] || null;
 
   if (existing) {
     const data = { bcSlug: rec.slug };

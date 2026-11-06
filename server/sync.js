@@ -2,6 +2,8 @@ import { prisma } from './db.js';
 import { slugify } from './util.js';
 import { mapKind } from './catalog-data.js';
 import { syncProductCombos } from './beycommunity.js';
+import { parseHubHtml } from './hub-catalog.js';
+import { applyCatalogSupplements } from './catalog-supplements.js';
 
 /**
  * Sincronização do catálogo de PRODUTOS com as listas públicas da
@@ -96,9 +98,9 @@ const categoryOf = (type) => {
 
 const PART_SOURCES = {
   byy: 'https://byybladebuilder.com/parts',
-  hubBlades: 'https://beybladehub.app/parts/blades',
-  hubRatchets: 'https://beybladehub.app/parts/ratchets',
-  hubBits: 'https://beybladehub.app/parts/bits',
+  hubBlades: 'https://beybladehub.app/en/parts/blades',
+  hubRatchets: 'https://beybladehub.app/en/parts/ratchets',
+  hubBits: 'https://beybladehub.app/en/parts/bits',
 };
 
 const normKey = (s) => slugify(s).replace(/-/g, '');
@@ -131,7 +133,7 @@ function hubEnglishName(block) {
 }
 
 /** Byyblade X HQ: tabelas completas de blades, ratchets e bits com stats. */
-function parseByyParts(text) {
+export function parseByyParts(text) {
   const out = [];
   let section = '', pending = '', bladeType = '';
   for (const raw of text.split(/\r?\n/)) {
@@ -148,8 +150,17 @@ function parseByyParts(text) {
       continue;
     }
     const cells = line.replace(/^\|/, '').replace(/\|$/, '').split('|').map(stripMd);
+    // A página atual omite os títulos e começa diretamente pelas tabelas.
+    if (/^Blade$/i.test(cells[0]) && /ATK\/DEF\/STA/i.test(cells[2])) { section = 'blade'; continue; }
+    if (/^Bit$/i.test(cells[0]) && /^Abbr/i.test(cells[1])) { section = 'bit'; continue; }
+    if (/^Ratchet$/i.test(cells[0])) { section = 'ratchet'; continue; }
+    const group = cells.length === 1 && cells[0].match(/^(Attack|Defense|Stamina|Balance) Type Blades$/i);
+    if (group) { bladeType = group[1]; continue; }
     if (cells.some((x) => /ATK\/DEF\/STA|---/.test(x))) continue;
     if (section === 'blade' && cells.length >= 6) {
+      // As tabelas CX trazem o conjunto montado (chip + main + assist), não
+      // uma Blade avulsa. Stats do conjunto não podem virar stats da main.
+      if (/\bCX-\d/i.test(cells[1])) continue;
       let name = cells[0];
       const aliases = [];
       if (/^Hasbro:/i.test(name)) { aliases.push(name.replace(/^Hasbro:\s*/i, '')); name = pending || aliases[0]; }
@@ -231,11 +242,21 @@ async function upsertPartRecord(idx, rec) {
   const { kind, subKind } = mapKind(rec.kind);
   const keys = [rec.name, ...(rec.aliases || [])].map(normKey).filter(Boolean);
   let existing = null;
-  for (const k of keys) { if (idx.byKey.has(k)) { existing = idx.byKey.get(k); break; } }
+  for (const k of keys) {
+    existing = idx.parts.find(p => p.kind === kind && (p.subKind || null) === subKind
+      && [p.name, p.displayName, ...JSON.parse(p.aliasesJson || '[]')].some(n => normKey(n) === k));
+    if (existing) break;
+  }
   // Bits também casam pela sigla (H = Hexa)
   if (!existing && rec.abbrev && ['bit', 'rib', 'ratchet'].includes(rec.kind)) {
-    existing = idx.parts.find((p) => p.kind === kind && (p.abbrev || '').toUpperCase() === rec.abbrev.toUpperCase());
+    existing = idx.parts.find((p) => p.kind === kind && (p.subKind || null) === subKind && (p.abbrev || '').toUpperCase() === rec.abbrev.toUpperCase());
   }
+  // Repara nomes truncados do parser antigo sem criar uma segunda peça
+  // quando o novo card aponta para exatamente o mesmo render.
+  if (!existing && rec.image && /img\.beybladehub\.app\//.test(rec.image)) {
+    existing = idx.parts.find(p => p.kind === kind && (p.subKind || null) === subKind && p.imageUrl === rec.image);
+  }
+  if (!existing && rec.existingOnly) return 'kept';
 
   if (existing) {
     const data = {};
@@ -282,7 +303,7 @@ async function upsertPartRecord(idx, rec) {
       behavior: rec.behavior || null,
       imageUrl: rec.image || null,
       banned: !!rec.banned,
-      source: 'sync',
+      source: rec.source || 'sync',
     },
   });
   idx.parts.push(created);
@@ -290,37 +311,52 @@ async function upsertPartRecord(idx, rec) {
   return 'created';
 }
 
+export async function fetchHubParts(category) {
+  const url = `https://beybladehub.app/en/parts/${category}`;
+  try {
+    const response = await fetch(url, { signal: AbortSignal.timeout(20_000), headers: { Accept: 'text/html' } });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const records = parseHubHtml(await response.text(), category);
+    if (records.length) return records;
+  } catch { /* O formato antigo continua disponível como segunda tentativa. */ }
+  const markdown = await fetchRemoteText(url);
+  const records = [...parseHubCatalog(markdown, category)];
+  if (category === 'blades') records.push(...parseHubCX(markdown).map(r => ({ ...r, kind: { LOCK_CHIP: 'lock', MAIN_BLADE: 'main', ASSIST_BLADE: 'assist', OVER_BLADE: 'over' }[r.kind] })));
+  if (!records.length) throw new Error(`Nenhum card de ${category} reconhecido`);
+  return records;
+}
+
 export async function syncParts() {
   const jobs = await Promise.allSettled([
-    fetchRemoteText(PART_SOURCES.byy),
-    fetchRemoteText(PART_SOURCES.hubBlades),
-    fetchRemoteText(PART_SOURCES.hubRatchets),
-    fetchRemoteText(PART_SOURCES.hubBits),
+    fetchRemoteText(PART_SOURCES.byy).then(parseByyParts).then(records => {
+      if (!records.length) throw new Error('Nenhuma peça reconhecida');
+      // Esta fonte também lista montagens completas CX. É usada somente
+      // para completar peças já reconhecidas, nunca criar novas por heurística.
+      return records.map(r => ({ ...r, existingOnly: true }));
+    }),
+    fetchHubParts('blades'), fetchHubParts('ratchets'), fetchHubParts('bits'),
   ]);
-  const records = [];
-  if (jobs[0].status === 'fulfilled') records.push(...parseByyParts(jobs[0].value));
-  if (jobs[1].status === 'fulfilled') records.push(...parseHubCatalog(jobs[1].value, 'blades'));
-  if (jobs[2].status === 'fulfilled') records.push(...parseHubCatalog(jobs[2].value, 'ratchets'));
-  if (jobs[3].status === 'fulfilled') records.push(...parseHubCatalog(jobs[3].value, 'bits'));
-
-  const sourcesOk = jobs.filter((j) => j.status === 'fulfilled').length;
+  const records = jobs.flatMap(j => j.status === 'fulfilled' ? j.value : []);
+  const sources = jobs.map((j, i) => ({ name: ['Byyblade HQ', 'Hub blades/CX', 'Hub ratchets', 'Hub bits'][i],
+    count: j.status === 'fulfilled' ? j.value.length : 0, error: j.status === 'rejected' ? String(j.reason?.message || j.reason) : null }));
+  const sourcesOk = sources.filter(s => s.count).length;
   if (!records.length) {
-    await prisma.syncLog.create({ data: { source: 'peças (Byyblade HQ + BeybladeHub)', ok: false, message: `Nenhuma peça extraída (${sourcesOk}/4 fontes responderam)` } });
-    return { created: 0, updated: 0 };
+    await prisma.syncLog.create({ data: { source: 'peças (Byyblade HQ + BeybladeHub)', ok: false, message: `Nenhuma peça extraída • ${sources.map(s => `${s.name}: ${s.error}`).join(' • ')}`.slice(0, 900) } });
+    return { created: 0, updated: 0, sources };
   }
   const idx = await loadPartIndex();
-  let created = 0, updated = 0;
+  let created = 0, updated = 0, failed = 0;
   for (const rec of records) {
     try {
       const r = await upsertPartRecord(idx, rec);
       if (r === 'created') created++;
       if (r === 'updated') updated++;
-    } catch { /* segue para a próxima peça */ }
+    } catch { failed++; }
   }
   await prisma.syncLog.create({
-    data: { source: 'peças (Byyblade HQ + BeybladeHub)', ok: true, message: `${records.length} registros de ${sourcesOk}/4 fontes — ${created} peças novas, ${updated} enriquecidas (stats/imagens/apelidos)` },
+    data: { source: 'peças (Byyblade HQ + BeybladeHub)', ok: sourcesOk === 4 && failed === 0, message: `${records.length} registros — ${created} peças novas, ${updated} enriquecidas, ${failed} falhas • ${sources.map(s => `${s.name}: ${s.error || s.count}`).join(' • ')}`.slice(0, 900) },
   });
-  return { created, updated };
+  return { created, updated, sources, failed };
 }
 
 // ---------------------------------------------------------------------------
@@ -630,6 +666,7 @@ export function variantLabelFromUrl(url, part) {
   try {
     let f = decodeURIComponent(String(url).split('/').pop() || '').replace(/\.[a-z0-9]+$/i, '');
     f = f.replace(/_[0-9a-f-]{16,}$/i, '').replace(/[_]+/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2');
+    f = f.replace(/-[0-9a-f]{6,}(?:-\d{2,4})?$/i, '');
     const drop = new Set(['ratchet', 'blade', 'bit', 'lock', 'chip', 'assist', 'main', 'over', 'metal', 'rib', 'integrated', 'beyblade', 'x', 'image', 'img', 'png', 'webp']);
     for (const n of [part.displayName, part.name, part.abbrev]) for (const t of String(n || '').toLowerCase().split(/[^a-z0-9]+/)) if (t) drop.add(t);
     // ratchets: "1-60" vira tokens 1 e 60 — remove também a sigla inteira
@@ -652,7 +689,7 @@ export async function syncVariants() {
   for (const p of parents) {
     let imgs = [];
     try { imgs = JSON.parse(p.imagesJson || '[]'); } catch {}
-    const urls = [...new Set([p.imageUrl, ...imgs].filter(Boolean))];
+    const urls = [...new Set([p.imageUrl, ...imgs].filter(u => u && !/\/(?:coming|placeholder|no-image)\.(?:png|webp|jpe?g)(?:\?|$)/i.test(u)))];
     if (urls.length < 2) continue;
     const mine = byParent.get(p.id) || [];
     for (let n = 0; n < urls.length; n++) {
@@ -701,10 +738,12 @@ export async function syncAll(actor = null, { refreshImages = false } = {}) {
   const variants = await syncVariants();
   let combos = { scanned: 0, linked: 0, failed: 0 };
   try { combos = await syncProductCombos(); } catch (e) { await prisma.syncLog.create({ data: { source: 'cores por produto', ok: false, message: String(e.message || e) } }); }
+  const supplements = await applyCatalogSupplements();
   const result = {
     dedupe,
     variants,
     combos,
+    supplements,
     images,
     products: bc.products,
     parts: {

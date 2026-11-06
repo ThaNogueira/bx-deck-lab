@@ -3,6 +3,7 @@ import { slugify } from './util.js';
 import { extractEmbeddedCatalog, mapKind } from './catalog-data.js';
 import { DEFAULTS, setSetting } from './settings.js';
 import { mergeParts } from './sync.js';
+import { applyCatalogSupplements } from './catalog-supplements.js';
 
 const normKey = (s) => slugify(s).replace(/-/g, '');
 
@@ -232,6 +233,7 @@ await refreshSnapshotParts();
 await seedMetaBlades();
 await hideBogusParts();
 await fixMisfiledCxParts();
+console.log('Complementos do catálogo:', await applyCatalogSupplements());
 await seedCosmetics();
 await seedSettings();
 await prisma.$disconnect();
