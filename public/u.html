@@ -68,6 +68,7 @@
             : `<img src="${BX.esc(user.bannerUrl)}" alt="">`)
         : '';
       const stickers = (user.cosmetics?.stickers || []);
+      const reportButton = `<button type="button" class="profile-report" id="reportBtn" title="Denunciar perfil" aria-label="Denunciar este perfil">${BX.icon('flag', 17)}</button>`;
       const forSale = collection.filter((i) => i.forSale);
       const shelf = collection.filter((i) => !i.forSale);
 
@@ -113,17 +114,15 @@
         </div>`;
 
       app.innerHTML = `
-        ${bannerInner ? `<div class="profile-banner">${bannerInner}</div>` : ''}
+        ${bannerInner ? `<div class="profile-banner">${bannerInner}${!isMe ? reportButton : ''}</div>` : ''}
         <div class="profile-head">
           ${BX.avatarHtml(user, { size: 108, showVerified: false })}
           <div class="profile-id">
-            <h1>${BX.esc(user.name)}${user.verified ? `<span class="profile-verified" title="Identidade verificada" aria-label="Identidade verificada">${BX.icon('check', 11)}</span>` : ''}${user.role !== 'USER' ? `<span class="role-chip ${user.role}">${user.role}</span>` : ''}<span class="profile-handle">@${BX.esc(user.slug)}</span></h1>
+            <h1>${BX.esc(user.name)}${user.verified ? `<span class="profile-verified" title="Identidade verificada" aria-label="Identidade verificada">${BX.icon('check', 11)}</span>` : ''}${user.role !== 'USER' ? `<span class="role-chip ${user.role}">${user.role}</span>` : ''}<span class="profile-handle">@${BX.esc(user.slug)}</span>${!bannerInner && !isMe ? reportButton : ''}</h1>
             ${user.bio ? `<p class="profile-bio">${BX.esc(user.bio)}</p>` : ''}
           </div>
           ${favoritePart ? `<a class="profile-favorite" href="/peca/${BX.esc(favoritePart.slug)}" title="Ver ${BX.esc(favoritePart.displayName)}"><span>BEY FAVORITA</span><div class="profile-favorite-art"><img class="profile-favorite-image" src="${BX.esc(favoritePart.imageUrl)}" alt="${BX.esc(favoritePart.displayName)}" loading="eager" decoding="async"></div><b>${BX.esc(favoritePart.displayName)}</b>${favoritePart.type ? `<small>${BX.esc(favoritePart.type)}</small>` : ''}</a>` : ''}
-          <div class="profile-head-actions">
-            ${me && me.id === user.id ? '<a class="btn secondary" href="/perfil">Editar meu perfil</a>' : `<button class="btn ghost" id="reportBtn">${BX.icon('flag', 15)}Denunciar</button>`}
-          </div>
+          ${isMe ? '<div class="profile-head-actions"><a class="btn secondary" href="/perfil">Editar meu perfil</a></div>' : ''}
         </div>
         ${(medalTags || stickers.length) ? `<div class="profile-achievement-strip"><div class="profile-podium-tags">${medalTags}</div>${stickers.length ? `<div class="sticker-row">${stickers.map((s) => `<span class="sticker profile-sticker" tabindex="0" aria-label="Sticker: ${BX.esc(s.name)}">${s.imageUrl ? `<img src="${BX.esc(s.imageUrl)}" alt="">` : BX.esc(s.styleKey || '') || BX.icon('star', 14)}<span class="profile-sticker-preview" aria-hidden="true">${s.imageUrl ? `<img src="${BX.esc(s.imageUrl)}" alt="">` : `<span class="profile-sticker-preview-icon">${BX.esc(s.styleKey || '') || BX.icon('star', 26)}</span>`}<b>${BX.esc(s.name)}</b></span></span>`).join('')}</div>` : ''}</div>` : ''}
         <section class="profile-competition" id="competition" aria-label="Estatísticas de campeonatos"></section>
