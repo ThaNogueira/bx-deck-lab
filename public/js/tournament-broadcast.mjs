@@ -144,16 +144,23 @@ const randomIndex = values => Math.floor(Math.random() * values.length);
 
 function prepareRoundBlades() {
   const available = bladeRenders.filter(blade => !failedPhotos.has(blade.src));
-  const unused = available.filter(blade => !nextRoundBlades.includes(blade));
-  const pool = unused.length >= 2 ? unused : available;
-  nextRoundBlades = pool.splice(randomIndex(pool), 1).concat(pool.splice(randomIndex(pool), 1));
-  for (const { src } of nextRoundBlades) new Image().src = src;
+  const pick = candidates => {
+    const unused = candidates.filter(blade => !nextRoundBlades.includes(blade));
+    const pool = unused.length ? unused : candidates;
+    return pool[randomIndex(pool)];
+  };
+  const right = pick(available.filter(blade => blade.spin === 'right'));
+  const left = pick(available.filter(blade => blade !== right));
+  nextRoundBlades = [left, right];
+  for (const blade of nextRoundBlades) {
+    if (blade) new Image().src = blade.src;
+  }
 }
 
 function addRoundBlades() {
   const scene = el.scene.querySelector('.scene-round');
-  if (!scene || !nextRoundBlades.length || scene.querySelector('.scene-blade')) return;
   const [left, right] = nextRoundBlades;
+  if (!scene || (!left && !right) || scene.querySelector('.scene-blade')) return;
   scene.insertAdjacentHTML('beforeend', bladeArt(left, 'scene-blade blade-left') + bladeArt(right, 'scene-blade blade-right'));
   prepareRoundBlades();
 }
@@ -271,7 +278,7 @@ function renderWaiting() {
     renderWhen(el.arenaStage, JSON.stringify(['pairings', countLabel, pageLabel, matchKey]), () => {
       const playerLine = id => {
         const player = players.get(id);
-        return `<div class="pairing-player">${portrait(player)}<strong>${escapeHtml(player?.name || 'Blader')}</strong></div>`;
+        return `<div class="pairing-player">${portrait(player, true)}<strong>${escapeHtml(player?.name || 'Blader')}</strong></div>`;
       };
       return `<div class="pairings-board">
         <div class="pairings-list">${slice.map(match => `<article class="pairing-row">

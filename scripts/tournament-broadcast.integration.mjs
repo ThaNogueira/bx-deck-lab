@@ -19,6 +19,16 @@ const users = [];
 const standardBladeImages = ['/assets/home/spinning-bey.png', '/assets/parts/aero-pegasus-bx53.webp'];
 let server, browser;
 const streams = new Set();
+const bladeTurn = image => {
+  const spin = image.getAnimations().find(animation => animation.animationName === 'blade-spin');
+  const currentTime = spin.currentTime;
+  spin.pause();
+  spin.currentTime = spin.effect.getTiming().duration / 4;
+  const turn = Math.sign(new DOMMatrixReadOnly(getComputedStyle(image).transform).b);
+  spin.currentTime = currentTime;
+  spin.play();
+  return turn;
+};
 try {
   for (let i = 0; i < 21; i++) {
     const name = ['Organizador', 'Bia Aurora', 'Augusto Vento Norte', 'Arthur Eclipse', 'Ana Carolina Nascimento de Albuquerque e Silva'][i] || 'Blader ' + String(i).padStart(2, '0');
@@ -100,6 +110,7 @@ try {
     for (const page of [tv, tv2]) {
       page.on('pageerror', e => errors.push(e.message));
       await page.addInitScript(() => {
+        Math.random = () => 0;
         window.playedNotes = 0;
         const original = AudioContext.prototype.createOscillator;
         AudioContext.prototype.createOscillator = function () { window.playedNotes++; return original.call(this); };
@@ -139,11 +150,12 @@ try {
       return blades.length === 2 && blades.every(blade => blade.naturalWidth > 0);
     });
     assert.deepEqual((await tv.locator('.scene-blade img').evaluateAll(images => images.map(image => image.getAttribute('src')))).sort(), [...standardBladeImages].sort());
-    for (const [index, direction] of ['normal', 'reverse'].entries()) {
-      const image = tv.locator(`.scene-blade img[src="${standardBladeImages[index]}"]`);
-      assert.equal(await image.evaluate(img => getComputedStyle(img).animationDirection), direction);
-    }
-    assert.equal(await tv.locator('.scene-blade img').first().evaluate(img => getComputedStyle(img).animationName), 'blade-spin');
+    const leftBlade = tv.locator('.blade-left[data-spin="left"] img');
+    const rightBlade = tv.locator('.blade-right[data-spin="right"] img');
+    assert.equal(await leftBlade.getAttribute('src'), standardBladeImages[1]);
+    assert.equal(await rightBlade.getAttribute('src'), standardBladeImages[0]);
+    assert.equal(await leftBlade.evaluate(bladeTurn), -1);
+    assert.equal(await rightBlade.evaluate(bladeTurn), 1);
     assert.equal(await tv2.locator('.scene-blade img').first().evaluate(img => getComputedStyle(img).animationName), 'none');
     await screenshot(tv, 'round-intro');
     await tv2.setViewportSize({ width: 390, height: 900 });
@@ -156,6 +168,11 @@ try {
     assert.equal(await pairingViewer.locator('#arenaCount').textContent(), 'Nenhuma mesa ao vivo');
     assert.equal(await pairingViewer.locator('.pairing-row').count(), 5);
     assert.equal(await pairingViewer.locator('.pairing-row .pairing-number strong').first().innerText(), '01');
+    assert.equal(await pairingViewer.locator('.pairing-player .elo-frame-prata').count(), 1);
+    assert.equal(await pairingViewer.locator('.pairing-player .elo-frame-ouro').count(), 1);
+    assert.equal(await pairingViewer.locator('.pairing-player .portrait:not(.ranked-portrait)').count(), 6);
+    await pairingViewer.locator('.pairing-player .elo-frame-prata img').evaluate(img => img.decode());
+    await pairingViewer.locator('.pairing-player .elo-frame-ouro img').evaluate(img => img.decode());
     assert(await pairingViewer.locator('#waiting').isHidden());
     await screenshot(pairingViewer, 'pairings-1080');
     await pairingViewer.setViewportSize({ width: 3840, height: 2160 });
@@ -300,11 +317,15 @@ try {
   if (tv) {
     await tv.getByText('Aguardando próxima rodada', { exact: true }).waitFor();
     assert.equal(await tv.locator('.intermission-leader').count(), 3);
+    const leaderFrames = tv.locator('.intermission-leader .elo-frame-spin');
+    assert.equal(await leaderFrames.count(), 2);
+    assert((await leaderFrames.first().evaluate(frame => getComputedStyle(frame).backgroundImage)).includes('/assets/ranks/frame-ferro.png'));
+    assert.equal(await tv.locator('.intermission-leader .portrait:not(.ranked-portrait)').evaluate(portrait => getComputedStyle(portrait).outlineStyle), 'solid');
     assert.equal(await tv.locator('.standing-rank').first().innerText(), '4');
     assert.equal(await tv.locator('.standing-row').count(), 7);
     assert(standardBladeImages.includes(await tv.locator('.intermission-blade img').getAttribute('src')));
-    assert(await tv.locator('.intermission-blade img').evaluate(img =>
-      getComputedStyle(img).animationDirection === (img.parentElement.dataset.spin === 'left' ? 'reverse' : 'normal')));
+    const intermission = tv.locator('.intermission-blade');
+    assert.equal(await intermission.locator('img').evaluate(bladeTurn), await intermission.getAttribute('data-spin') === 'left' ? -1 : 1);
     await screenshot(tv, 'between-rounds-1080');
     await tv2.locator('.intermission').waitFor();
     await tv2.setViewportSize({ width: 390, height: 900 });
