@@ -33,6 +33,11 @@ for (const file of readdirSync('public').filter(name => name.endsWith('.html')))
     assert(html.includes('/js/shared.js') && html.includes('type="module"'));
     continue; // Migrated routes have dedicated React e2e coverage.
   }
+  if (file === 'ao-vivo.html') {
+    const html = readFileSync(`public/${file}`, 'utf8');
+    for (const hook of ['id="arenaStage"', 'id="standingList"', 'id="scene"', '/js/tournament-broadcast.mjs', '/css/tournament-broadcast.css']) assert(html.includes(hook), hook);
+    continue;
+  }
   if (file === 'torneio.html' || file === 'torneios.html' || file === 'novo-torneio.html' || file === 'inscricao.html') {
     const html = readFileSync(`public/${file}`, 'utf8');
     assert(html.includes('/js/shared.js'));

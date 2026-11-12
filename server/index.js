@@ -159,6 +159,7 @@ const DYNAMIC = [
   ['/produto/:slug', 'produto.html'],
   ['/t/:slug', 'inscricao.html'],
   ['/torneio/:slug/cartaz', 'cartaz.html'],
+  ['/ao-vivo/:slug', 'ao-vivo.html'],
   ['/mesa/:slug/:matchId', 'mesa.html'],
   ['/comunidade/p/:id', 'comunidade.html'],
 ];

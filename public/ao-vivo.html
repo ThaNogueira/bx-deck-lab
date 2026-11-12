@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0c100e">
+  <title>Painel ao vivo · BeyXLab</title>
+  <link rel="stylesheet" href="/css/tournament-broadcast.css">
+</head>
+<body>
+  <main class="tv" id="tv">
+    <header class="masthead">
+      <span class="tv-mark" aria-label="BeyXLab">X</span>
+      <div class="tv-title"><p>BeyXLab <span> / </span> Arena ao vivo</p><h1 id="eventName">Carregando torneio</h1></div>
+      <div class="round-tag"><span id="roundLabel">Painel da arena</span><strong id="roundNumber">—</strong></div>
+    </header>
+    <div class="tv-grid">
+      <section class="arena" aria-label="Confrontos do torneio">
+        <div class="section-bar"><h2 id="arenaLabel">Mesas ao vivo</h2><span id="arenaCount"></span></div>
+        <div class="arena-stage" id="arenaStage"><div class="arena-empty"><strong>Conectando à arena…</strong></div></div>
+        <div class="waiting" id="waiting" hidden>
+          <div class="section-bar"><h2>Próximos confrontos</h2><span id="waitingCount"></span></div>
+          <div class="waiting-grid" id="waitingGrid"></div>
+        </div>
+      </section>
+      <aside class="standings" aria-label="Classificação do torneio">
+        <div class="section-bar"><h2 id="standingLabel">Classificação geral</h2><span id="standingCount"></span></div>
+        <div class="standing-cols" id="standingCols"><span>#</span><span>Blader</span><span>PTS</span><span>V–D</span></div>
+        <div class="standing-list" id="standingList"></div>
+        <p class="standing-page" id="standingPage"></p>
+      </aside>
+    </div>
+    <footer class="tv-footer">
+      <div class="connection" id="connection" role="status"><i></i><span>Conectando</span></div>
+      <span class="tv-location" id="eventLocation"></span>
+      <div class="tv-controls" aria-label="Controles do painel">
+        <button type="button" id="soundToggle" aria-pressed="false">Ativar som</button>
+        <label class="volume">Volume <input type="range" id="volume" min="0" max="100" value="55" aria-label="Volume dos efeitos"></label>
+        <button type="button" id="testSound">Testar som</button>
+        <button type="button" id="motionToggle" aria-pressed="false">Efeitos reduzidos</button>
+        <button type="button" id="fullscreen">Tela cheia ⛶</button>
+      </div>
+    </footer>
+  </main>
+  <div class="tv-scene" id="scene" hidden role="status"></div>
+  <script type="module" src="/js/tournament-broadcast.mjs"></script>
+</body>
+</html>

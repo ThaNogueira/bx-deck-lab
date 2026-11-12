@@ -113,8 +113,8 @@ try {
    assert(leaveLayout.heroHeight<40);assert(Math.abs(leaveLayout.tabsX-leaveLayout.firstTabX)<2);
    if(width>760){assert.equal(await joinedPage.locator('#leaveBtn').evaluate(el=>el.nextElementSibling.id),'reportBtn');}
    else{assert(Math.abs(leaveLayout.navY-leaveLayout.buttonY)<5);assert.equal(leaveLayout.buttonRight,leaveLayout.navRight);}
-   await joinedPage.setViewportSize({width:1440,height:900});assert.equal(await joinedPage.locator('#leaveBtn').evaluate(el=>el.nextElementSibling?.id),'reportBtn');
-   await joinedPage.setViewportSize({width:320,height:900});assert.equal(await joinedPage.locator('.tournament-navigation #leaveBtn').count(),1);
+   await joinedPage.setViewportSize({width:1440,height:900});await joinedPage.locator('#leaveBtn + #reportBtn').waitFor();
+   await joinedPage.setViewportSize({width:320,height:900});await joinedPage.locator('.tournament-navigation #leaveBtn').waitFor();
    await joinedPage.setViewportSize({width,height:900});
    await joinedPage.screenshot({path:`artifacts/tournament-manager/joined-${width}.png`,animations:'disabled'});await joinedPage.close();
   }

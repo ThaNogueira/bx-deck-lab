@@ -121,6 +121,25 @@
 #app #viewBox .tournament-control-actions{display:flex!important;flex-wrap:wrap;gap:7px!important;margin-top:10px!important}
 #app #viewBox .tournament-control-actions .btn{width:auto;flex:1 1 120px;min-height:40px!important;padding:7px 10px;font-size:12px!important;box-shadow:none!important}
 #app #viewBox .tournament-control-actions:has(#resetTournamentBtn) .btn{flex-basis:96px}
+.broadcast-share{margin:12px 0 16px;padding:12px;background:#18231a;border:1px solid #587246;border-radius:9px}
+.broadcast-share h3{display:flex;align-items:center;gap:7px;margin:0 0 9px;font-size:16px;color:var(--accent)}
+.broadcast-share p{font-size:12px;color:var(--muted);margin:0 0 8px}
+.broadcast-share-links{display:flex;flex-wrap:wrap;gap:7px}
+.broadcast-share-links .btn{text-decoration:none;min-height:38px}
+.broadcast-match-control .btn{min-height:32px;width:100%;font-size:11px;padding:4px 6px;white-space:normal}
+.broadcast-match-control .broadcast-on{background:#1a3021;border-color:#5d9e68;color:#b9efb2}
+.broadcast-on i{display:inline-block;width:7px;height:7px;border-radius:50%;background:#83e088}
+.broadcast-table-dialog{width:min(460px,calc(100% - 24px));max-height:calc(100dvh - 24px);overflow:auto;border:1px solid var(--line);border-radius:14px;padding:18px;background:#171e1a;color:var(--ink,#f0f2ed)}
+.broadcast-table-dialog::backdrop{background:#060b08c9}
+.broadcast-table-dialog h2{margin:0;font:800 28px var(--display)}
+.broadcast-table-dialog p{margin:8px 0 12px;font-size:13px;overflow-wrap:anywhere}
+.broadcast-table-dialog p span{color:var(--muted)}
+.broadcast-table-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.broadcast-table-options .btn{display:grid;min-height:60px;gap:3px}
+.broadcast-table-options small{font-size:10px;opacity:.8}
+.broadcast-table-options [aria-pressed=true]{border-color:var(--accent);color:var(--accent);background:#293722}
+.broadcast-table-actions{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:6px;margin-top:14px}
+.broadcast-table-error{color:#ff9d99}
 #app .manager-table .manager-competitor{margin:0;min-height:40px;padding:5px 7px;border:1px solid transparent;border-radius:7px;gap:6px}
 #app .manager-table .manager-competitor.match-winner{border-color:#edcf70;outline:1px solid #edcf7040;background:#433b1c;box-shadow:0 0 8px #e6c85816}
 #app .manager-table .match-winner b{color:#fff1b8}

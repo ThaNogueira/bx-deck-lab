@@ -250,6 +250,7 @@ model Tournament {
 
   players       TournamentPlayer[]
   matches       TMatch[]
+  broadcastEvents TournamentBroadcastEvent[]
   lateInvites   TournamentLateEntryInvite[]
   photos        TournamentPhoto[]
   championArtworks ChampionArtwork[]
@@ -328,6 +329,8 @@ model TMatch {
   p1Score      Int       @default(0) // rounds vencidos (MD3) / 1-0 no modo único
   p2Score      Int       @default(0)
   tableToken   String? // link da tela de mesa (dispositivo do organizador na mesa)
+  liveTableNo  Int?    // mesa física ocupada durante a transmissão
+  liveStartedAt DateTime?
   updatedAt    DateTime  @updatedAt
   rounds       MatchRound[]
   tournament   Tournament        @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
@@ -335,6 +338,19 @@ model TMatch {
   p2           TournamentPlayer? @relation("p2", fields: [p2Id], references: [id], onDelete: Cascade)
 
   @@index([tournamentId, round])
+  @@unique([tournamentId, liveTableNo])
+}
+
+model TournamentBroadcastEvent {
+  id           Int        @id @default(autoincrement())
+  tournamentId String
+  kind         String     // ROUND | TABLE
+  round        Int
+  matchId      String?
+  createdAt    DateTime   @default(now())
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+
+  @@index([tournamentId, id])
 }
 
 /// Round de uma partida (histórico completo, inclusive no modo único): quem reportou,

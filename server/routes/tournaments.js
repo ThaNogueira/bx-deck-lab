@@ -13,6 +13,7 @@ import { UPLOADS_DIR, uploadTournamentImages, uploadedUrl } from '../uploads.js'
 import { pushTamerLeagueTournament } from '../tamerleague.js';
 import { queueDeckAnalysis } from '../deck-analysis.js';
 import { normalizeTicketUrl } from '../store-links.js';
+import { registerTournamentBroadcast } from '../tournament-broadcast.js';
 
 const router = Router();
 const ah = (fn) => (req, res, next) => fn(req, res, next).catch(next);
@@ -98,6 +99,7 @@ function matchDto(m, options) {
     id: m.id,
     round: m.round,
     tableNo: m.tableNo,
+    liveTableNo: m.status === 'DONE' ? null : m.liveTableNo,
     status: m.status,
     resolvedBy: m.resolvedBy,
     winnerId: m.winnerId,
@@ -466,7 +468,7 @@ router.get('/api/tournaments/:slug/me', requireUser, ah(async (req, res) => {
     round: t.currentRound,
     match: {
       id: match.id,
-      tableNo: match.tableNo,
+      tableNo: match.liveTableNo ?? match.tableNo,
       status: match.status,
       bye: !match.p2Id,
       opponent: opponent ? publicUser(opponent.user) : null,
@@ -533,6 +535,7 @@ function requireManage(loader) {
   });
 }
 const bySlug = (req) => loadTournament(req.params.slug);
+registerTournamentBroadcast(router, { standingsOf, canView, isTestTournament, isStaff, requireManage, bySlug });
 
 const xml = (value = '') => String(value).replace(/[&<>'"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&apos;', '"': '&quot;' }[ch]));
 const imageDataUri = async (url, size = 72, circle = false) => {
@@ -840,6 +843,32 @@ router.post('/api/tournaments/:slug/next-round', requireManage(bySlug), ah(async
   res.json({ ok: true, round, tamerLeague: await automaticTamerLeagueSync(t) });
 }));
 
+router.post('/api/tournaments/:slug/undo-round', requireManage(bySlug), ah(async (req, res) => {
+  const t = req.tournament;
+  const round = req.body?.round;
+  if (req.body?.confirm !== true || !Number.isInteger(round) || round < 2) {
+    return res.status(422).json({ error: 'Confirme qual rodada deseja desfazer.' });
+  }
+  const result = await prisma.$transaction(async tx => {
+    const current = await tx.tournament.findUnique({ where: { id: t.id }, select: { status: true, currentRound: true } });
+    if (current?.status !== 'RUNNING' || current.currentRound !== round) {
+      return { error: 'A rodada mudou. Atualize a página e tente novamente.' };
+    }
+    const matches = await tx.tMatch.findMany({ where: { tournamentId: t.id, round }, include: { rounds: true } });
+    if (matches.some(m => m.p2Id && (m.status !== 'PENDING' || m.p1Report || m.p2Report || m.p1Score || m.p2Score || m.rounds.some(r => r.status !== 'VOID')))) {
+      return { error: 'Esta rodada já tem resultados ou reportes. Use a correção de resultados para preservar as partidas registradas.' };
+    }
+    const previous = round - 1;
+    await tx.tMatch.deleteMany({ where: { tournamentId: t.id, round } });
+    await tx.tournamentPlayer.updateMany({ where: { tournamentId: t.id, lateLosses: { gt: previous } }, data: { lateLosses: previous } });
+    await tx.tournament.update({ where: { id: t.id }, data: { currentRound: previous } });
+    return { round: previous };
+  });
+  if (result.error) return res.status(409).json({ error: result.error });
+  await audit(req.user, 'tournament.undo_round', 'TOURNAMENT', t.id, { removedRound: round, restoredRound: result.round });
+  res.json({ ok: true, ...result, tamerLeague: await automaticTamerLeagueSync(t) });
+}));
+
 router.post('/api/tournaments/:slug/late-entry-invites', requireManage(bySlug), ah(async (req, res) => {
   const t = req.tournament;
   if (t.status !== 'RUNNING') return res.status(422).json({ error: 'A entrada tardia só pode ser liberada durante o torneio.' });
@@ -1015,6 +1044,7 @@ async function matchView(req, t, match) {
     tournament: { slug: t.slug, name: t.name, storeName: t.storeName, format: t.format, rules: rulesOf(t), currentRound: t.currentRound, status: t.status },
     match: {
       ...matchDto(match),
+      tableNo: match.liveTableNo ?? match.tableNo,
       rounds,
       pending: rounds.find((r) => r.status === 'PENDING') || null,
       disputed: rounds.find((r) => r.status === 'DISPUTED') || null,
