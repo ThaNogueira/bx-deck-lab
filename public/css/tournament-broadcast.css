@@ -142,7 +142,8 @@ button{font:inherit}
 .scene-blade{grid-row:1;width:100%;aspect-ratio:1;--blade-entry:-18%;animation:blade-entry .72s .13s cubic-bezier(.18,.73,.29,1) both}
 .blade-left{grid-column:1}.blade-right{grid-column:3;--blade-entry:18%;animation-delay:.21s}
 .scene-blade img,.intermission-blade img{display:block;width:100%;height:100%;object-fit:contain;filter:saturate(1.12) drop-shadow(0 0 .6em #73dcff45);animation:blade-spin 1s linear infinite}
-.blade-right img{animation-direction:reverse;animation-duration:1.15s}
+.blade-right img{animation-duration:1.15s}
+.scene-blade[data-spin="left"] img,.intermission-blade[data-spin="left"] img{animation-direction:reverse}
 .intermission-blade img{animation-duration:3.1s}
 .scene-round p,.scene-table>p{font-size:calc(1.35 * var(--unit));font-weight:800;text-transform:uppercase;letter-spacing:.2em;color:var(--accent);animation:reveal .55s .18s both}
 .scene-round h2,.scene-table h2{font:700 calc(13.5 * var(--unit))/.92 TV Display,sans-serif;text-transform:uppercase;color:var(--ink);margin:.07em 0 .13em;animation:reveal .68s .27s both}
@@ -160,7 +161,7 @@ button{font:inherit}
 @keyframes scene-out{to{opacity:0}}
 @keyframes sweep{from{transform:translateX(-55%) rotate(-12deg)}}
 @keyframes reveal{from{opacity:0;transform:translateY(20%) scale(.96);clip-path:inset(0 0 100% 0)}to{opacity:1;transform:none;clip-path:inset(0)}}
-@keyframes face-in{from{opacity:0;transform:translateX(var(--from)) scale(.91);clip-path:inset(0 35%)}to{opacity:1;transform:none;clip-path:inset(0)}}
+@keyframes face-in{from{opacity:0;transform:translateX(var(--from)) scale(.91);clip-path:inset(0 35%)}to{opacity:1;transform:none;clip-path:inset(calc(-3 * var(--unit)) 0 0)}}
 @keyframes versus-in{from{opacity:0;transform:scale(1.6) skewX(-12deg)}}
 @keyframes blade-entry{from{opacity:0;transform:translateX(var(--blade-entry)) scale(.75)}to{opacity:1;transform:none}}
 @keyframes blade-spin{to{transform:rotate(360deg)}}
@@ -181,8 +182,9 @@ button{font:inherit}
 .live-meta b,.live-card .versus{color:var(--signal)}
 .live-meta b::before{box-shadow:0 0 .66em var(--signal);animation:signal-pulse 2.8s ease-in-out infinite}
 .live-card .portrait,.scene-duel .portrait{outline:1px solid rgba(var(--signal-rgb),.50);box-shadow:0 .25em .65em #0008,0 0 .6em rgba(var(--signal-rgb),.20)}
-.portrait.ranked-portrait{overflow:visible;outline:0;box-shadow:none;border:0;background:transparent;color:#dce6e8}
-.ranked-portrait-core{position:relative;width:68%;aspect-ratio:1}
+.portrait.ranked-portrait{overflow:visible;outline:0;box-shadow:none;border:0;background:transparent;color:#dce6e8;clip-path:inset(-18% var(--rank-frame-side-clip,-19%) -1%)}
+.intermission-leader .ranked-portrait{--rank-frame-side-clip:calc(-.6 * var(--unit))}
+.ranked-portrait-core{position:relative;width:100%;aspect-ratio:1}
 .ranked-portrait-photo{position:absolute;left:var(--photo-left);top:var(--photo-top);width:var(--photo-size);height:var(--photo-size);display:grid;place-items:center;background:#263238;font-size:.8em}
 .live-card .versus,.scene-duel .versus{text-shadow:0 0 .35em rgba(var(--signal-rgb),.36)}
 .arena-empty,.waiting-item,.podium-place{border-radius:calc(.45 * var(--unit))}

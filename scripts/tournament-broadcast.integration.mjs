@@ -59,9 +59,14 @@ try {
   app.get('/api/me', (req, res) => res.json({ user: req.user || null }));
   app.get('/api/site', (_req, res) => res.json({ site: { name: 'BeyXLab' }, flags: {} }));
   app.get('/api/parts-index', (_req, res) => res.json({ parts: [
-    ...standardBladeImages.map(img => ({ kind: 'BLADE', img })),
-    { kind: 'BLADE', subKind: 'INTEGRATED', img: '/excluded-integrated.webp' },
-    { kind: 'BLADE', parentId: 'recolor', img: '/excluded-recolor.webp' },
+    { kind: 'BLADE', slug: 'bullet-griffon', subKind: 'INTEGRATED', img: standardBladeImages[0] },
+    { kind: 'BLADE', slug: 'cobaltdragoon', img: standardBladeImages[1] },
+    { kind: 'BLADE', slug: 'aeropegasus', parentId: 'recolor', img: '/assets/ranks/ferro.png' },
+    { kind: 'BLADE', slug: 'sword-dran', img: '/assets/Blade-Dran-Sword-Sushiro.png' },
+    { kind: 'BLADE', slug: 'optimus-prime', img: '/assets/ranks/ouro.png' },
+    { kind: 'BLADE', slug: 'darth-vader', img: '/assets/ranks/prata.png' },
+    { kind: 'BLADE', slug: 'spinosaurus', img: '/assets/ranks/bronze.png' },
+    { kind: 'BLADE', slug: 'spiderman', img: '/assets/ranks/platina.png' },
     { kind: 'MAIN_BLADE', img: '/assets/parts/eclipse.webp' },
     { kind: 'LOCK_CHIP', img: '/excluded-lock.webp' },
   ] }));
@@ -134,6 +139,10 @@ try {
       return blades.length === 2 && blades.every(blade => blade.naturalWidth > 0);
     });
     assert.deepEqual((await tv.locator('.scene-blade img').evaluateAll(images => images.map(image => image.getAttribute('src')))).sort(), [...standardBladeImages].sort());
+    for (const [index, direction] of ['normal', 'reverse'].entries()) {
+      const image = tv.locator(`.scene-blade img[src="${standardBladeImages[index]}"]`);
+      assert.equal(await image.evaluate(img => getComputedStyle(img).animationDirection), direction);
+    }
     assert.equal(await tv.locator('.scene-blade img').first().evaluate(img => getComputedStyle(img).animationName), 'blade-spin');
     assert.equal(await tv2.locator('.scene-blade img').first().evaluate(img => getComputedStyle(img).animationName), 'none');
     await screenshot(tv, 'round-intro');
@@ -208,6 +217,15 @@ try {
     assert(await late.locator('.live-card .elo-frame-ouro').count());
     assert(await late.locator('.live-card .tv-rank-title img[src="/assets/ranks/prata.png"]').count());
     assert.match(await late.locator('.live-card .tv-rank').allTextContents().then(lines => lines.join(' ')), /Ouro de Impacto\s+1\.210 PDL/);
+    assert(await late.locator('.live-card .portrait').evaluateAll(portraits => {
+      const baseline = portraits.find(portrait => !portrait.classList.contains('ranked-portrait')).offsetWidth;
+      return portraits.every(portrait => {
+        const photo = portrait.querySelector('.ranked-portrait-photo') || portrait;
+        const name = portrait.parentElement.querySelector('strong');
+        const spacing = name.getBoundingClientRect().top - portrait.getBoundingClientRect().bottom;
+        return Math.abs(photo.offsetWidth - baseline) <= 1 && spacing >= 0 && spacing <= 6;
+      });
+    }));
     assert.match(await late.locator('.live-card').first().innerText(), /Ana Carolina Nascimento de Albuquerque e Silva/i);
     assert.equal(await late.locator('.live-card').first().evaluate(card => card.scrollHeight > card.clientHeight), false);
     await late.setViewportSize({ width: 3840, height: 2160 });
@@ -285,6 +303,8 @@ try {
     assert.equal(await tv.locator('.standing-rank').first().innerText(), '4');
     assert.equal(await tv.locator('.standing-row').count(), 7);
     assert(standardBladeImages.includes(await tv.locator('.intermission-blade img').getAttribute('src')));
+    assert(await tv.locator('.intermission-blade img').evaluate(img =>
+      getComputedStyle(img).animationDirection === (img.parentElement.dataset.spin === 'left' ? 'reverse' : 'normal')));
     await screenshot(tv, 'between-rounds-1080');
     await tv2.locator('.intermission').waitFor();
     await tv2.setViewportSize({ width: 390, height: 900 });

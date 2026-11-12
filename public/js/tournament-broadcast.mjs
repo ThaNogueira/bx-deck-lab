@@ -1,4 +1,5 @@
 import { createBroadcastAudio } from './tournament-broadcast-audio.mjs';
+import { broadcastBladeSpin } from './tournament-broadcast-blades.mjs';
 
 const byId = id => document.getElementById(id);
 const el = Object.fromEntries([
@@ -133,18 +134,20 @@ function betweenRounds(snapshot) {
   return snapshot?.tournament.status === 'RUNNING' && !snapshot.live.length && !snapshot.waiting.length;
 }
 
-function bladeArt(src, className) {
-  return src ? `<span class="${className}" aria-hidden="true"><img src="${escapeHtml(src)}" data-photo="${escapeHtml(src)}" decoding="async" alt=""></span>` : '';
+function bladeArt(blade, className) {
+  if (!blade) return '';
+  const src = escapeHtml(blade.src);
+  return `<span class="${className}" data-spin="${blade.spin}" aria-hidden="true"><img src="${src}" data-photo="${src}" decoding="async" alt=""></span>`;
 }
 
 const randomIndex = values => Math.floor(Math.random() * values.length);
 
 function prepareRoundBlades() {
-  const available = bladeRenders.filter(src => !failedPhotos.has(src));
-  const unused = available.filter(src => !nextRoundBlades.includes(src));
+  const available = bladeRenders.filter(blade => !failedPhotos.has(blade.src));
+  const unused = available.filter(blade => !nextRoundBlades.includes(blade));
   const pool = unused.length >= 2 ? unused : available;
   nextRoundBlades = pool.splice(randomIndex(pool), 1).concat(pool.splice(randomIndex(pool), 1));
-  for (const src of nextRoundBlades) new Image().src = src;
+  for (const { src } of nextRoundBlades) new Image().src = src;
 }
 
 function addRoundBlades() {
@@ -162,8 +165,14 @@ async function loadBladeRenders() {
     const response = await fetch('/api/parts-index', { signal: AbortSignal.timeout?.(8000) });
     if (!response.ok) return;
     const { parts } = await response.json();
-    bladeRenders = [...new Set(parts.filter(part => part.kind === 'BLADE' && !part.subKind && !part.parentId)
-      .map(part => photoUrl({ photo: part.img })).filter(Boolean))];
+    const renders = new Map();
+    for (const part of parts) {
+      const spin = broadcastBladeSpin(part);
+      if (!spin) continue;
+      const src = photoUrl({ photo: part.img });
+      if (src) renders.set(src, { src, spin });
+    }
+    bladeRenders = [...renders.values()];
     prepareRoundBlades();
     addRoundBlades();
     if (betweenRounds(state) && !intermissionBlade) {
