@@ -36,11 +36,10 @@
   <script>
     (async () => {
       BX.renderTopbar('/torneios');
-      let timer;
-      async function load() {
-        const q = document.getElementById('q').value;
-        const { tournaments } = await BX.api(`/api/tournaments?query=${encodeURIComponent(q)}`);
-        const card = (t) => `
+      const search = document.getElementById('q');
+      const list = document.getElementById('list');
+      let timer, request;
+      const card = (t) => `
             <a class="list-card" href="/torneio/${t.slug}">
               <div style="display:flex;justify-content:space-between;gap:8px;align-items:start">
                 <h3>${BX.esc(t.name)}</h3>
@@ -55,21 +54,66 @@
                 <span>${t.format === 'MD3' ? 'Melhor de 3' : 'Até 4 pontos'} • ${t.roundsPlanned} rodadas</span>
               </div>
             </a>`;
+
+      function pastFolders(items, expanded) {
+        const storeName = t => t.storeName?.trim().replace(/\s+/g, ' ') || '';
+        const storeKey = t => storeName(t).normalize('NFKC').toLocaleLowerCase('pt-BR');
+        const byStoreName = new Map(items.filter(t => t.storeId && storeName(t)).map(t => [storeKey(t), t.storeId]));
+        const folders = new Map();
+        for (const t of [...items].sort((a, b) => Date.parse(b.startsAt) - Date.parse(a.startsAt))) {
+          const name = storeName(t);
+          const storeId = t.storeId || byStoreName.get(storeKey(t));
+          const key = storeId ? `store:${storeId}` : name ? `name:${storeKey(t)}` : '';
+          if (!folders.has(key)) folders.set(key, { name, items: [] });
+          const folder = folders.get(key);
+          folder.name ||= name;
+          folder.items.push(t);
+        }
+        const ordered = [...folders.values()].sort((a, b) => Number(!a.name) - Number(!b.name) || a.name.localeCompare(b.name, 'pt-BR'));
+        return `<div class="tournament-folders">${ordered.map(folder => `
+          <details class="tournament-folder"${expanded ? ' open' : ''}>
+            <summary>
+              <span class="tournament-folder-icon" aria-hidden="true">${BX.ic('folder', 20)}</span>
+              <span class="tournament-folder-name">${BX.esc(folder.name || 'Sem loja definida')}</span>
+              <span class="tournament-folder-count">${folder.items.length} ${folder.items.length === 1 ? 'torneio' : 'torneios'}</span>
+              <span class="tournament-folder-arrow" aria-hidden="true">${BX.ic('chevron', 18)}</span>
+            </summary>
+            <div class="card-grid">${folder.items.map(card).join('')}</div>
+          </details>`).join('')}</div>`;
+      }
+
+      async function load() {
+        const q = search.value.trim();
+        request = new AbortController();
+        const { signal } = request;
+        let tournaments;
+        try {
+          ({ tournaments } = await BX.api(`/api/tournaments?query=${encodeURIComponent(q)}`, { signal }));
+        } catch {
+          if (!signal.aborted) list.innerHTML = '<div class="empty-state">Não foi possível carregar os torneios.</div>';
+          return;
+        }
+        if (signal.aborted) return;
         const groups = [
           { status: 'RUNNING', title: 'Em andamento', note: 'Acompanhe as rodadas que estão acontecendo agora.', tone: 'running' },
           { status: 'OPEN', title: 'Inscrições abertas', note: 'Entre ou divulgue seu torneio.', tone: 'open' },
           { status: 'FINISHED', title: 'Torneios passados', note: 'Confira os resultados e a classificação final.', tone: 'finished' },
         ];
-        document.getElementById('list').innerHTML = tournaments.length
+        list.innerHTML = tournaments.length
           ? groups.map((g) => { const items = tournaments.filter((t) => t.status === g.status); return `
               <section class="tournament-section ${g.tone}">
                 <div class="tournament-section-head"><div><p class="eyebrow">${g.title}</p><p>${g.note}</p></div><span>${items.length}</span></div>
-                <div class="card-grid">${items.map(card).join('') || '<div class="tournament-section-empty">Nenhum torneio nesta seção.</div>'}</div>
+                ${g.status === 'FINISHED' && items.length ? pastFolders(items, Boolean(q)) : `
+                  <div class="card-grid">${items.map(card).join('') || '<div class="tournament-section-empty">Nenhum torneio nesta seção.</div>'}</div>`}
               </section>`; }).join('')
           : '<div class="empty-state">Nenhum torneio encontrado.</div>';
       }
       load();
-      document.getElementById('q').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(load, 300); });
+      search.addEventListener('input', () => {
+        request?.abort();
+        clearTimeout(timer);
+        timer = setTimeout(load, 300);
+      });
 
     })();
   </script>

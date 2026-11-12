@@ -585,6 +585,18 @@ select { height: 42px; padding: 0 10px; width: 100%; }
 .tournament-section.finished{border-color:#71363d;background:linear-gradient(135deg,rgba(130,42,50,.20),rgba(21,14,16,.9))}
 .tournament-section-head{display:flex;align-items:start;justify-content:space-between;gap:12px;margin:0 2px 13px}.tournament-section-head .eyebrow{margin:0}.tournament-section-head p:not(.eyebrow){color:var(--muted);font-size:12px;margin:4px 0 0}.tournament-section-head>span{min-width:28px;height:28px;border-radius:999px;display:grid;place-items:center;background:rgba(255,255,255,.1);font:800 14px var(--display)}
 .tournament-section-empty{color:var(--muted);font-size:13px;padding:8px 2px}
+.tournament-folders{display:grid;gap:8px}
+.tournament-folder{min-width:0;border:1px solid var(--line);border-radius:var(--radius);background:#141720}
+.tournament-folder>summary{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:center;gap:clamp(7px,2vw,12px);min-height:52px;padding:8px 12px;border-radius:inherit;list-style:none;cursor:pointer}
+.tournament-folder>summary::-webkit-details-marker{display:none}
+.tournament-folder>summary:hover,.tournament-folder[open]>summary{background:#1b1f27}
+.tournament-folder>summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.tournament-folder-icon{width:34px;height:34px;display:grid;place-items:center;border-radius:9px;color:#f2ce88;background:#f2ce8816}
+.tournament-folder-name{font:700 22px/1.05 var(--display);overflow-wrap:anywhere}
+.tournament-folder-count{font-size:12px;color:var(--muted);white-space:nowrap}
+.tournament-folder-arrow{display:grid;color:var(--muted)}
+.tournament-folder[open] .tournament-folder-arrow{transform:rotate(180deg)}
+.tournament-folder>.card-grid{grid-template-columns:repeat(auto-fill,minmax(min(100%,250px),1fr));padding:12px;border-top:1px solid var(--line)}
 .sale-tag{display:inline-flex;align-items:center;gap:5px;background:rgba(84,230,156,.12);border:1px solid rgba(84,230,156,.4);color:#74eeb0;font:800 9px var(--display);text-transform:uppercase;letter-spacing:.08em;border-radius:999px;padding:4px 8px}
 .price{font:800 20px var(--display);color:var(--green)}
 .wa-btn{display:inline-flex;align-items:center;gap:7px;background:#1faa53;color:white;border:0;border-radius:10px;padding:9px 13px;font-weight:800;font-size:12px;text-decoration:none}
