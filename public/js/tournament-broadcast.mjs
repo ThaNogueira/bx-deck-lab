@@ -4,7 +4,7 @@ const byId = id => document.getElementById(id);
 const el = Object.fromEntries([
   'tv', 'eventName', 'roundLabel', 'roundNumber', 'arenaLabel', 'arenaCount', 'arenaStage',
   'waiting', 'waitingGrid', 'waitingCount', 'standingLabel', 'standingCount', 'standingCols',
-  'standingList', 'standingPage', 'connection', 'eventLocation', 'scene', 'soundToggle',
+  'standings', 'standingList', 'standingPage', 'connection', 'eventLocation', 'scene', 'soundToggle',
   'testSound', 'volume', 'motionToggle', 'fullscreen',
 ].map(id => [id, byId(id)]));
 const audio = createBroadcastAudio();
@@ -15,6 +15,8 @@ const two = value => String(value).padStart(2, '0');
 const medals = ['gold', 'silver', 'bronze'];
 const COMPACT_WAITING_SIZE = 3;
 const EXPANDED_WAITING_SIZE = 5;
+const INTERMISSION_STANDING_SIZE = 7;
+const formatPoints = new Intl.NumberFormat('pt-BR');
 const slug = location.pathname.split('/').filter(Boolean)[1];
 const url = '/api/tournaments/' + (slug || '') + '/broadcast';
 const failedPhotos = new Set();
@@ -38,6 +40,10 @@ let activeScene;
 let pendingScenes = [];
 let sceneTimers = [];
 let previousLive = new Set();
+let bladeRenders = [];
+let nextRoundBlades = [];
+let intermissionBlade;
+let loadingBlades = false;
 
 function text(node, value) {
   if (node.textContent !== value) node.textContent = value;
@@ -58,11 +64,17 @@ function photoUrl(player) {
   } catch { return ''; }
 }
 
-function portrait(player) {
+function portrait(player, framed = false) {
   const initials = player?.name.trim().split(/\s+/).filter(Boolean).slice(0, 2).map(word => Array.from(word)[0]).join('').toUpperCase() || 'BX';
   const photo = photoUrl(player);
-  return `<span class="portrait" aria-hidden="true">${escapeHtml(initials)}${photo
-    ? `<img src="${escapeHtml(photo)}" data-photo="${escapeHtml(photo)}" decoding="async" alt="">` : ''}</span>`;
+  const image = `${escapeHtml(initials)}${photo ? `<img src="${escapeHtml(photo)}" data-photo="${escapeHtml(photo)}" decoding="async" alt="">` : ''}`;
+  if (!framed || !player?.tier) return `<span class="portrait" aria-hidden="true">${image}</span>`;
+  return `<span class="portrait ranked-portrait" aria-hidden="true"><span class="ranked-portrait-core">
+    <span class="elo-avatar-frame elo-frame-${escapeHtml(player.tier.id)}">
+      <span class="elo-frame-portrait"><span class="ranked-portrait-photo">${image}</span></span>
+      <span class="elo-frame-spin"></span>
+    </span>
+  </span></span>`;
 }
 
 document.addEventListener('error', event => {
@@ -87,12 +99,19 @@ function preloadMatches(matches) {
   }
 }
 
-const elo = player => player?.elo != null ? `<small>ELO ${player.elo}</small>` : '';
+function elo(player) {
+  if (!player?.tier) return '';
+  const { color, icon, name } = player.tier;
+  return `<span class="tv-rank" style="--rank-color:${escapeHtml(color)}">
+    <span class="tv-rank-title"><img src="${escapeHtml(icon)}" alt="">${escapeHtml(name)}</span>
+    <small>${formatPoints.format(player.elo)} PDL</small>
+  </span>`;
+}
 const nameClass = player => (player?.name.length ?? 0) > 25 ? 'long' : '';
 
 function competitor(id) {
   const player = players.get(id);
-  return `<div class="competitor">${portrait(player)}<strong class="${nameClass(player)}">${escapeHtml(player?.name || 'Blader')}</strong>${elo(player)}</div>`;
+  return `<div class="competitor">${portrait(player, true)}<strong class="${nameClass(player)}">${escapeHtml(player?.name || 'Blader')}</strong>${elo(player)}</div>`;
 }
 
 function duel(match, scene = false) {
@@ -110,10 +129,70 @@ function showPairings(snapshot) {
   return snapshot?.tournament.status === 'RUNNING' && !snapshot.live.length && snapshot.waiting.length > 0;
 }
 
+function betweenRounds(snapshot) {
+  return snapshot?.tournament.status === 'RUNNING' && !snapshot.live.length && !snapshot.waiting.length;
+}
+
+function bladeArt(src, className) {
+  return src ? `<span class="${className}" aria-hidden="true"><img src="${escapeHtml(src)}" data-photo="${escapeHtml(src)}" decoding="async" alt=""></span>` : '';
+}
+
+const randomIndex = values => Math.floor(Math.random() * values.length);
+
+function prepareRoundBlades() {
+  const available = bladeRenders.filter(src => !failedPhotos.has(src));
+  const unused = available.filter(src => !nextRoundBlades.includes(src));
+  const pool = unused.length >= 2 ? unused : available;
+  nextRoundBlades = pool.splice(randomIndex(pool), 1).concat(pool.splice(randomIndex(pool), 1));
+  for (const src of nextRoundBlades) new Image().src = src;
+}
+
+function addRoundBlades() {
+  const scene = el.scene.querySelector('.scene-round');
+  if (!scene || !nextRoundBlades.length || scene.querySelector('.scene-blade')) return;
+  const [left, right] = nextRoundBlades;
+  scene.insertAdjacentHTML('beforeend', bladeArt(left, 'scene-blade blade-left') + bladeArt(right, 'scene-blade blade-right'));
+  prepareRoundBlades();
+}
+
+async function loadBladeRenders() {
+  if (loadingBlades || bladeRenders.length) return;
+  loadingBlades = true;
+  try {
+    const response = await fetch('/api/parts-index', { signal: AbortSignal.timeout?.(8000) });
+    if (!response.ok) return;
+    const { parts } = await response.json();
+    bladeRenders = [...new Set(parts.filter(part => part.kind === 'BLADE' && !part.subKind && !part.parentId)
+      .map(part => photoUrl({ photo: part.img })).filter(Boolean))];
+    prepareRoundBlades();
+    addRoundBlades();
+    if (betweenRounds(state) && !intermissionBlade) {
+      intermissionBlade = bladeRenders[randomIndex(bladeRenders)];
+      renderArena();
+    }
+  } catch { /* Os renders são decorativos e a transmissão continua sem eles. */ }
+  finally { loadingBlades = false; }
+}
+
+function renderIntermission(standings) {
+  const { round, roundsPlanned } = state.tournament;
+  const heading = round >= roundsPlanned ? 'Aguardando encerramento' : 'Aguardando próxima rodada';
+  const leaders = standings.slice(0, 3).map(row => [row, players.get(row.playerId)]);
+  renderWhen(el.arenaStage, JSON.stringify(['intermission', heading, intermissionBlade, leaders]), () => `<div class="intermission">
+    <div class="intermission-note"><h2>${heading}</h2>${bladeArt(intermissionBlade, 'intermission-blade')}</div>
+    <div class="intermission-leaders">${leaders.map(([row, player], index) => `<article class="intermission-leader ${medals[index]}">
+      <span class="place">${index + 1}º</span>${portrait(player, true)}
+      <div class="intermission-player"><strong>${escapeHtml(player?.name || 'Blader')}</strong>${elo(player)}<small>${row.points} pts no torneio</small></div>
+    </article>`).join('')}</div>
+  </div>`);
+}
+
 function renderArena() {
   const { tournament, live, waiting, completed, participants, standings } = state;
   const expanded = showPairings(state);
+  const intermission = betweenRounds(state);
   const finished = tournament.status === 'FINISHED';
+  el.tv.classList.toggle('between-rounds', intermission);
   text(el.arenaLabel, expanded ? 'Pareamentos da rodada' : finished ? 'Pódio oficial' : 'Mesas ao vivo');
   el.arenaCount.classList.toggle('pairings-status', expanded);
   if (expanded) {
@@ -123,6 +202,12 @@ function renderArena() {
     return;
   }
   text(el.arenaCount, tournament.status === 'RUNNING' ? two(live.length) + ' / 04 ativas' : '');
+  if (intermission) {
+    previousLive.clear();
+    renderIntermission(standings);
+    renderWaiting();
+    return;
+  }
   renderWhen(el.arenaStage, JSON.stringify([tournament, live, waiting.length, completed, participants.length,
     finished ? standings.slice(0, 3).map(row => [row, players.get(row.playerId)]) : live.map(m => [players.get(m.p1Id), players.get(m.p2Id)])]), () => {
     if (finished && standings.length) {
@@ -130,7 +215,7 @@ function renderArena() {
         const row = standings[index];
         if (!row) return '<div></div>';
         const player = players.get(row.playerId);
-        return `<div class="podium-place ${medals[index]}"><span class="place">${index + 1}º</span>${portrait(player)}
+        return `<div class="podium-place ${medals[index]}"><span class="place">${index + 1}º</span>${portrait(player, true)}
           <strong>${escapeHtml(player?.name || 'Blader')}</strong><small>${row.points} pontos</small>${elo(player)}</div>`;
       }).join('')}</div>`;
     }
@@ -203,17 +288,20 @@ function renderWaiting() {
 
 function renderStandings() {
   const registration = state.tournament.status === 'OPEN';
+  const intermission = betweenRounds(state);
   const rows = registration ? state.participants.map(playerId => ({ playerId })) : state.standings;
   const fixed = registration ? 0 : Math.min(3, rows.length);
-  const limit = 8 - fixed;
+  const featured = intermission ? fixed : 0;
+  const limit = intermission ? INTERMISSION_STANDING_SIZE : 8 - fixed;
   const pages = Math.max(1, Math.ceil((rows.length - fixed) / limit));
   standingPage %= pages;
+  el.standings.hidden = intermission && featured === rows.length;
   text(el.standingLabel, registration ? 'Participantes aptos' : 'Classificação geral');
   text(el.standingCount, rows.length + ' bladers');
   el.standingCols.hidden = registration || !rows.length;
   text(el.standingPage, pages > 1 ? `Página ${standingPage + 1} / ${pages}` : '');
   const offset = fixed + standingPage * limit;
-  const visible = [...rows.slice(0, fixed).map((row, i) => [row, i]),
+  const visible = [...rows.slice(featured, fixed).map((row, i) => [row, featured + i]),
     ...rows.slice(offset, offset + limit).map((row, i) => [row, offset + i])];
   const decoratePodium = !registration && (state.tournament.status === 'FINISHED' || rows.some(row => row.points || row.losses));
   renderWhen(el.standingList, JSON.stringify([registration, decoratePodium, visible.map(([row, i]) => [row, i, players.get(row.playerId)])]), () => {
@@ -223,7 +311,7 @@ function renderStandings() {
       const medal = decoratePodium && i < 3 ? 'podium ' + medals[i] : '';
       return `<div class="standing-row ${medal} ${i >= fixed && standingChanged ? 'page-enter' : ''}">
         <span class="standing-rank">${registration ? '·' : i + 1}</span>
-        <div class="standing-person">${portrait(player)}<div class="standing-name"><b class="${nameClass(player)}">${escapeHtml(player?.name || 'Blader')}</b>${elo(player)}${row.dropped ? '<small>Drop</small>' : ''}</div></div>
+        <div class="standing-person">${portrait(player, true)}<div class="standing-name"><b class="${nameClass(player)}">${escapeHtml(player?.name || 'Blader')}</b>${elo(player)}${row.dropped ? '<small>Drop</small>' : ''}</div></div>
         ${registration ? '' : `<span class="standing-score">${row.points}</span><span class="standing-record"><span class="w">${row.wins}</span>–<span class="l">${row.losses}</span></span>`}
         </div>`;
     }).join('');
@@ -282,8 +370,12 @@ function presentNext() {
   const match = isRound ? null : currentMatch(next);
   if (match) el.scene.dataset.table = match.liveTableNo;
   el.scene.innerHTML = isRound
-    ? `<div class="scene-round"><p>${escapeHtml(state.tournament.name)}</p><h2>Rodada ${two(next.round)}</h2><p>Confrontos definidos</p></div>`
+    ? `<div class="scene-round"><div class="round-announcement"><p>${escapeHtml(state.tournament.name)}</p><h2>Rodada ${two(next.round)}</h2><p>Confrontos definidos</p></div></div>`
     : `<div class="scene-table"><p>Partida iniciada · Rodada ${two(next.round)}</p><h2>Mesa ${two(match.liveTableNo)}</h2>${duel(match, true)}</div>`;
+  if (isRound) {
+    addRoundBlades();
+    void loadBladeRenders();
+  }
   el.scene.hidden = false;
   audio.play(next.kind);
   if (!isRound) sceneTimers.push(setTimeout(() => audio.play('VS'), 790));
@@ -299,8 +391,10 @@ function presentNext() {
 function receive(snapshot, initial) {
   if (!initial && snapshot.cursor < cursor) return;
   const roundChanged = state?.tournament.round !== snapshot.tournament.round || state?.tournament.status !== snapshot.tournament.status;
-  if (roundChanged) standingPage = 0;
-  if (roundChanged || showPairings(state) !== showPairings(snapshot)) {
+  const intermissionChanged = betweenRounds(state) !== betweenRounds(snapshot);
+  if (roundChanged || intermissionChanged) standingPage = 0;
+  if (intermissionChanged) intermissionBlade = betweenRounds(snapshot) ? bladeRenders[randomIndex(bladeRenders)] : null;
+  if (roundChanged || intermissionChanged || showPairings(state) !== showPairings(snapshot)) {
     waitingPage = 0;
     rotatedAt = performance.now();
   }
@@ -328,7 +422,8 @@ function rotate() {
   rotatedAt = performance.now();
   const waitingSize = showPairings(state) ? EXPANDED_WAITING_SIZE : COMPACT_WAITING_SIZE;
   if (state.waiting.length > waitingSize) { waitingPage++; renderWaiting(); }
-  if ((state.tournament.status === 'OPEN' ? state.participants : state.standings).length > 8) {
+  const standingsPageSize = betweenRounds(state) ? 3 + INTERMISSION_STANDING_SIZE : 8;
+  if ((state.tournament.status === 'OPEN' ? state.participants : state.standings).length > standingsPageSize) {
     standingPage++;
     standingChanged = true;
     renderStandings();
@@ -340,6 +435,8 @@ function unavailable() {
   renderKeys.clear();
   pendingScenes = [];
   clearScene();
+  el.tv.classList.remove('between-rounds');
+  el.standings.hidden = false;
   el.waiting.hidden = true;
   text(el.eventName, 'Painel indisponível');
   text(el.roundNumber, '—');
@@ -408,6 +505,7 @@ function start() {
   if (running) return;
   running = true;
   timer = setInterval(rotate, 1000);
+  void loadBladeRenders();
   void connect(++connectionGeneration);
 }
 

@@ -54,7 +54,8 @@ export function registerTournamentBroadcast(router, { standingsOf, canView, isTe
       const rating = ratings.get(p.userId);
       return {
         id: p.id, name: p.user.name, photo: p.user.avatarUrl,
-        elo: rating && !rating.provisional ? rating.points : null,
+        elo: rating?.tier ? rating.points : null,
+        tier: rating?.tier ?? null,
       };
     });
     const matches = t.status === 'RUNNING' ? t.matches.filter(m => m.round === t.currentRound) : [];

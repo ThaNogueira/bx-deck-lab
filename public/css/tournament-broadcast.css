@@ -93,6 +93,29 @@ button{font:inherit}
 .standing-record .w{color:#bde8a2}.standing-record .l{color:#f0a9a0}
 .standing-page{min-height:calc(1.35 * var(--unit));padding-top:.35em;text-align:right}
 .standing-empty{margin:auto;color:var(--muted);font-size:calc(1 * var(--unit));text-align:center}
+.tv-rank{display:grid;justify-items:inherit;gap:.16em;min-width:0;font-size:calc(.86 * var(--unit));line-height:1.05;color:var(--rank-color)}
+.tv-rank-title{display:flex;align-items:center;gap:.27em;font-weight:700}
+.tv-rank-title img{width:1.23em;height:1.23em;object-fit:contain;flex:none}
+.tv-rank small,.competitor .tv-rank small,.podium-place .tv-rank small{font-size:.78em;color:var(--muted);font-variant-numeric:tabular-nums}
+.competitor .tv-rank-title,.podium-place .tv-rank-title{justify-content:center}
+.scene-duel .tv-rank{font-size:calc(1.2 * var(--unit))}
+.between-rounds .tv-grid{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);gap:calc(.85 * var(--unit))}
+.between-rounds .arena>.section-bar{display:none}
+.between-rounds .standings{border-left:0;padding-left:0}
+.between-rounds :is(.standing-cols,.standing-row){grid-template-columns:calc(3.1 * var(--unit)) minmax(0,1fr) calc(5 * var(--unit)) calc(5.4 * var(--unit))}
+.between-rounds .standing-name b{font-size:calc(1.62 * var(--unit))}
+.between-rounds .standing-record{font-size:calc(1.03 * var(--unit))}
+.intermission{width:100%;display:grid;gap:calc(.45 * var(--unit))}
+.intermission-note{display:flex;align-items:center;justify-content:space-between;gap:.6rem;color:#b9d2d5}
+.intermission-note h2{font:600 calc(1.4 * var(--unit))/1 TV Display,sans-serif}
+.intermission-blade{width:calc(3.2 * var(--unit));aspect-ratio:1;flex:none}
+.intermission-leaders{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:calc(.58 * var(--unit))}
+.intermission-leader{display:grid;grid-template-columns:auto auto minmax(0,1fr);align-items:center;gap:calc(.75 * var(--unit));padding:calc(.82 * var(--unit));border:1px solid color-mix(in srgb,var(--place) 40%,#28302e);border-radius:calc(.55 * var(--unit));background:#1c2526}
+.intermission-leader .place{font:700 calc(3.35 * var(--unit))/.95 TV Display,sans-serif;color:var(--place)}
+.intermission-leader .portrait{width:calc(6.25 * var(--unit))}
+.intermission-player{min-width:0;display:grid;gap:.28em}
+.intermission-player strong{font:600 calc(2 * var(--unit))/.97 TV Display,sans-serif;overflow-wrap:anywhere}
+.intermission-player>small{font-size:calc(.78 * var(--unit));color:var(--place)}
 .podium-final{width:100%;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:end;gap:calc(.55 * var(--unit));padding:calc(1.25 * var(--unit)) 0}
 .podium-place{min-width:0;background:var(--surface);padding:calc(1.1 * var(--unit)) calc(.6 * var(--unit));border-top:3px solid var(--place);display:grid;justify-items:center;align-content:center;gap:calc(.65 * var(--unit));text-align:center;height:74%}
 .podium-place.gold{height:94%;background:#292619;--place:#f1d581}
@@ -114,6 +137,13 @@ button{font:inherit}
 .tv-scene::before,.tv-scene::after{content:'';position:absolute;z-index:-1;width:160%;height:17%;left:-30%;background:var(--accent);transform:rotate(-12deg);animation:sweep .95s cubic-bezier(.15,.65,.2,1) both}
 .tv-scene::before{top:5%;opacity:.10}.tv-scene::after{bottom:4%;opacity:.08;animation-delay:.14s}
 .scene-round,.scene-table{text-align:center;width:min(90%,calc(76 * var(--unit)))}
+.scene-round{width:94%;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,3.3fr) minmax(0,1fr);gap:calc(.35 * var(--unit));align-items:center}
+.round-announcement{grid-area:1/2;min-width:0;overflow-wrap:anywhere}
+.scene-blade{grid-row:1;width:100%;aspect-ratio:1;--blade-entry:-18%;animation:blade-entry .72s .13s cubic-bezier(.18,.73,.29,1) both}
+.blade-left{grid-column:1}.blade-right{grid-column:3;--blade-entry:18%;animation-delay:.21s}
+.scene-blade img,.intermission-blade img{display:block;width:100%;height:100%;object-fit:contain;filter:saturate(1.12) drop-shadow(0 0 .6em #73dcff45);animation:blade-spin 1s linear infinite}
+.blade-right img{animation-direction:reverse;animation-duration:1.15s}
+.intermission-blade img{animation-duration:3.1s}
 .scene-round p,.scene-table>p{font-size:calc(1.35 * var(--unit));font-weight:800;text-transform:uppercase;letter-spacing:.2em;color:var(--accent);animation:reveal .55s .18s both}
 .scene-round h2,.scene-table h2{font:700 calc(13.5 * var(--unit))/.92 TV Display,sans-serif;text-transform:uppercase;color:var(--ink);margin:.07em 0 .13em;animation:reveal .68s .27s both}
 .scene-table h2{font-size:calc(5.6 * var(--unit));margin:.1em 0 .25em}
@@ -123,7 +153,6 @@ button{font:inherit}
 .scene-duel .portrait{width:calc(15 * var(--unit));font-size:calc(6 * var(--unit));border:2px solid #607458}
 .scene-duel .competitor strong{font-size:calc(3.2 * var(--unit))}
 .scene-duel .competitor strong.long{font-size:calc(2.55 * var(--unit))}
-.scene-duel .competitor small{font-size:calc(1.05 * var(--unit))}
 .scene-duel .versus{font-size:calc(7.8 * var(--unit));animation:versus-in .52s .76s cubic-bezier(.18,.75,.3,1) both}
 @keyframes card-enter{from{opacity:0;transform:translateY(9%)}}
 @keyframes page-enter{from{opacity:0;transform:translateY(12%)}}
@@ -133,6 +162,8 @@ button{font:inherit}
 @keyframes reveal{from{opacity:0;transform:translateY(20%) scale(.96);clip-path:inset(0 0 100% 0)}to{opacity:1;transform:none;clip-path:inset(0)}}
 @keyframes face-in{from{opacity:0;transform:translateX(var(--from)) scale(.91);clip-path:inset(0 35%)}to{opacity:1;transform:none;clip-path:inset(0)}}
 @keyframes versus-in{from{opacity:0;transform:scale(1.6) skewX(-12deg)}}
+@keyframes blade-entry{from{opacity:0;transform:translateX(var(--blade-entry)) scale(.75)}to{opacity:1;transform:none}}
+@keyframes blade-spin{to{transform:rotate(360deg)}}
 
 /* Uma cor por mesa acompanha o duelo e a vinheta de chamada. */
 .live-card[data-table="1"],.tv-scene[data-table="1"]{--signal:#61e8ff;--signal-rgb:97,232,255}
@@ -150,6 +181,9 @@ button{font:inherit}
 .live-meta b,.live-card .versus{color:var(--signal)}
 .live-meta b::before{box-shadow:0 0 .66em var(--signal);animation:signal-pulse 2.8s ease-in-out infinite}
 .live-card .portrait,.scene-duel .portrait{outline:1px solid rgba(var(--signal-rgb),.50);box-shadow:0 .25em .65em #0008,0 0 .6em rgba(var(--signal-rgb),.20)}
+.portrait.ranked-portrait{overflow:visible;outline:0;box-shadow:none;border:0;background:transparent;color:#dce6e8}
+.ranked-portrait-core{position:relative;width:68%;aspect-ratio:1}
+.ranked-portrait-photo{position:absolute;left:var(--photo-left);top:var(--photo-top);width:var(--photo-size);height:var(--photo-size);display:grid;place-items:center;background:#263238;font-size:.8em}
 .live-card .versus,.scene-duel .versus{text-shadow:0 0 .35em rgba(var(--signal-rgb),.36)}
 .arena-empty,.waiting-item,.podium-place{border-radius:calc(.45 * var(--unit))}
 .arena-empty{position:relative;isolation:isolate;overflow:hidden;border-top-color:#79c6df;background:linear-gradient(132deg,#233437,#121a19 56%)}
@@ -157,9 +191,9 @@ button{font:inherit}
 .waiting-item{border:1px solid #344541;background:#131c1b}
 .waiting-meta span:last-child{color:#dfbf91}
 .standing-row.podium{border-radius:.22em}
-.standing-row.gold,.podium-place.gold{background:linear-gradient(100deg,#42371d,#231f17);box-shadow:inset 0 0 1.25em #f9cf6730}
-.standing-row.silver,.podium-place.silver{background:#202a34}
-.standing-row.bronze,.podium-place.bronze{background:#312623}
+.standing-row.gold,.podium-place.gold,.intermission-leader.gold{--place:#f1d581;background:linear-gradient(100deg,#42371d,#231f17);box-shadow:inset 0 0 1.25em #f9cf6730}
+.standing-row.silver,.podium-place.silver,.intermission-leader.silver{--place:#d6e0eb;background:#202a34}
+.standing-row.bronze,.podium-place.bronze,.intermission-leader.bronze{--place:#edb28c;background:#312623}
 .standing-row.podium .standing-rank,.podium-place .place{text-shadow:0 0 .35em color-mix(in srgb,var(--place) 50%,transparent)}
 .tv-scene{--signal:#85e9ff;--signal-rgb:133,233,255;background:radial-gradient(ellipse at center,rgba(var(--signal-rgb),.11),transparent 66%),#101717}
 .tv-scene::before,.tv-scene::after{background:var(--signal)}
@@ -197,6 +231,10 @@ button{font:inherit}
   .scene-duel{gap:.6rem}.scene-duel .portrait{width:min(27vw,calc(11 * var(--unit)))}
   .scene-duel .competitor strong,.scene-duel .competitor strong.long{font-size:calc(1.7 * var(--unit))}
   .scene-duel .versus{font-size:calc(3.65 * var(--unit))}
-  .scene-round h2{font-size:calc(6.5 * var(--unit))}
+  .scene-round h2{font-size:clamp(28px,10vw,calc(6.5 * var(--unit)))}
+  .intermission-leaders{grid-template-columns:1fr}
+  .intermission-leader .portrait{width:calc(5 * var(--unit))}
+  .intermission-player strong{font-size:calc(1.65 * var(--unit))}
+  .between-rounds :is(.standing-cols,.standing-row){grid-template-columns:calc(2.1 * var(--unit)) minmax(0,1fr) calc(2.8 * var(--unit)) calc(3.4 * var(--unit))}
   .podium-place{min-height:190px}
 }

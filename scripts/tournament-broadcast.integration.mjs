@@ -16,11 +16,12 @@ assert.equal(migration.status, 0, migration.stderr || migration.stdout);
 const { prisma } = await import('../server/db.js');
 const { default: router } = await import('../server/routes/tournaments.js');
 const users = [];
+const standardBladeImages = ['/assets/home/spinning-bey.png', '/assets/parts/aero-pegasus-bx53.webp'];
 let server, browser;
 const streams = new Set();
 try {
   for (let i = 0; i < 21; i++) {
-    const name = ['Organizador', 'Lúcia Aurora', 'Cauã Vento Norte', 'Rafa Eclipse', 'Ana Carolina Nascimento de Albuquerque e Silva'][i] || 'Blader ' + String(i).padStart(2, '0');
+    const name = ['Organizador', 'Bia Aurora', 'Augusto Vento Norte', 'Arthur Eclipse', 'Ana Carolina Nascimento de Albuquerque e Silva'][i] || 'Blader ' + String(i).padStart(2, '0');
     users.push(await prisma.user.create({ data: {
       name, slug: 'blader-' + i, email: 'blader-' + i + '@test.invalid',
       avatarUrl: i === 4 ? '/missing-avatar.webp' : i % 2 ? '/assets/profiles/default-blader.png' : null,
@@ -57,7 +58,13 @@ try {
   });
   app.get('/api/me', (req, res) => res.json({ user: req.user || null }));
   app.get('/api/site', (_req, res) => res.json({ site: { name: 'BeyXLab' }, flags: {} }));
-  app.get('/api/parts-index', (_req, res) => res.json({ parts: [] }));
+  app.get('/api/parts-index', (_req, res) => res.json({ parts: [
+    ...standardBladeImages.map(img => ({ kind: 'BLADE', img })),
+    { kind: 'BLADE', subKind: 'INTEGRATED', img: '/excluded-integrated.webp' },
+    { kind: 'BLADE', parentId: 'recolor', img: '/excluded-recolor.webp' },
+    { kind: 'MAIN_BLADE', img: '/assets/parts/eclipse.webp' },
+    { kind: 'LOCK_CHIP', img: '/excluded-lock.webp' },
+  ] }));
   app.get('/torneio/:slug', (_req, res) => res.sendFile(path.resolve('public/torneio.html')));
   app.get('/ao-vivo/:slug', (_req, res) => res.sendFile(path.resolve('public/ao-vivo.html')));
   app.use(router);
@@ -114,13 +121,25 @@ try {
   assert.equal(state.events.at(-1).kind, 'ROUND');
   assert(state.players.some(p => p.elo !== null));
   assert(state.players.some(p => p.elo === null));
+  assert(state.players.some(p => p.tier?.name === 'Ouro de Impacto' && p.elo >= 1200));
+  assert(state.players.some(p => p.tier?.name === 'Prata de Arena' && p.tier.icon === '/assets/ranks/prata.png'));
   const matches = state.waiting;
   assert.equal((await broadcast(matches[0], 1, users[1])).status, 403);
   assert.equal((await broadcast(matches[0], 5)).status, 422);
 
   if (tv) {
     for (const page of [tv, tv2]) await page.locator('#scene .scene-round').waitFor();
+    await tv.waitForFunction(() => {
+      const blades = [...document.querySelectorAll('.scene-blade img')];
+      return blades.length === 2 && blades.every(blade => blade.naturalWidth > 0);
+    });
+    assert.deepEqual((await tv.locator('.scene-blade img').evaluateAll(images => images.map(image => image.getAttribute('src')))).sort(), [...standardBladeImages].sort());
+    assert.equal(await tv.locator('.scene-blade img').first().evaluate(img => getComputedStyle(img).animationName), 'blade-spin');
+    assert.equal(await tv2.locator('.scene-blade img').first().evaluate(img => getComputedStyle(img).animationName), 'none');
     await screenshot(tv, 'round-intro');
+    await tv2.setViewportSize({ width: 390, height: 900 });
+    await screenshot(tv2, 'round-intro-390');
+    await tv2.setViewportSize(tvOptions.viewport);
     const pairingViewer = await browser.newPage(tvOptions);
     await pairingViewer.clock.install();
     await pairingViewer.goto(base + '/ao-vivo/' + t.slug, { waitUntil: 'domcontentloaded' });
@@ -180,7 +199,15 @@ try {
     assert(await late.locator('#scene').isHidden());
     assert.deepEqual(await late.locator('.live-card').evaluateAll(cards => cards.map(card => getComputedStyle(card).getPropertyValue('--signal'))), ['#61e8ff', '#cbb1ff', '#ffd379', '#a4ffb8']);
     assert.equal(await tv2.locator('.live-card').first().evaluate(card => getComputedStyle(card, '::before').animationName), 'none');
+    await late.waitForFunction(() => {
+      const photos = [...document.querySelectorAll('.live-card .ranked-portrait-photo img')];
+      return photos.filter(photo => photo.naturalWidth > 0).length === 2;
+    });
     await screenshot(late, 'four-1080');
+    assert(await late.locator('.live-card .elo-frame-prata').count());
+    assert(await late.locator('.live-card .elo-frame-ouro').count());
+    assert(await late.locator('.live-card .tv-rank-title img[src="/assets/ranks/prata.png"]').count());
+    assert.match(await late.locator('.live-card .tv-rank').allTextContents().then(lines => lines.join(' ')), /Ouro de Impacto\s+1\.210 PDL/);
     assert.match(await late.locator('.live-card').first().innerText(), /Ana Carolina Nascimento de Albuquerque e Silva/i);
     assert.equal(await late.locator('.live-card').first().evaluate(card => card.scrollHeight > card.clientHeight), false);
     await late.setViewportSize({ width: 3840, height: 2160 });
@@ -252,7 +279,19 @@ try {
   assert.equal(state.live.length, 0);
   assert.equal(state.waiting.length, 0);
   assert.equal(state.completed, matches.length);
-  if (tv) await tv.getByText('Aguardando próxima rodada', { exact: true }).waitFor();
+  if (tv) {
+    await tv.getByText('Aguardando próxima rodada', { exact: true }).waitFor();
+    assert.equal(await tv.locator('.intermission-leader').count(), 3);
+    assert.equal(await tv.locator('.standing-rank').first().innerText(), '4');
+    assert.equal(await tv.locator('.standing-row').count(), 7);
+    assert(standardBladeImages.includes(await tv.locator('.intermission-blade img').getAttribute('src')));
+    await screenshot(tv, 'between-rounds-1080');
+    await tv2.locator('.intermission').waitFor();
+    await tv2.setViewportSize({ width: 390, height: 900 });
+    assert.equal(await tv2.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await screenshot(tv2, 'between-rounds-390');
+    await tv2.setViewportSize(tvOptions.viewport);
+  }
   assert((await prisma.tMatch.findMany({ where: { tournamentId: t.id } })).every(m => m.liveTableNo === null));
   const regular = await (await fetch(api)).json();
   assert.deepEqual(state.standings.map(row => row.playerId), regular.standings.map(row => row.player.id));
