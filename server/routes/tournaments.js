@@ -111,8 +111,8 @@ function matchDto(m, options) {
   };
 }
 
-export async function loadTournament(slug) {
-  return prisma.tournament.findUnique({
+export async function loadTournament(slug, db = prisma) {
+  return db.tournament.findUnique({
     where: { slug },
     include: {
       organizer: true,
@@ -190,9 +190,21 @@ export function standingsOf(t, options) {
     .sort(compareBase);
 }
 
+const tamerLeagueSyncs = new Map();
 async function syncTamerLeague(t) {
-  const fresh = await loadTournament(t.slug);
-  return pushTamerLeagueTournament(fresh, standingsOf(fresh));
+  // A integração substitui o torneio inteiro a cada envio. Envia em ordem
+  // e lê o estado atual só quando chegar a vez deste torneio.
+  const previous = tamerLeagueSyncs.get(t.id) || Promise.resolve();
+  const pending = previous.catch(() => {}).then(async () => {
+    const fresh = await loadTournament(t.slug);
+    return pushTamerLeagueTournament(fresh, standingsOf(fresh));
+  });
+  tamerLeagueSyncs.set(t.id, pending);
+  try {
+    return await pending;
+  } finally {
+    if (tamerLeagueSyncs.get(t.id) === pending) tamerLeagueSyncs.delete(t.id);
+  }
 }
 async function automaticTamerLeagueSync(t) {
   const fresh = await loadTournament(t.slug);
@@ -749,7 +761,9 @@ router.post('/api/tournaments/:slug/correct-round', requireManage(bySlug), ah(as
   const targets = t.matches.filter(m => m.round === round && m.p2Id);
   if (!Array.isArray(results) || results.length !== targets.length || new Set(results.map(r => r.matchId)).size !== targets.length || results.some(r => !targets.some(m => m.id === r.matchId && [m.p1Id, m.p2Id].includes(r.winnerId)))) return res.status(422).json({ error: 'Informe um vencedor válido para cada mesa da rodada.' });
   try {
-    await prisma.$transaction(async tx => {
+    const corrected = await prisma.$transaction(async tx => {
+      const current = await tx.tournament.findUnique({ where: { id: t.id } });
+      if (current?.status !== 'RUNNING' || current.currentRound !== t.currentRound) return false;
       const later = await tx.tMatch.findMany({ where: { tournamentId: t.id, round: { gt: round } }, include: { rounds: true } });
       if (later.some(m => m.p2Id && (m.status !== 'PENDING' || m.p1Report || m.p2Report || m.p1Score || m.p2Score || m.rounds.some(r => r.status !== 'VOID')))) throw new Error('A rodada posterior já tem atividade. Não é possível refazer os pareamentos sem apagar partidas jogadas.');
       await tx.tMatch.deleteMany({ where: { tournamentId: t.id, round: { gt: round } } });
@@ -760,7 +774,9 @@ router.post('/api/tournaments/:slug/correct-round', requireManage(bySlug), ah(as
       const matches = await tx.tMatch.findMany({ where: { tournamentId: t.id } });
       await pairRound({ ...t, matches }, round + 1, tx);
       await tx.tournament.update({ where: { id: t.id }, data: { currentRound: round + 1 } });
+      return true;
     });
+    if (!corrected) return res.status(409).json({ error: 'O torneio mudou. Atualize a página e tente novamente.' });
   } catch (error) { if (error.message.startsWith('A rodada posterior')) return res.status(409).json({ error: error.message }); throw error; }
   await audit(req.user, 'tournament.correct_round', 'TOURNAMENT', t.id, { round, results });
   res.json({ ok: true, round: round + 1 });
@@ -768,39 +784,85 @@ router.post('/api/tournaments/:slug/correct-round', requireManage(bySlug), ah(as
 
 router.post('/api/tournaments/:slug/start', requireManage(bySlug), ah(async (req, res) => {
   const t = req.tournament;
-  if (t.status !== 'OPEN') return res.status(403).json({ error: 'O torneio já começou.' });
-  if (t.players.filter((p) => !p.dropped && (!t.entryFeeCents || p.paymentConfirmed)).length < 2) return res.status(422).json({ error: 'É preciso ter ao menos 2 jogadores aptos, com pagamento confirmado quando houver inscrição paga.' });
-  await pairRound(t, 1);
-  await prisma.tournament.update({ where: { id: t.id }, data: { status: 'RUNNING', currentRound: 1 } });
+  const failure = await prisma.$transaction(async tx => {
+    const current = await loadTournament(t.slug, tx);
+    if (current?.status !== 'OPEN') return { status: 403, error: 'O torneio já começou.' };
+    if (current.players.filter(p => !p.dropped && (!current.entryFeeCents || p.paymentConfirmed)).length < 2) {
+      return { status: 422, error: 'É preciso ter ao menos 2 jogadores aptos, com pagamento confirmado quando houver inscrição paga.' };
+    }
+    await pairRound(current, 1, tx);
+    await tx.tournament.update({ where: { id: t.id }, data: { status: 'RUNNING', currentRound: 1 } });
+    return null;
+  });
+  if (failure) return res.status(failure.status).json({ error: failure.error });
   await audit(req.user, 'tournament.start', 'TOURNAMENT', t.id);
   res.json({ ok: true, round: 1, tamerLeague: await automaticTamerLeagueSync(t) });
 }));
 
+router.post('/api/tournaments/:slug/reset', requireManage(bySlug), ah(async (req, res) => {
+  const t = req.tournament;
+  if (req.body?.confirm !== true) return res.status(422).json({ error: 'Confirme que deseja apagar os resultados e reabrir as inscrições.' });
+  const reset = await prisma.$transaction(async tx => {
+    const changed = await tx.tournament.updateMany({
+      where: { id: t.id, status: 'RUNNING', currentRound: t.currentRound },
+      data: { status: 'OPEN', currentRound: 0 },
+    });
+    if (!changed.count) return null;
+    // A exclusão das mesas também remove os rounds vinculados por cascade.
+    const matches = await tx.tMatch.deleteMany({ where: { tournamentId: t.id } });
+    await tx.tournamentLateEntryInvite.deleteMany({ where: { tournamentId: t.id } });
+    await tx.tournamentPlayer.updateMany({
+      where: { tournamentId: t.id, OR: [{ dropped: true }, { lateLosses: { gt: 0 } }] },
+      data: { dropped: false, lateLosses: 0 },
+    });
+    return { previousRound: t.currentRound, removedMatches: matches.count };
+  });
+  if (!reset) return res.status(409).json({ error: 'Só é possível refazer um torneio em andamento. Se o estado mudou, atualize a página.' });
+  await audit(req.user, 'tournament.reset', 'TOURNAMENT', t.id, reset);
+  res.json({ ok: true, status: 'OPEN', round: 0, tamerLeague: await automaticTamerLeagueSync(t) });
+}));
+
 router.post('/api/tournaments/:slug/next-round', requireManage(bySlug), ah(async (req, res) => {
   const t = req.tournament;
-  if (t.status !== 'RUNNING') return res.status(403).json({ error: 'O torneio não está em andamento.' });
-  const open = t.matches.filter((m) => m.round === t.currentRound && m.status !== 'DONE');
-  if (open.length) return res.status(422).json({ error: `Ainda há ${open.length} partida(s) sem resultado nesta rodada.` });
-  if (t.currentRound >= t.roundsPlanned) return res.status(422).json({ error: 'Todas as rodadas planejadas já foram jogadas — encerre o torneio.' });
   const round = t.currentRound + 1;
-  await pairRound(t, round);
-  await prisma.tournament.update({ where: { id: t.id }, data: { currentRound: round } });
+  const failure = await prisma.$transaction(async tx => {
+    const current = await loadTournament(t.slug, tx);
+    if (current?.status !== 'RUNNING') return { status: 403, error: 'O torneio não está em andamento.' };
+    if (current.currentRound !== t.currentRound) return { status: 409, error: 'A rodada mudou. Atualize a página e tente novamente.' };
+    const open = current.matches.filter(m => m.round === current.currentRound && m.status !== 'DONE');
+    if (open.length) return { status: 422, error: `Ainda há ${open.length} partida(s) sem resultado nesta rodada.` };
+    if (current.currentRound >= current.roundsPlanned) return { status: 422, error: 'Todas as rodadas planejadas já foram jogadas — encerre o torneio.' };
+    await pairRound(current, round, tx);
+    await tx.tournament.update({ where: { id: t.id }, data: { currentRound: round } });
+    return null;
+  });
+  if (failure) return res.status(failure.status).json({ error: failure.error });
   res.json({ ok: true, round, tamerLeague: await automaticTamerLeagueSync(t) });
 }));
 
 router.post('/api/tournaments/:slug/late-entry-invites', requireManage(bySlug), ah(async (req, res) => {
   const t = req.tournament;
   if (t.status !== 'RUNNING') return res.status(422).json({ error: 'A entrada tardia só pode ser liberada durante o torneio.' });
-  const invite = await prisma.tournamentLateEntryInvite.create({
-    data: { tournamentId: t.id, token: randomBytes(24).toString('base64url'), expiresAt: new Date(Date.now() + 60 * 60 * 1000) },
+  const invite = await prisma.$transaction(async tx => {
+    const current = await tx.tournament.findUnique({ where: { id: t.id }, select: { status: true, currentRound: true } });
+    if (current?.status !== 'RUNNING' || current.currentRound !== t.currentRound) return null;
+    return tx.tournamentLateEntryInvite.create({
+      data: { tournamentId: t.id, token: randomBytes(24).toString('base64url'), expiresAt: new Date(Date.now() + 60 * 60 * 1000) },
+    });
   });
+  if (!invite) return res.status(409).json({ error: 'O torneio mudou. Atualize a página e tente novamente.' });
   const url = `${siteUrl()}/t/${t.slug}?late=${encodeURIComponent(invite.token)}`;
   await audit(req.user, 'tournament.late_invite.create', 'TOURNAMENT', t.id, { expiresAt: invite.expiresAt, lateLosses: t.currentRound });
   res.json({ url, expiresAt: invite.expiresAt, lateLosses: t.currentRound });
 }));
 
 router.post('/api/tournaments/:slug/finish', requireManage(bySlug), ah(async (req, res) => {
-  await prisma.tournament.update({ where: { id: req.tournament.id }, data: { status: 'FINISHED' } });
+  const t = req.tournament;
+  const finished = await prisma.tournament.updateMany({
+    where: { id: t.id, status: 'RUNNING', currentRound: t.currentRound },
+    data: { status: 'FINISHED' },
+  });
+  if (!finished.count) return res.status(409).json({ error: 'O torneio precisa estar em andamento para ser encerrado.' });
   await audit(req.user, 'tournament.finish', 'TOURNAMENT', req.tournament.id);
   import('../meta.js').then((m) => m.onTournamentFinished(req.tournament.slug)).catch(() => {});
   res.json({ ok: true, tamerLeague: await automaticTamerLeagueSync(req.tournament) });

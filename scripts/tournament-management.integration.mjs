@@ -259,5 +259,60 @@ try {
  for(const invalid of ['javascript:alert(1)','data:text/html,test','https://user:password@example.com']){assert.throws(()=>normalizeTicketUrl(invalid));assert(!paymentContext.BX.tournamentPaymentNotice({entryFeeCents:1000,ticketUrl:invalid}).includes('ticket-purchase'));}
  assert.equal(normalizeTicketUrl('arena.example/ingresso'),'https://arena.example/ingresso');assert.equal(normalizeTicketUrl(''),null);
  const rejected=await fetch(base+'/api/stores',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'Invalid',ticketUrl:'javascript:alert(1)'})});assert.equal(rejected.status,422);
- console.log('PASS: payment permissions, paid-only pairing, free entry, past correction, report protection, UI syntax.');
+
+ // Refazer o torneio mantém o evento e as inscrições, inclusive decks e pagamentos.
+ await prisma.tournament.update({where:{id:t.id},data:{organizerId:users[1].id}});
+ await prisma.tournamentPlayer.update({where:{id:ps[0].id},data:{
+  dropped:true,lateLosses:2,deckId:ownDecks[0].id,manualDeckJson:JSON.stringify([combo]),manualDeckTitle:'Deck da organização',
+ }});
+ const invite=await call('/late-entry-invites',{},users[1]);
+ assert.equal(invite.status,200);
+ const savedRound=await prisma.matchRound.create({data:{matchId:m.id,no:1,claimedBy:'P1',status:'CONFIRMED',winnerId:m.p1Id}});
+ const beforeReset=await prisma.tournament.findUnique({where:{id:t.id},include:{players:true,matches:true}});
+ assert.equal((await call('/reset',{confirm:true},users[2])).status,403);
+ assert.equal((await call('/reset',{},users[1])).status,422);
+ assert.equal(await prisma.tMatch.count({where:{tournamentId:t.id}}),beforeReset.matches.length);
+ if(browser){
+  const page=await browser.newPage({viewport:{width:390,height:900},extraHTTPHeaders:{'x-test-user':users[1].id}});
+  await page.goto(base+'/torneio/qa-manager#gestao');
+  await page.locator('#resetTournamentBtn').click();
+  const dialog=page.getByRole('alertdialog',{name:'Refazer torneio?'});
+  assert.match(await dialog.innerText(),/resultados.*serão apagados/);
+  await dialog.getByRole('button',{name:'Cancelar',exact:true}).click();
+  assert.equal(await prisma.tMatch.count({where:{tournamentId:t.id}}),beforeReset.matches.length);
+  await page.locator('#resetTournamentBtn').click();
+  await page.screenshot({path:'artifacts/tournament-manager/reset-confirmation-390.png',animations:'disabled'});
+  await dialog.getByRole('button',{name:'Refazer torneio',exact:true}).click();
+  await page.locator('#startBtn').waitFor();
+  assert.equal(await page.locator('[data-manager-round],#resetTournamentBtn').count(),0);
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+  await page.close();
+ }else assert.equal((await call('/reset',{confirm:true},users[1])).status,200);
+ const afterReset=await prisma.tournament.findUnique({where:{id:t.id},include:{players:true,matches:true,lateInvites:true}});
+ assert.equal(afterReset.status,'OPEN');
+ assert.equal(afterReset.currentRound,0);
+ assert.equal(afterReset.slug,t.slug);
+ assert.equal(afterReset.coverUrl,t.coverUrl);
+ assert.deepEqual(afterReset.matches,[]);
+ assert.deepEqual(afterReset.lateInvites,[]);
+ assert.equal(await prisma.matchRound.findUnique({where:{id:savedRound.id}}),null);
+ assert.deepEqual(afterReset.players.sort((a,b)=>a.id.localeCompare(b.id)),beforeReset.players
+  .map(p=>({...p,dropped:false,lateLosses:0})).sort((a,b)=>a.id.localeCompare(b.id)));
+ assert.equal((await call('/reset',{confirm:true},users[1])).status,409);
+ assert.equal((await call('/finish',{},users[1])).status,409);
+ const newcomer=await prisma.user.create({data:{name:'Jogador que chegou depois',slug:'newcomer',email:'newcomer@test.invalid'}});
+ users.push(newcomer);
+ assert.equal((await call('/join',{},newcomer)).status,200);
+ const newPlayer=await prisma.tournamentPlayer.findFirst({where:{tournamentId:t.id,userId:newcomer.id}});
+ assert.equal(newPlayer.lateLosses,0);
+ assert.equal((await call(`/players/${newPlayer.id}/payment`,{paid:true},users[1],'PATCH')).status,200);
+ const starts=await Promise.all([call('/start',{},users[1]),call('/start',{},users[1])]);
+ assert.deepEqual(starts.map(r=>r.status).sort(),[200,403]);
+ const newMatches=await prisma.tMatch.findMany({where:{tournamentId:t.id}});
+ assert.equal(newMatches.length,3);
+ assert(newMatches.every(game=>game.round===1 && !beforeReset.matches.some(old=>old.id===game.id)));
+ assert(newMatches.some(game=>[game.p1Id,game.p2Id].includes(newPlayer.id)));
+ assert.equal((await call('/finish',{},users[1])).status,200);
+ assert.equal((await call('/reset',{confirm:true},users[1])).status,409);
+ console.log('PASS: payment permissions, paid-only pairing, free entry, past correction, report protection, tournament reset and restart.');
 }finally{await browser?.close();if(server)await new Promise(r=>server.close(r));await prisma.$disconnect();}

@@ -32,6 +32,7 @@
       const VIEWS = ['geral', 'pairings', 'partida', 'gestao'];
       let managerPanel = ['divulgacao','configuracao'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'gestao';
       let manageRound = null;
+      let resetPending = false;
       const hashView = () => { const v = location.hash.slice(1); return VIEWS.includes(v) ? v : ['divulgacao','configuracao'].includes(v) ? 'gestao' : 'geral'; };
       let view = hashView(); // geral | partida | gestao — fica no hash: recarregar/voltar não perde a aba
       const reportExitKey = `bx_exit_match_report_${slug}`;
@@ -103,6 +104,14 @@
       function render(data, me, myData) {
         ME = me;
         const t = data.tournament;
+        if (t.status === 'OPEN') {
+          manageRound = null;
+          pairingRound = null;
+          if (view === 'partida' || view === 'pairings') {
+            view = 'geral';
+            history.replaceState(null, '', '#geral');
+          }
+        }
         document.title = `${t.name} — BX Deck Lab`;
         const joined = !!data.me;
         const tabs = [
@@ -350,6 +359,7 @@
                   ${t.status === 'RUNNING' && t.currentRound < t.roundsPlanned ? `<button class="btn primary" id="nextBtn" ${canAdvance ? '' : 'disabled'}>${BX.ic('chevron',14)} Gerar rodada ${t.currentRound+1}</button>` : ''}
                   ${t.status === 'RUNNING' ? `<button class="btn secondary" id="lateInviteBtn">${BX.ic('link', 14)} Gerar convite de entrada tardia</button>` : ''}
                   ${t.status === 'RUNNING' ? `<button class="btn secondary" id="finishBtn">${BX.ic('finish', 14)} Encerrar torneio</button>` : ''}
+                  ${t.status === 'RUNNING' ? `<button type="button" class="btn danger-outline" id="resetTournamentBtn" ${resetPending ? 'disabled' : ''}>${BX.ic('refresh', 14)} Refazer torneio</button>` : ''}
                   ${t.status !== 'CANCELED' ? `<button class="btn ghost" id="tamerLeagueSyncBtn" title="Reenvia o estado atual do torneio ao TamerLeague">Sincronizar TamerLeague</button>` : ''}
                   ${t.status !== 'CANCELED' && t.status !== 'FINISHED' ? `<button class="btn danger-outline" id="cancelBtn">Cancelar torneio</button>` : ''}
                 </div>
@@ -498,6 +508,33 @@
           } catch (e) { BX.toast(e.message); }
         });
         document.getElementById('finishBtn')?.addEventListener('click', act(() => confirm('Encerrar o torneio?') && BX.api(`/api/tournaments/${slug}/finish`, { method: 'POST' })));
+        document.getElementById('resetTournamentBtn')?.addEventListener('click', async event => {
+          if (resetPending) return;
+          resetPending = true;
+          event.currentTarget.disabled = true;
+          try {
+            const confirmation = BX.confirmDialog({
+              title: 'Refazer torneio?',
+              text: 'As inscrições serão reabertas e todas as rodadas, resultados e convites de entrada tardia serão apagados. Inscrições, decks e pagamentos serão mantidos. Drops e derrotas por entrada tardia serão zerados.',
+              okLabel: 'Refazer torneio',
+              danger: true,
+            });
+            document.querySelector('#bxConfirmDialog [data-cancel]')?.focus();
+            if (!await confirmation) return;
+            const { tamerLeague } = await BX.api(`/api/tournaments/${slug}/reset`, { method: 'POST', body: { confirm: true } });
+            opponentStatsCache.clear();
+            await load();
+            BX.toast(tamerLeague?.error
+              ? 'Inscrições reabertas. Falha no envio ao TamerLeague. Tente sincronizar pela Gestão.'
+              : 'Inscrições reabertas. Ajuste os jogadores e comece de novo.');
+          } catch (error) {
+            BX.toast(error.message);
+          } finally {
+            resetPending = false;
+            const button = document.getElementById('resetTournamentBtn');
+            if (button) button.disabled = false;
+          }
+        });
         document.getElementById('tamerLeagueSyncBtn')?.addEventListener('click', act(async () => { await BX.api(`/api/tournaments/${slug}/tamerleague-sync`, { method: 'POST' }); BX.toast('Estado atual enviado ao TamerLeague.'); }));
         document.getElementById('cancelBtn')?.addEventListener('click', act(() => confirm('Cancelar o torneio? Os jogadores serão avisados pelo status.') && BX.api(`/api/tournaments/${slug}/cancel`, { method: 'POST' })));
         box.querySelectorAll('[data-accept]').forEach((b) => b.addEventListener('click', act(() => BX.api(`/api/tournaments/${slug}/matches/${b.dataset.accept}/resolve`, { method: 'POST', body: {} }))));
