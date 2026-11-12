@@ -137,7 +137,7 @@ function betweenRounds(snapshot) {
 function bladeArt(blade, className) {
   if (!blade) return '';
   const src = escapeHtml(blade.src);
-  return `<span class="${className}" data-spin="${blade.spin}" aria-hidden="true"><img src="${src}" data-photo="${src}" decoding="async" alt=""></span>`;
+  return `<span class="${className}" data-spin="${blade.spin}" aria-hidden="true"><img src="${src}" data-photo="${src}" referrerpolicy="no-referrer" decoding="async" alt=""></span>`;
 }
 
 const randomIndex = values => Math.floor(Math.random() * values.length);
@@ -152,8 +152,10 @@ function prepareRoundBlades() {
   const right = pick(available.filter(blade => blade.spin === 'right'));
   const left = pick(available.filter(blade => blade !== right));
   nextRoundBlades = [left, right];
-  for (const blade of nextRoundBlades) {
-    if (blade) new Image().src = blade.src;
+  for (const { src } of nextRoundBlades.filter(Boolean)) {
+    const image = new Image();
+    image.referrerPolicy = 'no-referrer';
+    image.src = src;
   }
 }
 

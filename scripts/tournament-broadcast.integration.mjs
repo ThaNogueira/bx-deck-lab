@@ -154,6 +154,7 @@ try {
     const rightBlade = tv.locator('.blade-right[data-spin="right"] img');
     assert.equal(await leftBlade.getAttribute('src'), standardBladeImages[1]);
     assert.equal(await rightBlade.getAttribute('src'), standardBladeImages[0]);
+    assert.equal(await rightBlade.getAttribute('referrerpolicy'), 'no-referrer');
     assert.equal(await leftBlade.evaluate(bladeTurn), -1);
     assert.equal(await rightBlade.evaluate(bladeTurn), 1);
     assert.equal(await tv2.locator('.scene-blade img').first().evaluate(img => getComputedStyle(img).animationName), 'none');
