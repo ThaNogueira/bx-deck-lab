@@ -121,6 +121,25 @@ try {
   if (tv) {
     for (const page of [tv, tv2]) await page.locator('#scene .scene-round').waitFor();
     await screenshot(tv, 'round-intro');
+    const pairingViewer = await browser.newPage(tvOptions);
+    await pairingViewer.clock.install();
+    await pairingViewer.goto(base + '/ao-vivo/' + t.slug, { waitUntil: 'domcontentloaded' });
+    await pairingViewer.locator('#connection.online').waitFor();
+    assert.equal(await pairingViewer.locator('#arenaCount').textContent(), 'Nenhuma mesa ao vivo');
+    assert.equal(await pairingViewer.locator('.pairing-row').count(), 5);
+    assert.equal(await pairingViewer.locator('.pairing-row .pairing-number strong').first().innerText(), '01');
+    assert(await pairingViewer.locator('#waiting').isHidden());
+    await screenshot(pairingViewer, 'pairings-1080');
+    await pairingViewer.setViewportSize({ width: 3840, height: 2160 });
+    await screenshot(pairingViewer, 'pairings-4k');
+    await pairingViewer.setViewportSize({ width: 390, height: 900 });
+    assert.equal(await pairingViewer.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await screenshot(pairingViewer, 'pairings-390');
+    await pairingViewer.clock.fastForward(9000);
+    await pairingViewer.getByText('10 confrontos · Página 2 / 2', { exact: true }).waitFor();
+    assert.equal(await pairingViewer.locator('.pairing-row .pairing-number strong').first().innerText(), '06');
+    await pairingViewer.close();
+
     manager = await browser.newPage({ viewport: { width: 390, height: 900 }, extraHTTPHeaders: organizer });
     await manager.goto(base + '/torneio/' + t.slug + '#gestao', { waitUntil: 'domcontentloaded' });
     await manager.locator('[data-manager-panel=divulgacao]').click();
@@ -130,6 +149,9 @@ try {
     await manager.locator('[data-live-table="1"]').click();
     await manager.locator('[data-save-live]').click();
     await manager.getByRole('button', { name: 'Ao vivo · Mesa 1' }).waitFor();
+    await tv.locator('.live-grid[data-count="1"]').waitFor();
+    assert(await tv.locator('.pairings-board').isHidden());
+    assert(await tv.locator('#waiting').isVisible());
     await manager.locator('[data-broadcast-match]').nth(1).click();
     assert(await manager.locator('[data-live-table="1"]').isDisabled());
     await manager.locator('[data-close-live]').click();
@@ -219,11 +241,18 @@ try {
   }
   const player = await prisma.tournamentPlayer.findUnique({ where: { id: moved.p1Id } });
   assert.equal((await call('/report', { matchId: moved.id, result: 'WIN' }, users.find(u => u.id === player.userId))).status, 200);
-  for (const match of matches) assert.equal((await call('/matches/' + match.id + '/resolve', { winnerId: match.p1Id })).status, 200);
+  assert.equal((await call('/matches/' + moved.id + '/resolve', { winnerId: moved.p1Id })).status, 200);
+  if (tv) {
+    await tv.locator('.pairings-board').waitFor();
+    assert(await tv.locator('#waiting').isHidden());
+    assert.equal(await tv.locator('.pairing-row .pairing-number strong').first().innerText(), '02');
+  }
+  for (const match of matches.slice(1)) assert.equal((await call('/matches/' + match.id + '/resolve', { winnerId: match.p1Id })).status, 200);
   state = await snapshot();
   assert.equal(state.live.length, 0);
   assert.equal(state.waiting.length, 0);
   assert.equal(state.completed, matches.length);
+  if (tv) await tv.getByText('Aguardando próxima rodada', { exact: true }).waitFor();
   assert((await prisma.tMatch.findMany({ where: { tournamentId: t.id } })).every(m => m.liveTableNo === null));
   const regular = await (await fetch(api)).json();
   assert.deepEqual(state.standings.map(row => row.playerId), regular.standings.map(row => row.player.id));

@@ -13,6 +13,8 @@ const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({
 })[char]);
 const two = value => String(value).padStart(2, '0');
 const medals = ['gold', 'silver', 'bronze'];
+const COMPACT_WAITING_SIZE = 3;
+const EXPANDED_WAITING_SIZE = 5;
 const slug = location.pathname.split('/').filter(Boolean)[1];
 const url = '/api/tournaments/' + (slug || '') + '/broadcast';
 const failedPhotos = new Set();
@@ -104,10 +106,22 @@ function showConnection(label, online = false) {
   el.connection.classList.toggle('online', online);
 }
 
+function showPairings(snapshot) {
+  return snapshot?.tournament.status === 'RUNNING' && !snapshot.live.length && snapshot.waiting.length > 0;
+}
+
 function renderArena() {
   const { tournament, live, waiting, completed, participants, standings } = state;
+  const expanded = showPairings(state);
   const finished = tournament.status === 'FINISHED';
-  text(el.arenaLabel, finished ? 'Pódio oficial' : 'Mesas ao vivo');
+  text(el.arenaLabel, expanded ? 'Pareamentos da rodada' : finished ? 'Pódio oficial' : 'Mesas ao vivo');
+  el.arenaCount.classList.toggle('pairings-status', expanded);
+  if (expanded) {
+    previousLive.clear();
+    text(el.arenaCount, 'Nenhuma mesa ao vivo');
+    renderWaiting();
+    return;
+  }
   text(el.arenaCount, tournament.status === 'RUNNING' ? two(live.length) + ' / 04 ativas' : '');
   renderWhen(el.arenaStage, JSON.stringify([tournament, live, waiting.length, completed, participants.length,
     finished ? standings.slice(0, 3).map(row => [row, players.get(row.playerId)]) : live.map(m => [players.get(m.p1Id), players.get(m.p2Id)])]), () => {
@@ -128,8 +142,8 @@ function renderArena() {
           ${duel(match)}
         </article>`).join('')}</div>`;
     }
-    let heading = 'Aguardando mesa ao vivo';
-    let detail = waiting.length + ' confronto(s) aguardando nesta rodada';
+    let heading = 'Aguardando próxima rodada';
+    let detail = completed + ' partidas concluídas na rodada';
     if (tournament.status === 'OPEN') {
       heading = 'O torneio começa em breve';
       detail = participants.length + ' participantes aptos';
@@ -139,9 +153,6 @@ function renderArena() {
     } else if (finished) {
       heading = 'Torneio encerrado';
       detail = '';
-    } else if (!waiting.length) {
-      heading = 'Aguardando próxima rodada';
-      detail = completed + ' partidas concluídas na rodada';
     }
     return `<div class="arena-empty"><span class="tv-kicker">${escapeHtml(tournament.storeName || 'Beyblade X')}</span><strong>${heading}</strong>${detail ? `<p>${detail}</p>` : ''}</div>`;
   });
@@ -152,13 +163,34 @@ function renderArena() {
 
 function renderWaiting() {
   const waiting = state.waiting;
-  el.waiting.hidden = !waiting.length;
+  const expanded = showPairings(state);
+  el.waiting.hidden = expanded || !waiting.length;
   if (!waiting.length) return;
-  const pages = Math.ceil(waiting.length / 3);
+  const size = expanded ? EXPANDED_WAITING_SIZE : COMPACT_WAITING_SIZE;
+  const pages = Math.ceil(waiting.length / size);
   waitingPage %= pages;
-  const slice = waiting.slice(waitingPage * 3, (waitingPage + 1) * 3);
+  const slice = waiting.slice(waitingPage * size, (waitingPage + 1) * size);
+  const matchKey = slice.map(m => [m.id, m.tableNo, players.get(m.p1Id), players.get(m.p2Id)]);
+  if (expanded) {
+    const pageLabel = pages > 1 ? ` · Página ${waitingPage + 1} / ${pages}` : '';
+    const countLabel = waiting.length === 1 ? '1 confronto' : `${waiting.length} confrontos`;
+    renderWhen(el.arenaStage, JSON.stringify(['pairings', countLabel, pageLabel, matchKey]), () => {
+      const playerLine = id => {
+        const player = players.get(id);
+        return `<div class="pairing-player">${portrait(player)}<strong>${escapeHtml(player?.name || 'Blader')}</strong></div>`;
+      };
+      return `<div class="pairings-board">
+        <div class="pairings-list">${slice.map(match => `<article class="pairing-row">
+          <div class="pairing-number"><span>Pareamento</span><strong>${two(match.tableNo)}</strong></div>
+          ${playerLine(match.p1Id)}<span class="pairing-vs">VS</span>${playerLine(match.p2Id)}
+        </article>`).join('')}</div>
+        <p class="pairings-page">${countLabel}${pageLabel}</p>
+      </div>`;
+    });
+    return;
+  }
   text(el.waitingCount, waiting.length + ' aguardando' + (pages > 1 ? ` · ${waitingPage + 1}/${pages}` : ''));
-  renderWhen(el.waitingGrid, JSON.stringify(slice.map(m => [m.id, m.tableNo, players.get(m.p1Id), players.get(m.p2Id)])), () => {
+  renderWhen(el.waitingGrid, JSON.stringify(matchKey), () => {
     const line = id => {
       const player = players.get(id);
       return `<div class="waiting-line">${portrait(player)}${escapeHtml(player?.name || 'Blader')}</div>`;
@@ -266,14 +298,14 @@ function presentNext() {
 
 function receive(snapshot, initial) {
   if (!initial && snapshot.cursor < cursor) return;
-  const lastRound = state?.tournament.round;
-  const lastStatus = state?.tournament.status;
-  state = snapshot;
-  players = new Map(snapshot.players.map(player => [player.id, player]));
-  if (lastRound !== snapshot.tournament.round || lastStatus !== snapshot.tournament.status) {
-    waitingPage = standingPage = 0;
+  const roundChanged = state?.tournament.round !== snapshot.tournament.round || state?.tournament.status !== snapshot.tournament.status;
+  if (roundChanged) standingPage = 0;
+  if (roundChanged || showPairings(state) !== showPairings(snapshot)) {
+    waitingPage = 0;
     rotatedAt = performance.now();
   }
+  state = snapshot;
+  players = new Map(snapshot.players.map(player => [player.id, player]));
   if (initial) {
     pendingScenes = [];
     clearScene();
@@ -294,7 +326,8 @@ function rotate() {
   tickClocks();
   if (!state || activeScene || document.hidden || performance.now() - rotatedAt < 8500) return;
   rotatedAt = performance.now();
-  if (state.waiting.length > 3) { waitingPage++; renderWaiting(); }
+  const waitingSize = showPairings(state) ? EXPANDED_WAITING_SIZE : COMPACT_WAITING_SIZE;
+  if (state.waiting.length > waitingSize) { waitingPage++; renderWaiting(); }
   if ((state.tournament.status === 'OPEN' ? state.participants : state.standings).length > 8) {
     standingPage++;
     standingChanged = true;
