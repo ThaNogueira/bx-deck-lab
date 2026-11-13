@@ -50,10 +50,10 @@ export const BLADES = {
   superion: {key:'superion',name:'Suppress Superion',type:'EQUILÍBRIO',image:'./assets/superion.png',color:0xc6b174,accent:0xf5cc44,ratchetColor:0xd4dfe2,bitColor:0xce312b,mass:1.34,hit:1.04,stamina:1.09,radius:.813,lobes:2,spinDirection:-1,catch:.24,deflect:.25,rigid:.23,stock:['0-70','LP'],trait:'BX Expand · o metal até o centro reduz o recuo e fortalece a resposta aos impactos.'},
   wyvern: {key:'wyvern',name:'Wyvern Hover',type:'DEFESA',image:'./assets/wyvern.png',color:0x599321,accent:0xc0e655,ratchetColor:0xc7ded1,bitColor:0x4b991f,mass:1.17,hit:.94,stamina:1.07,radius:.836,lobes:2,spinDirection:-1,catch:.27,deflect:.20,verticalGuard:.48,stock:['8-80','B'],trait:'Perfil oval · as rampas desviam golpes vindos de cima ou de baixo.'},
   silver: {key:'silver',name:'Silver Wolf',type:'RESISTÊNCIA',image:'./assets/silver.png',color:0x1f7476,accent:0x51d5da,ratchetColor:0x252c32,bitColor:0xd6c341,mass:1.24,hit:.76,stamina:1.19,radius:.824,lobes:6,spinDirection:-1,catch:.12,deflect:.20,freeRing:.56,stock:['3-80','FB'],trait:'Anel livre · desacopla a borda do núcleo para conservar giro nos choques.'},
-  glory: {key:'glory',name:'Glory Valkyrie',type:'ATAQUE',image:'./assets/glory.png',color:0x1750a8,accent:0xffbd37,bitColor:0x1643a4,mass:1.43,hit:1.28,stamina:.98,radius:.818,lobes:3,spinDirection:-1,catch:.37,deflect:.09,integrated:true,bound:.62,stock:[null,'LF'],trait:'UX Expand · a mola rebate impactos e ajuda a saltar de volta dos bolsos.'},
+  glory: {key:'glory',name:'Glory Valkyrie',type:'ATAQUE',image:'./assets/glory.png',color:0x1750a8,accent:0xffbd37,bitColor:0x1643a4,mass:1.43,hit:1.28,stamina:.98,radius:.818,lobes:3,spinDirection:-1,catch:.37,deflect:.09,integrated:true,bound:.62,pocketSpinCost:1.30,stock:[null,'LF'],trait:'UX Expand · a mola ajuda a saltar de volta dos bolsos, com custo extra de giro no Reverse.'},
 };
 export const RATCHETS = {
-  '1-60': { mm: 6, radius: .488, mass: .104, lock: 1.05, balance: .96, teeth: 1, pocketJump: .52 },
+  '1-60': { mm: 6, radius: .488, mass: .104, lock: 1.05, balance: .96, teeth: 1, pocketJump: .52, spinDrain: 1.10 },
   '3-60': { mm: 6, radius: .466, mass: .105, lock: 1.12, balance: 1.06, teeth: 3 },
   '4-60': { mm: 6, radius: .482, mass: .114, lock: 1.00, balance: 1.11, teeth: 4 },
   '3-80': { mm: 8, radius: .466, mass: .119, lock: .88, balance: .91, teeth: 3 },

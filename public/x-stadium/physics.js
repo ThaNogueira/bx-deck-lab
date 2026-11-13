@@ -24,10 +24,14 @@ const zero = {x:0,y:0,z:0};
 const DASH_CARRY_TIME = .61;
 const BLADE_SHELL_CLEARANCE = .018;
 const POCKET_FINISH_DELAY = 1.5;
+const POCKET_REVERSE_MIN_COST = .18;
+const POCKET_REVERSE_EXTRA_COST = .34;
 const MOVE_DURATION = {attack:.68,dash:1.62,defense:2.65,circle:3.35};
 const REFLEX_BOOST_TIME = { defense: 1.5, attack: 2.5 };
 const REFLEX_COOLDOWN = 4;
 const CIRCLE_SPIN_REWARD = .08;
+const BOOSTED_ATTACK_RANGE = 2.45;
+const BOOSTED_ATTACK_WINDUP = .29;
 const upright = { x: 0, y: 0, z: 0, w: 1 };
 const vertical = { x: 0, y: 1, z: 0 };
 const dot = (a, b) => a.x * b.x + a.y * b.y + a.z * b.z;
@@ -322,11 +326,32 @@ export class Battle {
       top.reflexBoostUntil = 0;
       top.move.boosted = true;
       top.move.until = this.time + top.reflexBoostDuration;
+      if (kind === 'attack') this.prepareAttackRetreat(top);
     }
     top.charges[kind]--;
     top.moveReadyAt = this.time+1.05;
     this.onEvent({type:'move',kind,player,boosted});
     return true;
+  }
+
+  prepareAttackRetreat(top) {
+    const position = top.body.translation();
+    const rival = this.tops[1-top.player];
+    const separation = sub(position,rival.body.translation());
+    const gap = horizontalSpeed(separation);
+    if (gap >= BOOSTED_ATTACK_RANGE || rival.escape || rival.defeat) return;
+    const away = gap > .05 ? {x:separation.x/gap,y:0,z:separation.z/gap} : {x:top.player ? 1 : -1,y:0,z:0};
+    const reach = clamp(3.35-gap,1.05,1.85);
+    let target = add(position,scale(away,reach));
+    const radius = horizontalSpeed(target);
+    if (radius > 4.65) {
+      // Near the rim, step sideways if the straight retreat points out of the bowl.
+      const tangent = {x:-position.z,y:0,z:position.x};
+      const side = dot(tangent,away) >= 0 ? 1 : -1;
+      target = add(position,scale(tangent,side*reach/Math.max(.1,horizontalSpeed(position))));
+      target = scale(target,Math.min(1,4.65/horizontalSpeed(target)));
+    }
+    top.move.retreat = { target, until:this.time + BOOSTED_ATTACK_WINDUP };
   }
 
   startMove(top, kind, manual) {
@@ -370,6 +395,17 @@ export class Battle {
     }
     let direction, pace, maxForce;
     if (kind === 'attack') {
+      const retreat = top.move.retreat;
+      if (retreat) {
+        const path = sub(retreat.target,p);
+        const distance = horizontalSpeed(path);
+        if (this.time < retreat.until && distance > .20) {
+          const speed = Math.min(10,distance*18);
+          const change = sub(scale({x:path.x,y:0,z:path.z},speed/distance),{x:v.x,y:0,z:v.z});
+          return scale(change,Math.min(18,180/Math.max(.01,horizontalSpeed(change))));
+        }
+        top.move.retreat = null;
+      }
       const rival = this.tops[1-top.player];
       const target = rival.body.translation();
       const lead = scale(rival.body.linvel(),.082);
@@ -453,7 +489,7 @@ export class Battle {
     // Once the finish is scored, the pocket's walls quickly scrub off the
     // remaining spin. During play the same contacts still allow a Reverse.
     const pocketDrag = this.finished && top.defeat?.zone ? 42+spin*3.05+abrasion*16 : 0;
-    this.spendSpin(top,(drag+bearing+endDrag+scrapeLoss+pocketDrag)*DT,axis);
+    this.spendSpin(top,((drag+bearing)*(top.ratchet.spinDrain ?? 1)+endDrag+scrapeLoss+pocketDrag)*DT,axis);
     if (pocketDrag) {
       const brake = Math.exp(-DT*3.8);
       body.setLinvel({x:v.x*brake,y:v.y,z:v.z*brake},true);
@@ -687,7 +723,8 @@ export class Battle {
     const angle = Math.atan2(p.z,p.x);
     const radius = horizontalSpeed(p), mouth = mouthRadius(angle);
     const jump = top.escape;
-    if (this.time < (jump?.jumpUntil ?? 0) && v.y > 0 && p.y > lipHeight(angle)+top.standing+.55) {
+    const jumpHeadroom = jump?.lateTakeoff ? .90 : .55;
+    if (this.time < (jump?.jumpUntil ?? 0) && v.y > 0 && p.y > lipHeight(angle)+top.standing+jumpHeadroom) {
       body.setLinvel({...v,y:0},true);
       return;
     }
@@ -1095,7 +1132,7 @@ export class Battle {
       const attack = top.blade.hit * top.bit.attack;
       const reserve = clamp(top.spin/top.launchSpin,0,1);
       const power = .14+.86*reserve**.78;
-      const advancing = top.move?.kind === 'attack';
+      const advancing = top.move?.kind === 'attack' && !top.move.retreat;
       const q = top.body.rotation(), offset = sub(point,top.body.translation());
       const localOffset = rotateVector(offset,{x:-q.x,y:-q.y,z:-q.z,w:q.w});
       const { reach,slope,prominence } = bladeContact(top.blade,Math.atan2(localOffset.z,localOffset.x));
@@ -1289,42 +1326,56 @@ export class Battle {
     top.rimStrikeUntil = 0;
   }
 
-  tryPocketJump(top,p,v) {
+  tryPocketJump(top,p,v,inPocket) {
     const entry = top.escape;
     const {zone,speed} = entry;
     const r = horizontalSpeed(p), a = Math.atan2(p.z,p.x);
     const lip = lipHeight(a), depth = r-mouthRadius(a);
     const xtreme = zone.points === 3;
-    const ratio = clamp(top.spin/top.launchSpin,0,1);
     const spring = top.blade.bound ?? 0;
     const springSupport = xtreme ? 0 : spring;
-    if (entry.triedJump || entry.deep || ratio < .34-springSupport*.13 || speed < 9-springSupport*3 ||
-      pocketAt(a) !== zone || depth < -.08 || depth > (xtreme ? .48 : 1.45)) return;
-    const age = this.time-entry.at;
-    const ready = xtreme ? age >= .025 && p.y > lip-.18 && p.y < lip+top.standing+.12 && v.y > -6 :
-      age >= entry.jumpAfter && p.y <= lip+top.standing && v.y <= 2.5;
-    if (!ready) return;
-    entry.triedJump = true;
-    const momentum = clamp((speed-8)/17,0,1)*clamp((ratio-.28)/.58,0,1);
-    const shape = .80+top.rimVariation*.86+top.bit.style*.15;
-    const rated = top.ratchet.pocketJump ?? .37;
-    const chance = (xtreme ? .20 : 1)*rated*clamp(momentum*shape+springSupport*.75,0,1.16);
-    if (Math.random() >= chance) return;
+    const late = entry.lateJump;
+    if (late) {
+      if (!inPocket || this.time-entry.stayedSince < POCKET_FINISH_DELAY-.02 || v.y > 2.5 || top.spin <= 5) return;
+      entry.lateJump = false;
+    } else {
+      const ratio = clamp(top.spin/top.launchSpin,0,1);
+      if (entry.triedJump || entry.deep || ratio < .34-springSupport*.13 || speed < 9-springSupport*3 ||
+        pocketAt(a) !== zone || depth < -.08 || depth > (xtreme ? .48 : 1.45)) return;
+      const age = this.time-entry.at;
+      const ready = xtreme ? age >= .025 && p.y > lip-.18 && p.y < lip+top.standing+.12 && v.y > -6 :
+        age >= entry.jumpAfter && p.y <= lip+top.standing && v.y <= 2.5;
+      if (!ready) return;
+      entry.triedJump = true;
+      const momentum = clamp((speed-8)/17,0,1)*clamp((ratio-.28)/.58,0,1);
+      const shape = .80+top.rimVariation*.86+top.bit.style*.15;
+      const rated = top.ratchet.pocketJump ?? .37;
+      const chance = (xtreme ? .20 : 1)*rated*clamp(momentum*shape+springSupport*.75,0,1.16);
+      if (Math.random() >= chance) return;
+      // One roll per entry. Some successful rolls take off just before the finish.
+      if (inPocket && Math.random() < .22) {
+        entry.lateJump = true;
+        return;
+      }
+    }
     const height = Math.max(.20,lip+top.standing+.20-p.y);
-    const inwardSpeed = clamp(7.8+Math.max(0,depth)*4.4,7.8,13.4);
+    const inwardSpeed = late ? clamp(16+Math.max(0,depth)*5,16,24) : clamp(7.8+Math.max(0,depth)*4.4,7.8,13.4);
     const launch = Math.sqrt(2*GRAVITY*height)+4;
-    // At the Xtreme lip the Bit needs to clear the ledge before moving inward.
-    const initialSpeed = xtreme ? .7 : inwardSpeed;
+    // Clear the lip vertically before crossing it from a deep position.
+    const clearLip = xtreme || late;
+    const initialSpeed = clearLip ? .7 : inwardSpeed;
     top.body.setLinvel({x:-p.x/r*initialSpeed,y:launch,z:-p.z/r*initialSpeed},true);
-    if (xtreme) {
-      entry.inwardAt = this.time+.032;
+    if (clearLip) {
+      const riseTime = late ? (launch-Math.sqrt(launch**2-2*GRAVITY*height))/GRAVITY : .032;
+      entry.inwardAt = this.time+clamp(riseTime,.032,.10);
       entry.inwardSpeed = inwardSpeed;
     }
+    entry.deep = false;
+    entry.lateTakeoff = late;
     entry.jumpUntil = this.time+.42;
     top.liftUntil = entry.jumpUntil;
     top.rimLiftUntil = entry.jumpUntil;
     if (spring) top.boundAt = this.time;
-    this.spendSpin(top,8+height*4);
   }
 
   checkFinish(beforeContact) {
@@ -1338,7 +1389,14 @@ export class Battle {
       const inBowl = r + top.blade.radius < mouth;
       if (inBowl && p.y > -.15 && top.escape) {
         if (top.spin > 5) {
-          this.onEvent({type:'reverse',player:top.player,fromPocket:!!top.escape.zone});
+          let spinLoss = 0;
+          if (top.escape.zone) {
+            const timeInPocket = clamp(top.escape.pocketTime/POCKET_FINISH_DELAY,0,1);
+            const cost = (POCKET_REVERSE_MIN_COST+timeInPocket*POCKET_REVERSE_EXTRA_COST)*(top.blade.pocketSpinCost ?? 1);
+            this.spendSpin(top,top.spin*cost);
+            spinLoss = Math.round(cost*100);
+          }
+          this.onEvent({type:'reverse',player:top.player,spinLoss});
           top.escape = null;
         } else if (top.resting) {
           if (top.escape.zone) top.escape = null;
@@ -1353,7 +1411,7 @@ export class Battle {
         (top.escape?.stayedSince == null || p.y > lip+.40)) {
         const speed = Math.max(horizontalSpeed(v),horizontalSpeed(beforeContact?.[top.player]??v));
         const jumpAfter = top.blade.bound ? .15+Math.random()*.24 : .37+Math.random()*.36;
-        top.escape = {zone:pocket,at:this.time,speed,jumpAfter,stayedSince:null};
+        top.escape = {zone:pocket,at:this.time,speed,jumpAfter,stayedSince:null,pocketTime:0};
       } else if (r - top.blade.radius > edgeRadius(a)+.23 && !top.escape) {
         top.escape = {zone:null,at:this.time};
       }
@@ -1367,10 +1425,13 @@ export class Battle {
         const stillInside = entry.stayedSince !== null && r >= mouth+.08 &&
           Math.abs(angleDelta(a,zone.angle)) <= zone.width+.085 && belowOpening;
         const inPocket = centerInside || stillInside;
+        if (this.time < (entry.jumpUntil ?? 0)) continue;
+        if (inPocket) {
+          entry.stayedSince ??= this.time;
+          entry.pocketTime += DT;
+        } else entry.stayedSince = null;
         if (zone.points === 3 && inPocket && r > mouth+.54 && p.y < lip-.24) entry.deep = true;
-        this.tryPocketJump(top,p,v);
-        if (!inPocket || this.time < (entry.jumpUntil ?? 0)) entry.stayedSince = null;
-        else entry.stayedSince ??= this.time;
+        this.tryPocketJump(top,p,v,inPocket);
         if (this.time < (entry.jumpUntil ?? 0)) continue;
         if (inPocket && v.y < 0 && p.y < lip+top.standing-.11 &&
           pocketContains(zone,p.x,p.z,top.blade.radius*.955)) {

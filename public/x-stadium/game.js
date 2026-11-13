@@ -539,9 +539,9 @@ function visualizeEvent(event) {
       event.attackHit ? 'Xtreme Attack acertou o adversário.' : event.strength < .24 ? 'Toque leve entre os piões.' : 'As Blades se chocaram.');
     if (event.qte && state.phase === 'fight') showQte(event);
   } else if (event.type === 'reverse') {
-    flash('REVERSE');
+    flash(event.spinLoss ? 'REVERSE · −' + event.spinLoss + '% GIRO' : 'REVERSE');
     announce(BLADES[state.configs[event.player].blade].name +
-      (event.fromPocket ? ' voltou do bolso ainda girando.' : ' voltou à arena ainda girando.'));
+      (event.spinLoss ? ' voltou do bolso e perdeu ' + event.spinLoss + '% do giro restante.' : ' voltou à arena ainda girando.'));
   }
 }
 
