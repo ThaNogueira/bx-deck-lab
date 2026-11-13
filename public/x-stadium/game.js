@@ -85,6 +85,8 @@ function updateCombatControls() {
     const kind = slot === 'special' ? specialFor(player) : 'dash';
     const owned = state.mode === 'local' || state.localPlayer === player;
     const data = state.frames?.[player]?.moves;
+    const boost = fighting && slot === 'special' ? data?.reflexBoost ?? '' : '';
+    if (el.dataset.boost !== boost) el.dataset.boost = boost;
     const uses = data?.[kind] ?? MOVE_USES;
     const letter = (slot === 'special' ? ['E','I'] : ['R','O'])[state.mode === 'local' ? player : 0];
     el.closest('section').hidden = !owned;
@@ -95,7 +97,7 @@ function updateCombatControls() {
       icon.dataset.icon = moves[kind].icon;
       drawIcons(el);
     }
-    const label = 'Jogador ' + (player+1) + ' · ' + moves[kind].name + ' · ' + uses + ' de ' + MOVE_USES + ' usos';
+    const label = 'Jogador ' + (player+1) + ' · ' + moves[kind].name + (boost ? ' reforçado' : '') + ' · ' + uses + ' de ' + MOVE_USES + ' usos';
     if (el.getAttribute('aria-label') !== label) {
       el.setAttribute('aria-label',label);
       count.textContent = uses;
@@ -426,17 +428,19 @@ function resolveQte() {
     const timingLead = clamp((losingTime-winningTime)/qteWindow,0,1);
     const margin = clamp(accuracyLead*.82+timingLead*(a === b ? .80 : .18),0,1);
     outcome = state.physics.counter(winner,q,margin);
-    showReflexOutcome(winner,outcome,q.at);
   } else announce('Batalha retomada.');
   previousFrames = state.frames = state.physics.frames();
+  if (outcome) showReflexOutcome(winner,outcome,q.at);
   if (state.mode === 'online') link.send({type:'resume',winner,outcome,at:q.at,frames:state.frames,time:state.physics.time});
 }
 
 function showReflexOutcome(winner,outcome,at) {
   const action = outcome.defended ? 'CONTRA-ATAQUE' : outcome.heavy ? 'ATAQUE FORTE' : 'ATAQUE';
   const label = action + ' J' + (winner+1);
-  flash(label);
-  announce(label + '!');
+  const special = state.frames?.[winner]?.moves;
+  const boosted = special?.reflexBoost === 'ready' && special[specialFor(winner)] > 0;
+  flash(boosted ? 'HABILIDADE REFORÇADA · J' + (winner+1) : label);
+  announce(boosted ? label + '. Use a habilidade reforçada em até 2,5 segundos.' : label + '!');
   view.spark(at,outcome.heavy ? 1.65 : .85);
 }
 
@@ -481,8 +485,12 @@ function visualizeEvent(event) {
     view.spark(event.at, .7, true);
     audio.play('dash',1,event.at[0]);
   } else if (event.type === 'move') {
-    flash(event.kind === 'dash' ? 'RUMO À XTREME LINE' : moves[event.kind].name.toUpperCase());
+    flash(event.kind === 'dash' ? 'RUMO À XTREME LINE' : moves[event.kind].name.toUpperCase() + (event.boosted ? ' +' : ''));
     announce(BLADES[state.configs[event.player].blade].name+ moves[event.kind].text);
+  } else if (event.type === 'spin-reward') {
+    flash('GIRO RECUPERADO');
+    view.spark(event.at,.85,true);
+    announce('Full Circle recuperou giro.');
   } else if (event.type === 'rail-exit') {
     view.spark(event.at,.46,true);
   } else if (event.type === 'scrape') {
@@ -926,15 +934,18 @@ function frame(now) {
       accumulator -= DT;
     }
     state.frames = state.physics.frames();
-    if (state.phase === 'fight' && state.mode === 'cpu' && !state.trial && state.physics.time >= state.cpuMoveAt) {
+    if (state.phase === 'fight' && state.mode === 'cpu' && !state.trial && (state.physics.time >= state.cpuMoveAt || state.frames[1].moves.reflexBoost === 'ready')) {
       const [rival,cpu] = state.frames;
       const radius = Math.hypot(cpu.p[0],cpu.p[2]);
       const gap = Math.hypot(cpu.p[0]-rival.p[0],cpu.p[2]-rival.p[2]);
       const special = specialFor(1);
       const wantsSpecial = special === 'attack' ? radius > 2.8 && gap > 2.3 && gap < 5.3 : radius > 1.25 || gap < 4;
-      const kind = wantsSpecial && cpu.moves.ready.includes(special) ? special : 'dash';
-      const used = state.physics.tryMove(1,kind);
-      state.cpuMoveAt = state.physics.time+(used ? 5.5 : .65);
+      const readyBoost = cpu.moves.reflexBoost === 'ready';
+      const kind = (wantsSpecial || readyBoost) && cpu.moves.ready.includes(special) ? special : 'dash';
+      if (!readyBoost || kind === special) {
+        const used = state.physics.tryMove(1,kind);
+        state.cpuMoveAt = state.physics.time+(used ? 5.5 : .65);
+      }
     }
     if (state.mode === 'online' && now - lastSent > 40) {
       lastSent = now;

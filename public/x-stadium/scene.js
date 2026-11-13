@@ -365,6 +365,13 @@ export class ArenaView {
     this.cursor = new T.Vector2();
     this.contactShadowMap = startShadowTexture();
     this.shadows = [0,1].map(() => this.makeContactShadow());
+    this.reflexAuras = colors.map(color => {
+      const material = new T.MeshBasicMaterial({color, transparent:true, depthWrite:false, blending:T.AdditiveBlending});
+      const aura = ring(this.scene,.95,1.04,material,0,48);
+      aura.visible = false;
+      aura.renderOrder = 4;
+      return aura;
+    });
     this.trails = [this.makeTrail(0x4aacff), this.makeTrail(0xff874a)];
     const observer = new ResizeObserver(() => this.resize());
     observer.observe(container);
@@ -664,6 +671,7 @@ export class ArenaView {
 
   ready(configs, localPlayer, editing = true) {
     this.dirty = true;
+    for (const aura of this.reflexAuras) aura.visible = false;
     this.launchStarted = 0;
     for (const impact of this.impactRings) {
       impact.life = 0;
@@ -767,6 +775,16 @@ export class ArenaView {
       }
       this.placeShadow(this.shadows[i],bey);
       const trail = this.trails[i];
+      const aura = this.reflexAuras[i];
+      const boost = (next ?? frame).moves?.reflexBoost;
+      if (boost && !aura.visible) this.spark(bey.holder.position.toArray(), .85, true);
+      aura.visible = Boolean(boost);
+      if (boost) {
+        aura.position.copy(bey.holder.position);
+        aura.position.y += .18;
+        aura.scale.setScalar(1.09 + .14*Math.sin(performance.now()*.012));
+        aura.material.opacity = boost === 'active' ? .9 : .62;
+      }
       const rushing = effects.dash || effects.impactTrail;
       const {x,z} = bey.holder.position;
       const y = floorAt(x,z)+.073;

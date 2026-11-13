@@ -25,6 +25,8 @@ const DASH_CARRY_TIME = .61;
 const BLADE_SHELL_CLEARANCE = .018;
 const POCKET_FINISH_DELAY = 1.5;
 const MOVE_DURATION = {attack:.68,dash:1.62,defense:2.65,circle:3.35};
+const REFLEX_BOOST_TIME = 2.5;
+const CIRCLE_SPIN_REWARD = .08;
 const upright = { x: 0, y: 0, z: 0, w: 1 };
 const vertical = { x: 0, y: 1, z: 0 };
 const dot = (a, b) => a.x * b.x + a.y * b.y + a.z * b.z;
@@ -296,22 +298,33 @@ export class Battle {
   }
 
   canMove(top, kind) {
+    const boosted = this.canUseReflexBoost(top,kind);
     if (!top || !Object.hasOwn(top.charges,kind) || !top.charges[kind] || this.finished ||
-      !top.landed || top.defeat || top.escape || top.rail || top.move?.manual ||
-      this.time < Math.max(top.moveReadyAt,top.impactUntil,top.liftUntil,top.driveResumeAt) ||
+      !top.landed || top.defeat || top.escape || top.rail || !boosted && (top.move?.manual || this.time < top.moveReadyAt) ||
+      this.time < Math.max(top.impactUntil,top.liftUntil,top.driveResumeAt) ||
       this.time-top.landedAt < .54+top.launch.settle*.53 || top.spin < (kind === 'dash' ? 57 : 28)) return false;
     const p = top.body.translation(), v = top.body.linvel();
     return Math.hypot(p.x,p.z) < mouthRadius(Math.atan2(p.z,p.x))-.23 &&
       p.y < floorAt(p.x,p.z)+top.standing+.22 && v.y < 2.3 && axisOf(top.body.rotation()).y > .86;
   }
 
+  canUseReflexBoost(top, kind) {
+    return kind !== 'dash' && this.time < (top?.reflexBoostUntil ?? 0);
+  }
+
   tryMove(player, kind) {
     const top = this.tops[player];
     if (!this.canMove(top,kind)) return false;
+    const boosted = this.canUseReflexBoost(top,kind);
     this.startMove(top,kind,true);
+    if (boosted) {
+      top.reflexBoostUntil = 0;
+      top.move.boosted = true;
+      top.move.until = this.time + REFLEX_BOOST_TIME;
+    }
     top.charges[kind]--;
     top.moveReadyAt = this.time+1.05;
-    this.onEvent({type:'move',kind,player});
+    this.onEvent({type:'move',kind,player,boosted});
     return true;
   }
 
@@ -341,18 +354,18 @@ export class Battle {
 
   moveForce(top,p,v,spin) {
     if (!top.move) return null;
-    const { kind, manual } = top.move;
+    const { kind, manual, boosted } = top.move;
     const { bit, blade } = top;
     const reserve = clamp(spin/top.launchSpin,0,1);
     if (kind === 'defense' || kind === 'circle') {
       const r = horizontalSpeed(p);
       const radial = r > .12 ? {x:p.x/r,y:0,z:p.z/r} : {x:top.player ? 1 : -1,y:0,z:0};
       const orbit = kind === 'circle';
-      const radialSpeed = orbit ? clamp((1.84-r)*5.5,-9,7) : -Math.min(11,r*7);
-      const tangentSpeed = orbit ? (3.65+3.6*reserve)*clamp(r/.68,.32,1)*top.spinDirection : 0;
+      const radialSpeed = orbit ? clamp(((boosted ? 2.7 : 1.84)-r)*5.5,-9,7) : -Math.min(boosted ? 18 : 11,r*(boosted ? 12 : 7));
+      const tangentSpeed = orbit ? (3.65+3.6*reserve)*(boosted ? 1.55 : 1)*clamp(r/.68,.32,1)*top.spinDirection : 0;
       const pace = {x:radial.x*radialSpeed-radial.z*tangentSpeed,y:0,z:radial.z*radialSpeed+radial.x*tangentSpeed};
       const change = sub(pace,{x:v.x,y:0,z:v.z});
-      return scale(change,Math.min(10,78/Math.max(.01,horizontalSpeed(change))));
+      return scale(change,Math.min(boosted ? 15 : 10,(boosted ? 155 : 78)/Math.max(.01,horizontalSpeed(change))));
     }
     let direction, pace, maxForce;
     if (kind === 'attack') {
@@ -367,6 +380,7 @@ export class Battle {
       const style = bit.style*.72 + bit.attack*blade.hit*.28;
       pace = (6.1+14.5*style) * (.49+.51*reserve) * (manual ? 1.17 : 1);
       maxForce = (24+56*style)*(.55+.45*reserve);
+      if (boosted) { pace *= 1.36; maxForce *= 1.65; }
     } else {
       const rail = top.move.entry;
       direction = {x:rail.x-bit.gear*.72*rail.nx-p.x,z:rail.z-bit.gear*.72*rail.nz-p.z};
@@ -374,7 +388,7 @@ export class Battle {
       maxForce = 73+24*bit.style;
     }
     const distance = horizontalSpeed(direction);
-    const rate = Math.min(pace / Math.max(.24,distance),kind === 'dash' ? 17 : 12);
+    const rate = Math.min(pace / Math.max(.24,distance),kind === 'dash' ? 17 : boosted ? 16 : 12);
     const force = {x:(direction.x*rate-v.x)*10,y:0,z:(direction.z*rate-v.z)*10};
     const drive = scale(force,Math.min(1,maxForce/Math.max(.01,horizontalSpeed(force))));
     if (kind !== 'dash' || distance < .12) return drive;
@@ -416,7 +430,17 @@ export class Battle {
     const axis = axisOf(q), omega = body.angvel();
     const axial = dot(axis,omega), spin = Math.max(0,axial * top.spinDirection);
     const speed = horizontalSpeed(v);
-    if (top.move && this.time >= top.move.until) top.move = null;
+    if (top.move && this.time >= top.move.until) {
+      if (!this.finished && top.move.kind === 'circle' && top.move.boosted && !top.move.wasHit && !top.escape && !top.defeat) {
+        const gain = Math.min(top.launchSpin - top.spin, top.launchSpin * CIRCLE_SPIN_REWARD);
+        if (gain > 0) {
+          top.spin += gain;
+          body.applyTorqueImpulse(scale(axis, (top.spin*top.spinDirection-axial)*inertia.polar), true);
+          this.onEvent({type:'spin-reward',player:top.player,at:asArray(p)});
+        }
+      }
+      top.move = null;
+    }
     const supported = clamp(top.load / (inertia.mass * GRAVITY * DT),0,1.4);
     const abrasion = clamp(top.scrape / (inertia.mass * GRAVITY * DT),0,2);
     const drag = (bit.type === 'stamina' ? .0041 : bit.type === 'attack' ? .0040 : .0048)*spin+.000008*spin*spin;
@@ -882,7 +906,7 @@ export class Battle {
     }
 
     if (nearContact && !presentation && !a.resting && !b.resting && !a.settling && !b.settling) {
-      this.readImpact(a,b,normal,approach);
+      this.readImpact(a,b,normal,approach,pre);
     }
     if (this.finished && !presentation) return;
     for (const top of this.tops) {
@@ -937,7 +961,7 @@ export class Battle {
     this.wallImpact(top,outward*.53*top.inertia.mass,p);
   }
 
-  readImpact(a, b, normal, approach) {
+  readImpact(a, b, normal, approach, pre) {
     let impulse = 0, strongest = 0, at, contactNormal = normal;
     const ratchetHit = [0, 0];
     const ringHit = [0, 0];
@@ -982,6 +1006,13 @@ export class Battle {
     }
     const closing = approach[0] + approach[1];
     for (const top of this.tops) {
+      if (impulse > .12 && top.move?.kind === 'circle' && top.move.boosted) top.move.wasHit = true;
+      if (impulse > .45 && top.move?.boosted && (top.move.kind === 'defense' || top.move.kind === 'circle')) {
+        const velocity = top.body.linvel(), incoming = pre[top.player];
+        const transfer = top.move.kind === 'defense' ? .23 : .56;
+        top.body.setLinvel({x:incoming.x+(velocity.x-incoming.x)*transfer,
+          y:velocity.y,z:incoming.z+(velocity.z-incoming.z)*transfer},true);
+      }
       const contact = ratchetHit[top.player]*(top.blade.integrated ? .70 : 1);
       const opponent = this.tops[1-top.player];
       const loaded = opponent.dashCarry > 9 && this.time-opponent.dashAt < DASH_CARRY_TIME;
@@ -1029,7 +1060,7 @@ export class Battle {
       this.followThrough(contactNormal,approach,Math.min(impulse,closingSpeed*1.15),at) : { strike: 0, dash: 0, attack: false };
     if (closing > 2 && impulse > .45) {
       for (const top of this.tops) {
-        if (top.move?.kind === 'attack') top.move = null;
+        if (top.move?.kind === 'attack' && !top.move.boosted) top.move = null;
       }
     }
     const severity = Math.min(impulse, .26 + Math.max(0, closing) * .72) + strike;
@@ -1076,13 +1107,14 @@ export class Battle {
       const momentum = top.inertia.mass/REFERENCE_MASS;
       const wing = (top.blade.smash ?? 0)*clamp((reach-.91)*9,0,1)*clamp((entering-5)/9,0,1);
       const lobe = entering*momentum*Math.max(0,attack-.66)*(.15+hook*.94+wing)*power;
-      const lunge = advancing ? entering*(.07+.20*top.bit.style)*power : 0;
+      const boosted = advancing && top.move.boosted;
+      const lunge = advancing ? entering*(.07+.20*top.bit.style)*power*(boosted ? 2 : 1) : 0;
       const dash = decay*Math.min(top.dashCarry,entering)*momentum*Math.max(.13,attack-.43) *
         power * (.62+railRating(top.bit)*.008);
-      return { lobe:lobe+lunge,dash,attack,advancing,glancing,power };
+      return { lobe:lobe+lunge,dash,attack,advancing,boosted,glancing,power };
     });
     const player = drive[0].lobe + drive[0].dash >= drive[1].lobe + drive[1].dash ? 0 : 1;
-    const { lobe,dash,attack,advancing,power } = drive[player];
+    const { lobe,dash,attack,advancing,boosted,power } = drive[player];
     const attacker = this.tops[player], target = this.tops[1-player];
     const heightDifference = target.body.translation().y-attacker.body.translation().y;
     const upper = (attacker.blade.upper ?? 0)*clamp((heightDifference-.017)/.12,0,1)*
@@ -1096,11 +1128,13 @@ export class Battle {
     const defense = target.blade.deflect*(.58+.42*drive[1-player].glancing) +
       (target.bit.type === 'defense' ? .12 : 0) + (target.move?.kind === 'defense' ? .11 : 0) +
       (target.blade.rigid ?? 0)*.60+guard*.52+boundCounter*.25;
-    const brace = clamp(target.spin/target.launchSpin,0,1) * defense;
+    const boostedGuard = target.move?.boosted && (target.move.kind === 'defense' || target.move.kind === 'circle');
+    const baseBrace = clamp(target.spin/target.launchSpin,0,1) * defense;
+    const brace = boostedGuard ? Math.min(.9, baseBrace + (target.move.kind === 'defense' ? .46 : .26)) : baseBrace;
     const cleanDash = dash > 2.0 && approach[player] > 12 && contactImpulse > 2.7;
     const surge = cleanDash ? 1.92 : 1.23;
     const impact = Math.min(22,contactImpulse*1.70,(lobe+dash)*surge+contactImpulse*(upper*.21+boundStrike*.48));
-    const knockback = impact*(1-brace*.79);
+    const knockback = impact*(1-brace*.79)*(boosted ? 1.65 : 1);
     const reboundStrength = Math.min(5.0,contactImpulse*(brace*.37+boundCounter*.56));
     if (knockback < .23 && reboundStrength < .23) return { strike: 0, dash: 0, attack: false };
     const direction = player === 0 ? 1 : -1;
@@ -1117,6 +1151,10 @@ export class Battle {
     if (lift) target.liftUntil = this.time+.14;
     if (attack > 1 && (cleanDash || knockback > 5.0 || upper > .30)) target.rimStrikeUntil = this.time+.44;
     target.body.applyImpulse({x:kick.x,y:lift*target.inertia.mass,z:kick.z},true);
+    if (boosted && knockback > 2.4) {
+      target.impactTrailUntil = this.time+.48;
+      target.pushedUntil = this.time+.75;
+    }
     attacker.body.applyImpulse({x:-kick.x*.82-rebound.x,y:0,z:-kick.z*.82-rebound.z},true);
     const closing = Math.max(0,approach[0]+approach[1]);
     const shove = (top,sign) => {
@@ -1128,7 +1166,7 @@ export class Battle {
     };
     if (closing > 2.5 && impact+reboundStrength > .75) {
       shove(attacker,-direction);
-      shove(target,direction);
+      if (!boostedGuard) shove(target,direction);
     }
     if (cleanDash && attack > 1.02) {
       // On a square hit the sustained drive has more weight than the side
@@ -1234,6 +1272,7 @@ export class Battle {
       loser.lockDamage += Math.min(.80,(direct-4)*.115)/loser.burstLock;
     }
     if (winner.move?.kind === 'defense') winner.move = null;
+    if (margin > 0) winner.reflexBoostUntil = this.time + REFLEX_BOOST_TIME;
     return {defended,heavy,chance};
   }
 
@@ -1400,7 +1439,8 @@ export class Battle {
         attack: top.move?.kind === 'attack',
         impactTrail: this.time < top.impactTrailUntil,
         bound: Math.max(0,1-(this.time-top.boundAt)/.18),
-        moves: { ...top.charges, ready: Object.keys(top.charges).filter(kind => this.canMove(top,kind)) },
+        moves: { ...top.charges, ready: Object.keys(top.charges).filter(kind => this.canMove(top,kind)),
+          reflexBoost: !this.finished && (top.move?.boosted ? 'active' : this.time < (top.reflexBoostUntil ?? 0) ? 'ready' : null) },
         burst: top.defeat?.title === 'Burst Finish',
       };
     });

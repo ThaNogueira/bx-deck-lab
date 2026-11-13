@@ -166,6 +166,9 @@ i[data-icon] svg { width:100%;height:100% }
   border:1px solid color-mix(in srgb,var(--player) 47%,transparent);border-radius:8px;font:800 16px/1 var(--heading);
 }
 .combat-side button:disabled { opacity:.62 }
+.combat-side button[data-boost=ready],.combat-side button[data-boost=active] {
+  color:#e6ffa4;border-color:#c3f668;background:#31452a;box-shadow:0 0 14px #b1f45566;
+}
 .combat-side button:not(:disabled):hover { border-color:var(--player);background:#2b3b2e }
 .combat-side i { color:var(--player);width:15px;height:15px }
 .combat-charge { min-width:17px;padding:2px 3px;border-radius:4px;background:color-mix(in srgb,var(--player) 18%,#19241f);color:var(--player);font:700 11px/1 Geist;text-align:center }
