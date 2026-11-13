@@ -1,0 +1,1405 @@
+import RAPIER from './vendor/rapier.mjs';
+import { launchSpeed, runningSpeed } from './motion.js';
+import { FREE_RING_PROFILE, bladeContact, bladeHullSectors, bladeLevels, bladeOutline } from './blade-shape.js';
+import { BLADE_BASE, GEAR_HEIGHT, GEAR_HALF_HEIGHT, MOVE_USES, RATCHET_OUTLINES, bitProfile, getParts, launchPose, launchRelease, railRating, ratchetLobes, specialMove } from './rules.js';
+import { POCKETS, RAIL, SHELL, TAU, coverGeometry, coverCollarGeometry, coverSideGeometry, openingRadius, sectors, edgeRadius, mouthRadius, lipHeight, pocketAt, pocketBackHeight, pocketGeometry, pocketContains,
+  guardRadius, rimShelfGeometry, rimWallGeometry, trayRadius, floorGeometry, floorAt, tipSurfaceAt, railFrame, closestRail, railExitAngle, angleDelta, clamp } from './stadium.js';
+
+export const DT = 1 / 300;
+const GRAVITY = 9.81 / .03;
+const MAX_TRANSLATION = 46;
+const BLADE_COLLISIONS = 0x0002ffff;
+const LOWER_PART_COLLISIONS = 0x0004ffff;
+const COVER_COLLISIONS = 0x00080002;
+const STADIUM_SOLVER = 0x0001ffff;
+const ENGAGED_BLADE_SOLVER = 0x0002fffe;
+const ENGAGED_LOWER_SOLVER = 0x0004fffe;
+// The collision solver advances a resolved spin rate. The extra axial inertia
+// represents angular momentum at launch speeds above that resolution.
+const AXIAL_MOMENTUM_SCALE = 1.43;
+const WOBBLE_RATIO = .05;
+const REST_SPIN = 2.8;
+const REFERENCE_MASS = 1.28;
+const zero = {x:0,y:0,z:0};
+const DASH_CARRY_TIME = .61;
+const BLADE_SHELL_CLEARANCE = .018;
+const POCKET_FINISH_DELAY = 1.5;
+const MOVE_DURATION = {attack:.68,dash:1.62,defense:2.65,circle:3.35};
+const upright = { x: 0, y: 0, z: 0, w: 1 };
+const vertical = { x: 0, y: 1, z: 0 };
+const dot = (a, b) => a.x * b.x + a.y * b.y + a.z * b.z;
+const cross = (a, b) => ({ x: a.y * b.z - a.z * b.y, y: a.z * b.x - a.x * b.z, z: a.x * b.y - a.y * b.x });
+const scale = (v, k) => ({ x: v.x * k, y: v.y * k, z: v.z * k });
+const add = (a, b) => ({ x: a.x + b.x, y: a.y + b.y, z: a.z + b.z });
+const sub = (a, b) => ({ x: a.x - b.x, y: a.y - b.y, z: a.z - b.z });
+const asArray = v => [v.x, v.y, v.z];
+const axisOf = q => ({
+  x: 2 * (q.x * q.y - q.w * q.z),
+  y: 1 - 2 * (q.x * q.x + q.z * q.z),
+  z: 2 * (q.y * q.z + q.w * q.x),
+});
+const horizontalSpeed = v => Math.hypot(v.x,v.z);
+const endOfSpin = (top,spin = top.spin) => {
+  const threshold = top.launchSpin*WOBBLE_RATIO;
+  return clamp((threshold-spin)/(threshold-REST_SPIN),0,1);
+};
+const positiveAngle = a => (a + TAU) % TAU;
+const rotateVector = (v,q) => {
+  const axis = {x:q.x,y:q.y,z:q.z};
+  return add(v,scale(cross(axis,add(cross(axis,v),scale(v,q.w))),2));
+};
+function turnRotation(q,axis,angle) {
+  const xyz = scale(axis,Math.sin(angle/2)), w = Math.cos(angle/2);
+  const old = {x:q.x,y:q.y,z:q.z};
+  return {...add(add(scale(old,w),scale(xyz,q.w)),cross(xyz,old)),w:w*q.w-dot(xyz,old)};
+}
+
+function massProfile(parts) {
+  const { blade, ratchet, bit, bitMass, mass, ratchetBottom, standing } = parts;
+  const ratchetCenter = ((blade.base ?? BLADE_BASE) + ratchetBottom) / 2;
+  const bladeCenter = .016;
+  const bitCenter = GEAR_HEIGHT - standing;
+  const com = (blade.mass * bladeCenter + ratchet.mass * ratchetCenter + bitMass * bitCenter) / mass;
+  const rim = blade.mass * blade.radius ** 2;
+  const ratchetInertia = ratchet.mass * ratchet.radius ** 2;
+  return {
+    com, mass,
+    polar: (rim * .58 * (blade.outerMass ?? 1) + ratchetInertia * .48 + bitMass * bit.gear ** 2 * .5) * AXIAL_MOMENTUM_SCALE,
+    transverse: rim * .28 + .01 + blade.mass * (bladeCenter-com) ** 2 +
+      ratchetInertia * .26 + ratchet.mass * (ratchetCenter-com) ** 2 + bitMass * (bitCenter-com) ** 2,
+  };
+}
+
+function ratchetShape(blade, ratchet, bottom) {
+  const vertices = [];
+  const lobe = RATCHET_OUTLINES[ratchet.teeth];
+  const n = ratchetLobes(ratchet) * lobe.length;
+  const seat = blade.base ?? BLADE_BASE;
+  const radius = ratchet.radius;
+  const rows = blade.integrated ? [[.32,bottom],[.43,bottom+.047],[.47,seat-.023],[.40,seat+.012]] :
+    [[radius*.83,bottom],[radius*.96,bottom+.028],[radius,bottom+.069],[radius*.98,seat-.028],[radius*.92,seat+.012]];
+  for (const [reach,y] of rows) {
+    for (let i = 0; i < n; i++) {
+      const a = 2 * Math.PI * i / n;
+      const r = reach * lobe[i % lobe.length];
+      vertices.push(r * Math.cos(a), y, r * Math.sin(a));
+    }
+  }
+  return RAPIER.ColliderDesc.convexHull(Float32Array.from(vertices));
+}
+
+function tipShape(profile,standing,sides) {
+  const vertices = [];
+  for (const [radius,height] of profile) {
+    for (let i=0;i<(radius ? sides : 1);i++) {
+      const angle = i*TAU/sides;
+      vertices.push(radius*Math.cos(angle),height-standing,radius*Math.sin(angle));
+    }
+  }
+  return RAPIER.ColliderDesc.convexHull(Float32Array.from(vertices));
+}
+
+function bitSupport(top,axis,x,z,floor,flat = false) {
+  const slopeX = flat ? 0 : (tipSurfaceAt(x+.025,z)-tipSurfaceAt(x-.025,z))/.05;
+  const slopeZ = flat ? 0 : (tipSurfaceAt(x,z+.025)-tipSurfaceAt(x,z-.025))/.05;
+  const normal = {x:-slopeX,y:1,z:-slopeZ};
+  const alignment = dot(axis,normal);
+  const sideways = Math.sqrt(Math.max(0,dot(normal,normal)-alignment**2));
+  let support = -Infinity;
+  for (const [radius,height] of top.tipProfile) {
+    support = Math.max(support,(top.standing-height)*alignment+radius*sideways);
+  }
+  return floor+support;
+}
+
+const supportAngles = Array.from({length:12},(_,i)=>[Math.cos(i*TAU/12),Math.sin(i*TAU/12)]);
+function curvedTipSupport(top,axis,x,z,rotation) {
+  const side = horizontalSpeed(axis);
+  const u = top.bit.facets ? rotateVector({x:1,y:0,z:0},rotation) :
+    side > .001 ? {x:axis.z/side,y:0,z:-axis.x/side} : {x:1,y:0,z:0};
+  const v = cross(axis,u);
+  let height = -Infinity;
+  for (const [radius,level] of top.supportProfile) {
+    const offset = level-top.standing;
+    const cx = x+axis.x*offset, cz = z+axis.z*offset;
+    for (let i=0;i<(radius ? supportAngles.length : 1);i+=top.bit.facets === 6 && level <= .060 ? 2 : 1) {
+      const [c,s] = supportAngles[i];
+      const px = cx+radius*(u.x*c+v.x*s), pz = cz+radius*(u.z*c+v.z*s);
+      height = Math.max(height,tipSurfaceAt(px,pz)-axis.y*offset-radius*(u.y*c+v.y*s));
+    }
+  }
+  return height;
+}
+
+function bladeRimSupport(top,rotation,x,z) {
+  let height = -Infinity;
+  for (const point of top.rimSupport) {
+    const offset = rotateVector(point,rotation);
+    height = Math.max(height,tipSurfaceAt(x+offset.x,z+offset.z)-offset.y);
+  }
+  return height;
+}
+
+export const initPhysics = () => RAPIER.init();
+
+export class Battle {
+  constructor(configs, onEvent, { reflex = false } = {}) {
+    this.world = new RAPIER.World({ x: 0, y: -GRAVITY, z: 0 });
+    this.world.timestep = DT;
+    this.world.lengthUnit = 1;
+    this.world.numSolverIterations = 6;
+    this.world.maxCcdSubsteps = 1;
+    this.onEvent = onEvent;
+    this.reflex = reflex;
+    this.time = 0;
+    this.lastHit = -1;
+    this.lastQte = -Infinity;
+    this.floorHandles = new Set();
+    this.wallHandles = new Set();
+    this.addStadium();
+    this.tops = configs.map((config, i) => this.addTop(config, i));
+  }
+
+  addStadium() {
+    const addMesh = ({ vertices, faces }, friction, restitution) => this.world.createCollider(
+      RAPIER.ColliderDesc.trimesh(Float32Array.from(vertices), Uint32Array.from(faces), RAPIER.TriMeshFlags.FIX_INTERNAL_EDGES)
+        .setFriction(friction).setRestitution(restitution).setSolverGroups(STADIUM_SOLVER)
+    );
+    const addFloor = (geo,friction,restitution) => this.floorHandles.add(addMesh(geo,friction,restitution).handle);
+    addFloor(floorGeometry(),.014,.018);
+    for (const geometry of [coverGeometry(), ...coverCollarGeometry(), ...coverSideGeometry()]) {
+      const cover = addMesh(geometry,.075,.10);
+      cover.setCollisionGroups(COVER_COLLISIONS);
+      this.wallHandles.add(cover.handle);
+    }
+    const barrier = (a, b, low, high, bounce) => {
+      const [ax, az] = a, [bx, bz] = b;
+      const yaw = -Math.atan2(bz - az, bx - ax);
+      const wall = this.world.createCollider(RAPIER.ColliderDesc.cuboid(Math.hypot(bx - ax, bz - az) / 2 + .018, (high - low) / 2, .072)
+        .setTranslation((ax + bx) / 2, (low + high) / 2, (az + bz) / 2)
+        .setRotation({x: 0, y: Math.sin(yaw / 2), z: 0, w: Math.cos(yaw / 2)})
+        .setFriction(.13).setRestitution(bounce).setSolverGroups(STADIUM_SOLVER));
+      this.wallHandles.add(wall.handle);
+    };
+    const flat = (r,a) => [r * Math.cos(a), r * Math.sin(a)];
+    for (const sector of sectors) {
+      const {angles,pocket} = sector;
+      if (pocket) {
+        const {lip,drop,floor} = pocketGeometry(sector);
+        addFloor(lip,.025,.055);
+        addFloor(drop,.069,.10);
+        addFloor(floor,.105,.16);
+        const [start,end] = [angles[0],angles.at(-1)];
+        barrier(flat(trayRadius(pocket,start),start),flat(trayRadius(pocket,end),end),pocket.bottom - .20,pocketBackHeight(pocket),.29);
+        for (const angle of [start,end]) {
+          barrier(flat(mouthRadius(angle) + .32,angle),flat(trayRadius(pocket,angle),angle),pocket.bottom - .21,.91,.36);
+        }
+      } else {
+        addFloor(rimShelfGeometry(angles),.07,.055);
+        this.wallHandles.add(addMesh(rimWallGeometry(angles),.09,.37).handle);
+      }
+    }
+  }
+  addTop(config, player) {
+    const parts = getParts(config);
+    const { blade, ratchet, ratchetBottom, standing, bit } = parts;
+    const inertia = massProfile(parts);
+    const {position, rotation:q, direction} = launchPose(config);
+    const speed = launchSpeed(config.power,bit.style);
+    const axis = axisOf(q);
+    const launchSpin = 68 + config.power * 1.92;
+    const spinDirection = blade.spinDirection;
+    const {settle,fall,fraction} = launchRelease(config);
+    const exitX = position.x+direction.x*speed*fraction*.065;
+    const exitZ = position.z+direction.z*speed*fraction*.065;
+    const maxRadius = openingRadius(Math.atan2(exitZ,exitX))-blade.radius-.09;
+    const pathLength = horizontalSpeed(position);
+    const airSpeed = horizontalSpeed({x:exitX,z:exitZ}) <= maxRadius ? speed*fraction :
+      speed*fraction*clamp((maxRadius-pathLength)/.70,0,1);
+    const body = this.world.createRigidBody(
+      RAPIER.RigidBodyDesc.dynamic()
+        .setAdditionalMassProperties(inertia.mass, { x: 0, y: inertia.com, z: 0 },
+          { x: inertia.transverse, y: inertia.polar, z: inertia.transverse }, upright)
+        .setTranslation(position.x,position.y,position.z)
+        .setRotation(q).setLinvel(direction.x * airSpeed,fall,direction.z * airSpeed)
+        .setAngvel(scale(axis, launchSpin * spinDirection))
+        .setLinearDamping(.018).setCanSleep(false)
+    );
+
+    const bladeHulls = bladeHullSectors(blade);
+    const outline = bladeOutline(blade);
+    const rimVariation = Math.max(...outline)-Math.min(...outline);
+    const rimSupport = bladeLevels(blade).slice(1,3).flatMap(([radius,y,contour])=>outline.flatMap((reach,i)=> {
+      if (i%3) return [];
+      const angle = i*TAU/outline.length, r = radius+(reach-1)*contour;
+      return [{x:r*Math.cos(angle),y,z:r*Math.sin(angle)}];
+    }));
+    const bladeColliders = bladeHulls.map(vertices => this.world.createCollider(
+      RAPIER.ColliderDesc.convexHull(vertices).setDensity(0).setCollisionGroups(BLADE_COLLISIONS)
+        .setFriction(.025+blade.catch*.11).setRestitution(.065+blade.catch*.29),body));
+    const freeRingCollider = blade.freeRing ? this.world.createCollider(
+      tipShape(FREE_RING_PROFILE,0,32).setDensity(0).setCollisionGroups(BLADE_COLLISIONS)
+        .setFriction(.002).setRestitution(.10).setFrictionCombineRule(RAPIER.CoefficientCombineRule.Min),body) : null;
+    if (freeRingCollider) bladeColliders.push(freeRingCollider);
+    const ratchetCollider = this.world.createCollider(
+      ratchetShape(blade,ratchet,ratchetBottom)
+        .setDensity(0).setCollisionGroups(LOWER_PART_COLLISIONS).setFriction(.10).setRestitution(.20), body
+    );
+    const tipProfile = bitProfile(bit);
+    const tip = this.world.createCollider(
+      tipShape(tipProfile,standing,bit.facets ?? 10)
+        .setDensity(0).setCollisionGroups(LOWER_PART_COLLISIONS).setFriction(.0006).setRestitution(.009)
+        .setFrictionCombineRule(RAPIER.CoefficientCombineRule.Min), body
+    );
+    const shoulderRadius = bit.shape === 'disk' ? .245 : bit.shape === 'pointFlat' ? bit.tip : bit.gear * .95;
+    const shoulderY = bit.shape === 'disk' ? .116 : bit.shape === 'pointFlat' ? .049 : GEAR_HEIGHT;
+    const bitShoulder = this.world.createCollider(
+      RAPIER.ColliderDesc.roundCylinder(.013, shoulderRadius-.014, .014)
+        .setTranslation(0, -standing + shoulderY, 0).setDensity(0).setCollisionGroups(LOWER_PART_COLLISIONS)
+        .setFriction(.0008).setRestitution(.022)
+        .setFrictionCombineRule(RAPIER.CoefficientCombineRule.Min), body
+    );
+    body.recomputeMassPropertiesFromColliders();
+    return {
+      ...parts, inertia, body, bladeColliders, bladeHulls, freeRingCollider, rimVariation, rimSupport, ratchetCollider, tip, tipProfile, bitShoulder, player, launchSpin, spinDirection,
+      supportProfile:[...tipProfile,[shoulderRadius-.005,shoulderY-.021]],
+      launch: { direction, speed, settle }, landedAt: -1,
+      load: 0, scrape: 0, spin: launchSpin, stopped: 0, resting: false, settling: null, lockDamage: 0, lastRatchetHit: -1, boundAt: -Infinity,
+      charges: { [specialMove(bit)]: MOVE_USES, dash: MOVE_USES }, move: null, moveReadyAt: 0, nextRunAt: 0,
+      rail: null, railReadyAt: 0, railSupportUntil: 0, impactUntil: 0, pushedUntil: 0, liftUntil: 0, driveResumeAt: 0,
+      dashCarry: 0, dashAt: -1, lastWall: -1, lastWallWear: -1, impactTrailUntil: 0,
+      escape: null, defeat: null, landed: false, rimStrikeUntil: 0, rimLiftUntil: 0,
+    };
+  }
+
+  spendSpin(top, loss, axis = axisOf(top.body.rotation())) {
+    const axial = dot(axis,top.body.angvel());
+    const spent = Math.min(top.spin,loss);
+    if (spent <= 0) return;
+    top.spin -= spent;
+    const correction = top.spin*top.spinDirection-axial;
+    top.body.applyTorqueImpulse(scale(axis,correction*top.inertia.polar),true);
+  }
+
+  equalizeSpin(a,b,closing) {
+    if (a.spinDirection === b.spinDirection || closing > 4 || a.resting || b.resting) return;
+    const [donor,receiver] = a.spin > b.spin ? [a,b] : [b,a];
+    const difference = donor.spin-receiver.spin;
+    const receiverAxis = axisOf(receiver.body.rotation());
+    const gain = Math.min(3.2,difference*.064,receiver.launchSpin-receiver.spin);
+    if (gain <= 0) return;
+    const transferred = gain*receiver.inertia.polar;
+    this.spendSpin(donor,transferred/donor.inertia.polar);
+    receiver.spin += gain;
+    const correction = receiver.spin*receiver.spinDirection-dot(receiverAxis,receiver.body.angvel());
+    receiver.body.applyTorqueImpulse(scale(receiverAxis,correction*receiver.inertia.polar),true);
+  }
+
+  canMove(top, kind) {
+    if (!top || !Object.hasOwn(top.charges,kind) || !top.charges[kind] || this.finished ||
+      !top.landed || top.defeat || top.escape || top.rail || top.move?.manual ||
+      this.time < Math.max(top.moveReadyAt,top.impactUntil,top.liftUntil,top.driveResumeAt) ||
+      this.time-top.landedAt < .54+top.launch.settle*.53 || top.spin < (kind === 'dash' ? 57 : 28)) return false;
+    const p = top.body.translation(), v = top.body.linvel();
+    return Math.hypot(p.x,p.z) < mouthRadius(Math.atan2(p.z,p.x))-.23 &&
+      p.y < floorAt(p.x,p.z)+top.standing+.22 && v.y < 2.3 && axisOf(top.body.rotation()).y > .86;
+  }
+
+  tryMove(player, kind) {
+    const top = this.tops[player];
+    if (!this.canMove(top,kind)) return false;
+    this.startMove(top,kind,true);
+    top.charges[kind]--;
+    top.moveReadyAt = this.time+1.05;
+    this.onEvent({type:'move',kind,player});
+    return true;
+  }
+
+  startMove(top, kind, manual) {
+    top.move = { kind, manual, until: this.time+(manual ? MOVE_DURATION[kind] : .46) };
+    if (kind === 'dash') {
+      const p = top.body.translation();
+      top.move.entry = closestRail(p.x,p.z);
+      top.railReadyAt = this.time;
+    }
+  }
+
+  pickRun(top,p,v,rival) {
+    if (this.finished || top.move || this.time < top.nextRunAt || this.time < top.railReadyAt || top.bit.style < .28 ||
+      top.spin/top.launchSpin < .32 || !rival.landed || rival.escape || !rival.body.isEnabled()) return;
+    const opponent = rival.body.translation();
+    const radius = Math.hypot(p.x,p.z);
+    const gap = horizontalSpeed(sub(opponent,p));
+    const outerOpponent = Math.hypot(opponent.x,opponent.z) > 3.75;
+    const wantsIntercept = radius > 2.75 && gap > 2.12 && gap < 6.55 &&
+      (!outerOpponent || horizontalSpeed(v) > 9) && opponent.y < floorAt(opponent.x,opponent.z)+rival.standing+.20;
+    if (wantsIntercept) {
+      this.startMove(top,'attack',false);
+    }
+    if (top.move) top.nextRunAt = this.time+3.65+1.35*(1-top.bit.style)+.36*top.player;
+  }
+
+  moveForce(top,p,v,spin) {
+    if (!top.move) return null;
+    const { kind, manual } = top.move;
+    const { bit, blade } = top;
+    const reserve = clamp(spin/top.launchSpin,0,1);
+    if (kind === 'defense' || kind === 'circle') {
+      const r = horizontalSpeed(p);
+      const radial = r > .12 ? {x:p.x/r,y:0,z:p.z/r} : {x:top.player ? 1 : -1,y:0,z:0};
+      const orbit = kind === 'circle';
+      const radialSpeed = orbit ? clamp((1.84-r)*5.5,-9,7) : -Math.min(11,r*7);
+      const tangentSpeed = orbit ? (3.65+3.6*reserve)*clamp(r/.68,.32,1)*top.spinDirection : 0;
+      const pace = {x:radial.x*radialSpeed-radial.z*tangentSpeed,y:0,z:radial.z*radialSpeed+radial.x*tangentSpeed};
+      const change = sub(pace,{x:v.x,y:0,z:v.z});
+      return scale(change,Math.min(10,78/Math.max(.01,horizontalSpeed(change))));
+    }
+    let direction, pace, maxForce;
+    if (kind === 'attack') {
+      const rival = this.tops[1-top.player];
+      const target = rival.body.translation();
+      const lead = scale(rival.body.linvel(),.082);
+      direction = sub(add(target,lead),p);
+      const radius = Math.hypot(p.x,p.z);
+      const outward = radius > 4.2 ? clamp((radius-4.2)*1.8,0,1) : 0;
+      direction.x -= outward*p.x*.54;
+      direction.z -= outward*p.z*.54;
+      const style = bit.style*.72 + bit.attack*blade.hit*.28;
+      pace = (6.1+14.5*style) * (.49+.51*reserve) * (manual ? 1.17 : 1);
+      maxForce = (24+56*style)*(.55+.45*reserve);
+    } else {
+      const rail = top.move.entry;
+      direction = {x:rail.x-bit.gear*.72*rail.nx-p.x,z:rail.z-bit.gear*.72*rail.nz-p.z};
+      pace = (12+railRating(bit)*.095)*(.58+.42*reserve);
+      maxForce = 73+24*bit.style;
+    }
+    const distance = horizontalSpeed(direction);
+    const rate = Math.min(pace / Math.max(.24,distance),kind === 'dash' ? 17 : 12);
+    const force = {x:(direction.x*rate-v.x)*10,y:0,z:(direction.z*rate-v.z)*10};
+    const drive = scale(force,Math.min(1,maxForce/Math.max(.01,horizontalSpeed(force))));
+    if (kind !== 'dash' || distance < .12) return drive;
+    // Keep manual approach speed on the bank. The normal load still comes
+    // from the floor, while the Bit supplies the uphill traction.
+    const dx = direction.x/distance, dz = direction.z/distance;
+    const grade = clamp((floorAt(p.x+dx*.07,p.z+dz*.07)-floorAt(p.x-dx*.07,p.z-dz*.07))/.14,0,.58);
+    const climb = GRAVITY*grade/(1+grade**2)*.91;
+    return {x:drive.x+dx*climb,y:0,z:drive.z+dz*climb};
+  }
+
+  setRailContact(top, engaged) {
+    // While meshed, the rack supplies the floor constraint at the Bit. Keep
+    // Bey-to-Bey contacts active while avoiding a second floor impulse.
+    for (const blade of top.bladeColliders) blade.setSolverGroups(engaged ? ENGAGED_BLADE_SOLVER : BLADE_COLLISIONS);
+    for (const part of [top.ratchetCollider,top.bitShoulder,top.tip]) {
+      part.setSolverGroups(engaged ? ENGAGED_LOWER_SOLVER : LOWER_PART_COLLISIONS);
+    }
+  }
+
+  releaseRail(top,cooldown) {
+    if (top.rail) this.setRailContact(top,false);
+    top.rail = null;
+    top.railReadyAt = this.time+cooldown;
+  }
+
+  prepare(top) {
+    if (top.resting || top.settling) return;
+    const { body, bit, blade, inertia } = top;
+    const q = body.rotation(), p = body.translation();
+    let v = body.linvel();
+    const entry = top.escape;
+    if (entry?.inwardAt && this.time >= entry.inwardAt) {
+      const inward = scale(p,-entry.inwardSpeed/horizontalSpeed(p));
+      v = {...inward,y:v.y};
+      body.setLinvel(v,true);
+      entry.inwardAt = null;
+    }
+    const axis = axisOf(q), omega = body.angvel();
+    const axial = dot(axis,omega), spin = Math.max(0,axial * top.spinDirection);
+    const speed = horizontalSpeed(v);
+    if (top.move && this.time >= top.move.until) top.move = null;
+    const supported = clamp(top.load / (inertia.mass * GRAVITY * DT),0,1.4);
+    const abrasion = clamp(top.scrape / (inertia.mass * GRAVITY * DT),0,2);
+    const drag = (bit.type === 'stamina' ? .0041 : bit.type === 'attack' ? .0040 : .0048)*spin+.000008*spin*spin;
+    const contact = clamp(Math.max(supported,top.landed && !top.rail ? .74 : 0),0,1.05);
+    const bearing = contact*(.84+.0025*spin)*(bit.type === 'attack' ? .39 : 1)*bit.drain/blade.stamina*(bit.freeTip ? .91 : 1);
+    const end = endOfSpin(top,spin);
+    const endDrag = top.landed ? end*8.5 : 0;
+    const scrapeLoss = abrasion*(1.2+spin*.019+endDrag*.45);
+    // Once the finish is scored, the pocket's walls quickly scrub off the
+    // remaining spin. During play the same contacts still allow a Reverse.
+    const pocketDrag = this.finished && top.defeat?.zone ? 42+spin*3.05+abrasion*16 : 0;
+    this.spendSpin(top,(drag+bearing+endDrag+scrapeLoss+pocketDrag)*DT,axis);
+    if (pocketDrag) {
+      const brake = Math.exp(-DT*3.8);
+      body.setLinvel({x:v.x*brake,y:v.y,z:v.z*brake},true);
+    }
+
+    const floor = floorAt(p.x,p.z);
+    const nearFloor = clamp((floor + top.standing + .25 - p.y) / .22,0,1);
+    const stability = (1-end)*(.70+.30*Math.sqrt(clamp(spin/top.launchSpin,0,1)));
+    const recovering = top.landed ? clamp((this.time-top.landedAt)/(.09+.46*top.launch.settle),0,1) : 0;
+    const brace = top.rail ? 1 : recovering;
+    const rocking = sub(omega,scale(axis,axial));
+    const endRock = top.landed && !top.rail && nearFloor > .46 ? end : 0;
+    const damping = (supported*.8+stability*(19+25*nearFloor)+endRock*29)*top.balance;
+    const settle = (.46*nearFloor+.54*clamp(supported+abrasion,0,1))*stability*brace;
+    let steering = scale(cross(axis,vertical),settle*720*top.balance);
+    if (endRock > 0) {
+      const lean = Math.acos(clamp(axis.y,-1,1));
+      const side = horizontalSpeed(axis);
+      const fall = side > .004 ? scale(cross(vertical,axis),1/side) : {x:top.player ? -.8 : .8,y:0,z:.6};
+      const narrow = clamp(1-bit.tip/.14,0,1);
+      const desired = endRock**1.7*(.27+narrow*.12);
+      const drift = scale(cross(axis,fall),-top.spinDirection*(.75+endRock*1.0)*side);
+      const wobble = add(scale(fall,clamp((desired-lean)*18,-4,5)),drift);
+      steering = add(steering,scale(wobble,damping*endRock));
+    }
+    body.applyTorqueImpulse(scale(sub(steering,scale(rocking,damping)),inertia.transverse*DT),true);
+    if (top.launch.settle > .14 && recovering < .84 && top.landed && this.time >= top.impactUntil) {
+      const damping = -22*DT*inertia.mass;
+      body.applyImpulse({x:v.x*damping,y:0,z:v.z*damping},true);
+      return;
+    }
+    if (this.followRail(top,p,v,axis,spin)) return;
+    this.driveOnFloor(top,p,v,speed,axis,spin,nearFloor);
+  }
+
+  driveOnFloor(top,p,v,speed,axis,spin,nearFloor) {
+    const {body,bit,inertia} = top;
+    if (!top.landed || top.escape?.zone || nearFloor < .46 || axis.y < .58 || v.y > 4 || this.time < top.impactUntil ||
+      this.time < top.liftUntil || this.time < top.driveResumeAt) return;
+    if (Math.hypot(p.x,p.z) > mouthRadius(Math.atan2(p.z,p.x))-.03) return;
+    const age = this.time-top.landedAt;
+    let force;
+    if (age < .52 + top.launch.settle*.53) {
+      const { direction, speed: launchSpeed, settle } = top.launch;
+      const start = .034 + settle*.34;
+      const progress = clamp((age-start)/(.25+settle*.14),0,1);
+      const run = progress*progress*(3-2*progress);
+      const upright = 1 - settle * clamp((.97-axis.y)/.14,0,1);
+      const pace = launchSpeed * (.11+.89*run) * upright;
+      force = {x:clamp((direction.x*pace-v.x)*10,-85,85), y:0, z:clamp((direction.z*pace-v.z)*10,-85,85)};
+    } else {
+      this.pickRun(top,p,v,this.tops[1-top.player]);
+      const moveForce = this.moveForce(top,p,v,spin);
+      if (moveForce) {
+        body.applyImpulse(scale(moveForce,inertia.mass*DT),true);
+        const movementCost = top.move.kind === 'defense' ? 1.2 : top.move.kind === 'circle' ? 2.2 : 0;
+        this.spendSpin(top,(horizontalSpeed(moveForce)*bit.drain*.060+movementCost)*DT,axis);
+        return;
+      }
+      if (speed < .40 || spin < 24) return;
+      const reserve = spin/top.launchSpin;
+      const target = runningSpeed(reserve,bit.style) * (.83+.17*bit.style);
+      const rolling = .20 + bit.friction*1.5 + (bit.roll??0) + (bit.type === 'defense' ? .39 : 0);
+      const drive = clamp((target-speed)*bit.style**1.2*2.8,0,34) * clamp((reserve-.14)/.58,0,1);
+      const decel = rolling*speed + Math.max(0,speed-30)*8;
+      const radiusSquared = p.x*p.x+p.z*p.z;
+      const orbit = bit.style**1.35 * clamp((radiusSquared-1)/13,0,1) * clamp((reserve-.2)/.67,0,1);
+      const radius = Math.sqrt(radiusSquared) || 1;
+      const turn = {x:-p.z/radius*top.spinDirection,z:p.x/radius*top.spinDirection};
+      const lateral = orbit * clamp((target - (v.x*turn.x+v.z*turn.z))*.85,0,14);
+      const outer = clamp((radius-2.15)/2.9,0,1);
+      const seekRim = bit.style**1.8*outer*clamp((reserve-.21)/.60,0,1)*4;
+      force = {
+        x:v.x/speed*(drive-decel)+turn.x*lateral+p.x/radius*seekRim,
+        y:0,
+        z:v.z/speed*(drive-decel)+turn.z*lateral+p.z/radius*seekRim,
+      };
+      this.spendSpin(top,(drive+lateral)*bit.drain*.048*DT,axis);
+    }
+    body.applyImpulse(scale(force,inertia.mass*DT),true);
+  }
+
+  followRail(top,p,v,axis,spin) {
+    const {body,bit,inertia,standing} = top;
+    if (top.rail) {
+      const run = top.rail;
+      if (spin < 31 || axis.y < .63 || this.time < top.impactUntil) {
+        this.releaseRail(top,.28);
+        return false;
+      }
+      const rating = railRating(bit);
+      const pitchSpeed = top.spin*bit.gear*(.86+rating*.0052);
+      const maxSpeed = 10+rating*.325;
+      const traction = clamp((Math.min(pitchSpeed,maxSpeed)-run.speed)*11,-59,195)*bit.grip;
+      run.speed = Math.max(4,run.speed + traction*DT);
+      const railLoss = Math.max(0,traction)*inertia.mass*bit.gear/inertia.polar*.55 +
+        (2.5+rating*.067+run.speed*.062)*Math.sqrt(bit.drain);
+      this.spendSpin(top,railLoss*DT,axis);
+      const frame = railFrame(Math.cos(run.angle),Math.sin(run.angle));
+      const step = run.speed * DT / (frame.length-bit.gear);
+      run.angle += run.direction * step;
+      run.remaining -= step;
+      run.travel += step;
+      const next = railFrame(Math.cos(run.angle),Math.sin(run.angle));
+      const x = next.x-(bit.gear-.008)*next.nx, z = next.z-(bit.gear-.008)*next.nz;
+      const y = curvedTipSupport(top,axis,x,z,body.rotation())+.008;
+      const gain = run.speed-run.initialSpeed;
+      top.dashCarry = Math.max(top.dashCarry,Math.max(0,gain)*(.35+.65*clamp(run.travel/4.5,0,1)));
+      top.dashAt = this.time;
+      top.railSupportUntil = this.time+.14;
+      if (!run.announced && (gain > 2.6 || run.speed > 13.5)) {
+        run.announced = true;
+        if (!this.finished) this.onEvent({type:'dash',player:top.player,at:[next.x,next.y,next.z]});
+      }
+      const vertical = (y-p.y)/DT;
+      body.setLinvel({x:next.tx*run.direction*run.speed,y:clamp(vertical,-12,12),z:next.tz*run.direction*run.speed},true);
+      run.next = {x,y,z};
+      return true;
+    }
+    if (!top.landed || top.escape || top.defeat || this.time < top.railReadyAt || this.time < top.impactUntil ||
+      p.x*p.x+p.z*p.z < 4.3**2 || spin < 43 || axis.y < .88) return false;
+    const gearCenter = sub(p,scale(axis,standing-GEAR_HEIGHT));
+    const rail = railFrame(gearCenter.x,gearCenter.z);
+    const radial = {x:rail.nx,y:0,z:rail.nz};
+    const tangent = {x:rail.tx,y:0,z:rail.tz};
+    const gearRim = sub(radial,scale(axis,dot(radial,axis)));
+    const tooth = add(gearCenter,scale(gearRim,bit.gear/Math.hypot(gearRim.x,gearRim.y,gearRim.z)));
+    const gap = dot(sub(tooth,{x:rail.x,y:rail.y,z:rail.z}),radial);
+    const verticalMargin = GEAR_HALF_HEIGHT*axis.y+.066+bit.grip*.018;
+    const gearHeight = tooth.y-rail.floor;
+    const outward = dot(v,radial);
+    const direction = top.spinDirection;
+    const along = dot(v,tangent)*direction;
+    const manual = top.move?.kind === 'dash' && top.move.manual;
+    const pushed = this.time < top.pushedUntil;
+    const speed = horizontalSpeed(v);
+    if (top.load+top.scrape < .02 || gap < (manual ? -.30 : -.145) || gap > .18 || gearHeight < RAIL.bottom-verticalMargin ||
+      gearHeight > RAIL.top+verticalMargin+(manual ? .035 : 0) || v.y > 3.4 || outward < -.85 ||
+      speed < (manual ? 2.2 : 7.5) || !manual && (axis.y < .966 || outward < .4 && along < 6)) return false;
+    if (!manual && Math.random() >= (pushed ? .42 : .80)) {
+      const rebound = 1.18*Math.max(3.5,outward);
+      body.setLinvel({x:v.x*.75-rail.nx*rebound,y:Math.min(v.y,.8),z:v.z*.75-rail.nz*rebound},true);
+      this.spendSpin(top,1.6+.14*speed,axis);
+      top.railReadyAt = this.time+.72;
+      top.driveResumeAt = this.time+.13;
+      return true;
+    }
+
+    // Viewed from above, right spin is negative yaw. The outside teeth move
+    // toward increasing polar angle, so the rack sends the Bey the other way.
+    const toExit = positiveAngle((railExitAngle(direction)-rail.angle)*direction);
+    const remaining = Math.max(.075,toExit);
+    const initialSpeed = Math.max(3.1,along);
+    top.rail = { angle:rail.angle, direction, remaining, travel:0, initialSpeed, speed:initialSpeed, announced:false };
+    top.move = null;
+    top.nextRunAt = Math.max(top.nextRunAt,this.time+2.05);
+    this.setRailContact(top,true);
+    top.dashCarry = 0;
+    const x = rail.x-(bit.gear-.008)*rail.nx, z = rail.z-(bit.gear-.008)*rail.nz;
+    body.setTranslation({x,y:curvedTipSupport(top,axis,x,z,body.rotation())+.008,z},true);
+    return this.followRail(top,body.translation(),v,axis,spin);
+  }
+
+  finishRailStep(top) {
+    const run = top.rail;
+    if (!run?.next) return;
+    const {body,bit} = top, {x,y,z} = run.next;
+    body.setTranslation(run.next,true);
+    if (run.remaining > 0) return;
+    const frame = railFrame(x,z);
+    const length = Math.hypot(x,z);
+    const bend = .52-.12*bit.style;
+    let inward = {x:-x/length+frame.tx*run.direction*bend,y:0,z:-z/length+frame.tz*run.direction*bend};
+    const rival = this.tops[1-top.player];
+    const target = add(rival.body.translation(),scale(rival.body.linvel(),.095));
+    if (rival.landed && !rival.escape && horizontalSpeed(target) < 3.95) {
+      const toward = {x:target.x-x,y:0,z:target.z-z};
+      const aim = bit.style*.47;
+      inward = add(scale(inward,1-aim),scale(toward,aim/horizontalSpeed(toward)));
+    }
+    const charge = clamp(run.travel/4.9,0,1);
+    const speed = run.speed * (.90 + .15*charge);
+    const drive = scale(inward,speed/horizontalSpeed(inward));
+    body.setLinvel(drive,true);
+    this.spendSpin(top,(1.15+(2+run.speed*.13)*charge)*Math.sqrt(bit.drain));
+    this.releaseRail(top,.36);
+    top.driveResumeAt = this.time+.27;
+    top.dashAt = this.time;
+    top.dashCarry = Math.max(top.dashCarry,run.speed*(.19+.47*charge));
+    if (!this.finished) this.onEvent({type:'rail-exit',player:top.player,at:[x,y,z]});
+  }
+
+  stadiumContact(collider) {
+    let floor = 0, wall = 0, at;
+    this.world.contactPairsWith(collider,other => {
+      const onFloor = this.floorHandles.has(other.handle);
+      if (!onFloor && !this.wallHandles.has(other.handle)) return;
+      this.world.contactPair(collider,other,manifold => {
+        for (let i=0;i<manifold.numContacts();i++) {
+          const impulse = manifold.contactImpulse(i);
+          if (onFloor) floor += impulse;
+          else {
+            wall += impulse;
+            if (!at && impulse > .06 && manifold.numSolverContacts()) at = manifold.solverContactPoint(0);
+          }
+        }
+      });
+    });
+    return {floor,wall,at};
+  }
+
+  metalStadiumContact(top) {
+    // Adjacent convex sections can share a seam. Use the largest load at that
+    // seam when calculating wear, so one scrape is never counted twice.
+    const contact = {floor:0,wall:0,at:null};
+    for (const collider of top.bladeColliders) {
+      const current = this.stadiumContact(collider);
+      contact.floor = Math.max(contact.floor,current.floor);
+      if (current.wall > contact.wall) {
+        contact.wall = current.wall;
+        contact.at = current.at;
+      }
+    }
+    return contact;
+  }
+
+  settleVertical(top) {
+    if (!top.landed || top.rail) return;
+    const {body} = top, p = body.translation();
+    const v = body.linvel(), h = floorAt(p.x,p.z);
+    const angle = Math.atan2(p.z,p.x);
+    const radius = horizontalSpeed(p), mouth = mouthRadius(angle);
+    const jump = top.escape;
+    if (this.time < (jump?.jumpUntil ?? 0) && v.y > 0 && p.y > lipHeight(angle)+top.standing+.55) {
+      body.setLinvel({...v,y:0},true);
+      return;
+    }
+    const scoredPocket = this.finished && top.defeat?.zone;
+    if ((scoredPocket || top.escape?.deep) && v.y > (scoredPocket ? .5 : 3)) {
+      body.setLinvel({...v,y:scoredPocket ? .5 : 3},true);
+      return;
+    }
+    if (radius >= mouth) {
+      const pocket = pocketAt(angle);
+      const entering = pocket && v.y < 0 && radius > mouth+.38 &&
+        Math.abs(angleDelta(angle,pocket.angle)) < pocket.width-.135 &&
+        (p.x*v.x+p.z*v.z)/radius > 11;
+      if (entering && this.time < top.rimLiftUntil+.05) {
+        // A Bey already descending behind the lip has room to drop before
+        // its metal edge catches the back of the plastic cover.
+        body.setLinvel({x:v.x*.86,y:v.y,z:v.z*.86},true);
+        return;
+      }
+      if (v.y > 3 && this.time >= top.liftUntil) body.setLinvel({...v,y:3},true);
+      return;
+    }
+    if (v.y <= .45 || this.time < top.rimLiftUntil) return;
+    if (this.time < top.liftUntil) {
+      if (v.y > 10.6) body.setLinvel({...v,y:10.6},true);
+      return;
+    }
+    if (p.y-top.standing-h > .42) {
+      body.setLinvel({...v,y:-.35},true);
+      return;
+    }
+    const alongFloor = (floorAt(p.x+v.x*DT,p.z+v.z*DT)-h)/DT;
+    if (v.y > alongFloor+.86) body.setLinvel({...v,y:Math.max(-.6,alongFloor+.86)},true);
+  }
+
+  steadyTip(top) {
+    const {body} = top;
+    const p = body.translation(), velocity = body.linvel();
+    const afterRail = this.time < top.railSupportUntil;
+    if (!top.landed || !afterRail && this.time-top.landedAt < .065 + top.launch.settle*.43) return;
+    const overFloor = Math.hypot(p.x,p.z) < mouthRadius(Math.atan2(p.z,p.x))
+      && p.y < floorAt(p.x,p.z) + top.standing + .26;
+    const inContact = (top.load + top.scrape > .012 || overFloor) && velocity.y < 1.65;
+    if (top.spin <= REST_SPIN || top.resting) return;
+    const rotation = body.rotation(), axis = axisOf(rotation);
+    const tilt = Math.acos(clamp(axis.y,-1,1));
+    const late = endOfSpin(top);
+    const struck = this.time < top.impactUntil;
+    const narrow = clamp(1-top.bit.tip/.14,0,1);
+    const freeLimit = (.070+narrow*.035+late**1.4*(.30+narrow*.10)+(struck ? .027 : 0))/Math.sqrt(top.balance);
+    const limit = afterRail ? Math.min(freeLimit,.088) : freeLimit+(inContact ? 0 : .022);
+    const response = afterRail ? 250 : inContact ? 240 : 200;
+    const correction = Math.max(Math.max(0,tilt-limit)*(1-Math.exp(-DT*response)),tilt-limit-.047);
+    if (correction <= .00001) return;
+
+    // Retain axial speed while damping the sideways rocking from contact.
+    const towardUp = cross(axis,vertical);
+    const sideways = Math.hypot(towardUp.x,towardUp.z);
+    const normal = sideways > .0001 ? scale(towardUp,1/sideways) : {x:1,y:0,z:0};
+    body.setRotation(turnRotation(rotation,normal,correction),true);
+    const omega = body.angvel(), axial = dot(omega,axis);
+    const nextAxis = axisOf(body.rotation());
+    body.setAngvel(add(scale(nextAxis,axial),scale(sub(omega,scale(axis,axial)),Math.exp(-DT*46))),true);
+  }
+
+  settleStoppedTop(top) {
+    if (!top.landed || top.rail || top.resting || top.spin >= top.launchSpin*WOBBLE_RATIO) return;
+    const {body} = top, p = body.translation(), v = body.linvel();
+    if (top.settling) {
+      const {started,rotation,axis,tilt,targetTilt,pocket} = top.settling;
+      const progress = clamp((this.time-started)/.44,0,1);
+      const pose = turnRotation(rotation,axis,(targetTilt-tilt)*progress**2*(3-2*progress));
+      const support = offset => (pocket ? pocket.bottom : floorAt(p.x+offset.x,p.z+offset.z))-offset.y;
+      const tipAxis = axisOf(pose);
+      let height = bitSupport(top,tipAxis,p.x,p.z,pocket ? pocket.bottom : floorAt(p.x,p.z),!!pocket);
+      for (const hull of top.bladeHulls) {
+        for (let i=0;i<hull.length;i+=3) {
+          const point = rotateVector({x:hull[i],y:hull[i+1],z:hull[i+2]},pose);
+          height = Math.max(height,support(point));
+        }
+      }
+      body.setRotation(pose,true);
+      body.setTranslation({...p,y:height+.008},true);
+      top.stopped += DT;
+      if (progress >= 1) {
+        top.resting = true;
+        top.settling = null;
+      }
+      return;
+    }
+    const finishedPocket = this.finished ? top.defeat?.zone : null;
+    const grounded = top.load+top.scrape > .025 ||
+      finishedPocket && p.y < lipHeight(Math.atan2(p.z,p.x))-.15 && Math.abs(v.y)<.75;
+    if (!grounded) return;
+    const weakness = endOfSpin(top);
+    const brake = Math.exp(-DT*(.8+weakness**2*24));
+    body.setLinvel({x:v.x*brake,y:v.y,z:v.z*brake},true);
+    if (top.spin > REST_SPIN) return;
+    const omega = body.angvel();
+    const axis = axisOf(body.rotation());
+    if (axis.y < .52) body.setAngvel(scale(omega,Math.exp(-DT*23)),true);
+    top.stopped += DT;
+    if (top.stopped < .16 || Math.abs(v.y) > .75) return;
+    const fall = cross(vertical,axis), length = horizontalSpeed(fall);
+    const pocket = finishedPocket ?? POCKETS.find(zone => p.y < lipHeight(Math.atan2(p.z,p.x)) &&
+      pocketContains(zone,p.x,p.z,top.blade.radius*.46));
+    const tilt = Math.acos(clamp(axis.y,-1,1));
+    const rimAngle = Math.atan2(top.standing-.067,top.blade.radius*.98);
+    top.settling = {started:this.time,rotation:body.rotation(),tilt,targetTilt:Math.max(tilt,rimAngle+.045),
+      axis:length > .015 ? scale(fall,1/length) : {x:top.player ? -.8 : .8,y:0,z:.6},pocket};
+    top.spin = 0;
+    top.move = null;
+    body.setLinvel(zero,true);
+    body.setAngvel(zero,true);
+    body.setBodyType(RAPIER.RigidBodyType.Fixed,true);
+  }
+
+  keepTipAboveFloor(top) {
+    if (top.rail || !top.landed || top.settling || top.resting) return;
+    const {body,standing} = top, p = body.translation(), rotation = body.rotation();
+    const axis = axisOf(rotation), radius = horizontalSpeed(p), angle = Math.atan2(p.z,p.x);
+    if (axis.y < .60 || radius > mouthRadius(angle) && pocketAt(angle)) return;
+    const floor = tipSurfaceAt(p.x,p.z);
+    if (p.y > floor+standing+.23) return;
+    const curved = radius > 3.12;
+    const supportAt = (x,z) => curved ? curvedTipSupport(top,axis,x,z,rotation) :
+      bitSupport(top,axis,x,z,tipSurfaceAt(x,z));
+    const support = supportAt(p.x,p.z);
+    const nearLip = radius > mouthRadius(angle)-top.blade.radius-.10;
+    const rimSupport = nearLip ? bladeRimSupport(top,rotation,p.x,p.z) : -Infinity;
+    const minimum = Math.max(support-.0025,rimSupport-.010);
+    if (p.y >= minimum) return;
+    let v = body.linvel();
+    // Keep a fast strike free to clear the lip. The solved hull still handles
+    // the first scrape, and the analytic support only corrects the buried part.
+    if (minimum > support+.10 && v.y < 2 && this.time >= top.rimLiftUntil) {
+      const tangent = railFrame(p.x,p.z);
+      const outward = v.x*tangent.nx+v.z*tangent.nz;
+      if (outward > 0) {
+        const rebound = outward*1.13;
+        v = {x:v.x-tangent.nx*rebound,y:v.y,z:v.z-tangent.nz*rebound};
+        body.setLinvel(v,true);
+        this.wallImpact(top,rebound*.31*top.inertia.mass,p);
+      }
+    }
+    body.setTranslation({x:p.x,y:minimum,z:p.z},true);
+    const rise = (supportAt(p.x+v.x*DT,p.z+v.z*DT)-support)/DT;
+    if (v.y < rise) body.setLinvel({...v,y:clamp(rise,-14,16)},true);
+  }
+
+  step(presentation = false) {
+    if (this.finished && !presentation) return;
+    this.time += DT;
+    const [a, b] = this.tops;
+    for (const top of this.tops) this.prepare(top);
+    const p1 = a.body.translation(), p2 = b.body.translation();
+    const delta = sub(p2, p1);
+    const distance = Math.hypot(delta.x, delta.z) || .001;
+    const normal = { x: delta.x / distance, y: 0, z: delta.z / distance };
+    const pre = [a.body.linvel(),b.body.linvel()];
+    const approach = [dot(pre[0],normal),-dot(pre[1],normal)];
+    const nearContact = distance < a.blade.radius + b.blade.radius + .31;
+    for (const top of this.tops) {
+      const p = top.body.translation();
+      const descending = !top.landed && p.y < floorAt(p.x,p.z)+top.standing+.85;
+      // The fixed step resolves the broad rim contact. The faster vertical
+      // drop needs a sweep before the Bit touches down.
+      const sweep = !top.landed && (nearContact || descending);
+      if (top.body.isCcdEnabled() !== sweep) top.body.enableCcd(sweep);
+    }
+    this.world.step();
+    for (const top of this.tops) {
+      if (top.resting || top.settling) continue;
+      const { body, tip, bitShoulder, ratchetCollider } = top;
+      const position = body.translation();
+      const radius = horizontalSpeed(position);
+      const axis = axisOf(body.rotation());
+      // Near-vertical Beys in the central bowl can only touch on the Bit.
+      // Keep querying all parts near the rim, in flight and while rocking.
+      const tipOnly = top.landed && !top.escape && radius<3.1 && axis.y>.984 &&
+        position.y-floorAt(position.x,position.z)>-top.ratchetBottom+.16;
+      const tipLoad = this.stadiumContact(tip);
+      const shoulder = tipOnly ? null : this.stadiumContact(bitShoulder);
+      const blade = tipOnly ? null : this.metalStadiumContact(top);
+      const ratchet = tipOnly ? null : this.stadiumContact(ratchetCollider);
+      top.load = tipLoad.floor+(shoulder?.floor??0);
+      top.scrape = (blade?.floor??0)+(ratchet?.floor??0)+.22*(shoulder?.floor??0);
+      const wall = (blade?.wall??0)+(ratchet?.wall??0)+(shoulder?.wall??0)+tipLoad.wall;
+      if (!top.landed && top.load+top.scrape > .05) {
+        top.landed = true;
+        top.landedAt = this.time;
+        const v = body.linvel(), incoming = pre[top.player];
+        const brake = 1-.86*top.launch.settle;
+        body.setLinvel({x:incoming.x*brake,y:clamp(v.y,-1.5,1.0),z:incoming.z*brake},true);
+      }
+      if (!presentation && !top.landed && wall > 1.1) {
+        this.replay('Lançamento inválido · contato com a tampa');
+        return;
+      }
+      if (wall > .14) this.wallImpact(top,wall,blade?.at??ratchet?.at);
+      if (!presentation && top.scrape > .42 && this.time-top.lastWall > .24) {
+        const p = body.translation();
+        if (top.landed && p.y < floorAt(p.x,p.z)+top.standing+.12) {
+          top.lastWall = this.time;
+          this.onEvent({type:'scrape',player:top.player,at:[p.x,floorAt(p.x,p.z)+.06,p.z],strength:clamp(top.scrape*.16,.12,.65)});
+        }
+      }
+      const omega = body.angvel();
+      const solvedSpin = dot(axis,omega)*top.spinDirection;
+      const angleLoss = Math.max(0,top.spin-solvedSpin);
+      // Bearing, rail, scrape and hit losses are explicit. Limit axial
+      // leakage from contact correction and preserve the solved wobble.
+      top.spin = Math.max(0,top.spin-Math.min(angleLoss,.55*DT));
+      if (Math.abs(solvedSpin-top.spin) > .0001) {
+        body.setAngvel(sub(omega,scale(axis,(solvedSpin-top.spin)*top.spinDirection)),true);
+      }
+    }
+
+    if (nearContact && !presentation && !a.resting && !b.resting && !a.settling && !b.settling) {
+      this.readImpact(a,b,normal,approach);
+    }
+    if (this.finished && !presentation) return;
+    for (const top of this.tops) {
+      if (top.resting) continue;
+      this.finishRailStep(top);
+      this.contain(top);
+      this.settleVertical(top);
+      this.carryStrikeOverRim(top);
+      this.steadyTip(top);
+      this.keepTipAboveFloor(top);
+      this.settleStoppedTop(top);
+      if (!top.rail) {
+        const v = top.body.linvel(), speed = horizontalSpeed(v);
+        if (speed > MAX_TRANSLATION) {
+          const ratio = MAX_TRANSLATION/speed;
+          top.body.setLinvel({x:v.x*ratio,y:v.y,z:v.z*ratio},true);
+        }
+      }
+    }
+    if (!presentation && this.time !== this.lastQte) this.checkFinish(pre);
+  }
+
+  wallImpact(top, impulse, point) {
+    if (impulse > .46 && this.time-top.lastWallWear > .14) {
+      this.spendSpin(top,Math.min(4.5,impulse*.24*REFERENCE_MASS/top.inertia.mass));
+      top.lastWallWear = this.time;
+    }
+    if (impulse < .85 || this.time-top.lastWall < .24) return;
+    top.lastWall = this.time;
+    if (point && !this.finished) this.onEvent({type:'scrape',player:top.player,at:asArray(point),strength:clamp(impulse/7,.15,.9)});
+    if (top.rail && impulse > 2.6) this.releaseRail(top,.30);
+  }
+
+  contain(top) {
+    const { body, blade } = top;
+    const p = body.translation(), r = Math.hypot(p.x,p.z);
+    if (top.rail || !top.landed || r < 4.9 || p.y < -.30 || p.y - top.standing > SHELL.height) return;
+    const angle = Math.atan2(p.z,p.x);
+    const zone = pocketAt(angle);
+    // The transparent BX-10 cover continues above the short rim barriers.
+    // Its inner surface turns a high bounce back into the bowl between pockets.
+    const limit = zone ? trayRadius(zone,angle) + .06 : guardRadius(angle)-blade.radius-BLADE_SHELL_CLEARANCE;
+    if (r <= limit) return;
+    const {nx,nz} = zone ? {nx:Math.cos(zone.angle),nz:Math.sin(zone.angle)} : railFrame(p.x,p.z);
+    const v = body.linvel();
+    const outward = v.x * nx + v.z * nz;
+    // Correct the full rim even if the solver has already turned the Bey inward.
+    body.setTranslation({x:p.x*limit/r,y:p.y,z:p.z*limit/r},true);
+    if (outward <= 0) return;
+    const rebound = 1.62+.16*clamp(outward/14,0,1);
+    body.applyImpulse({x:-nx*outward*rebound*top.inertia.mass,y:0,z:-nz*outward*rebound*top.inertia.mass},true);
+    this.wallImpact(top,outward*.53*top.inertia.mass,p);
+  }
+
+  readImpact(a, b, normal, approach) {
+    let impulse = 0, strongest = 0, at, contactNormal = normal;
+    const ratchetHit = [0, 0];
+    const ringHit = [0, 0];
+    const read = (c1, c2, exposedRatchet) => {
+      this.world.contactPair(c1, c2, manifold => {
+        let total = 0;
+        for (let i = 0; i < manifold.numContacts(); i++) total += manifold.contactImpulse(i);
+        impulse += total;
+        if (c1.handle === a.freeRingCollider?.handle) ringHit[0] += total;
+        if (c2.handle === b.freeRingCollider?.handle) ringHit[1] += total;
+        // Only the lateral component of a direct Blade-to-Ratchet hit can turn the lock.
+        if (exposedRatchet !== undefined) {
+          ratchetHit[exposedRatchet] = Math.max(ratchetHit[exposedRatchet],total*Math.max(0,1-Math.abs(manifold.normal().y)*1.65));
+        }
+        if (total > strongest && manifold.numSolverContacts()) {
+          strongest = total;
+          at = manifold.solverContactPoint(0);
+          const face = manifold.normal(), length = horizontalSpeed(face);
+          if (length > .25) {
+            const outward = dot(face,normal) < 0 ? -1 : 1;
+            const direction = add(scale(normal,.38),{x:face.x*outward/length*.62,y:0,z:face.z*outward/length*.62});
+            contactNormal = scale(direction,1/horizontalSpeed(direction));
+          } else {
+            contactNormal = normal;
+          }
+        }
+      });
+    };
+    const rivalMetal = b.bladeColliders;
+    for (const collider of a.bladeColliders) {
+      this.world.contactPairsWith(collider,other => {
+        if (rivalMetal.some(metal => metal.handle === other.handle)) read(collider,other);
+        if (other.handle === b.ratchetCollider.handle) read(collider,other,1);
+      });
+    }
+    this.world.contactPairsWith(a.ratchetCollider,other => {
+      if (rivalMetal.some(metal => metal.handle === other.handle)) read(a.ratchetCollider,other,0);
+    });
+    if (impulse > .065 && (!a.landed || !b.landed)) {
+      this.replay('Lançamento inválido · colisão no ar');
+      return;
+    }
+    const closing = approach[0] + approach[1];
+    for (const top of this.tops) {
+      const contact = ratchetHit[top.player]*(top.blade.integrated ? .70 : 1);
+      const opponent = this.tops[1-top.player];
+      const loaded = opponent.dashCarry > 9 && this.time-opponent.dashAt < DASH_CARRY_TIME;
+      const direct = Math.min(contact,closing*.57);
+      const threshold = loaded ? 3.4 : 6.0;
+      if (direct > threshold && this.time-top.lastRatchetHit > .44) {
+        top.lastRatchetHit = this.time;
+        const exposed = (top.ratchet.mm/6)**1.15;
+        top.lockDamage += Math.min(loaded ? .91 : .55,(direct-threshold)*.094*exposed)/top.burstLock;
+      }
+      if (impulse > 1.2) {
+        this.releaseRail(top,.22);
+        top.railSupportUntil = 0;
+        top.impactUntil = this.time + .095;
+        if (closing > 5 && approach[1-top.player] > 3) top.pushedUntil = this.time+.75;
+      }
+    }
+    const gentlePair = a.bit.style < .18 && b.bit.style < .18;
+    if (gentlePair && impulse > .06 && closing < 4.5) this.cushionGlancingHit(a,b,normal,closing);
+    const power = Math.max(a.blade.hit*a.bit.attack,b.blade.hit*b.bit.attack);
+    if (closing > 8 && impulse > 3 && power > 1.05) {
+      for (const top of this.tops) {
+        const velocity = top.body.linvel();
+        if (velocity.y > 1.5) {
+          top.liftUntil = this.time+.12;
+          if (velocity.y > 10.6) top.body.setLinvel({...velocity,y:10.6},true);
+        }
+      }
+    }
+    if (!at || impulse < .047 || this.time - this.lastHit < (closing > 4.5 ? .065 : .14)) return;
+
+    this.lastHit = this.time;
+    // Rapier can report large accumulated normal impulses in long-lived
+    // contacts. The approaching speed bounds how much energy this hit costs.
+    const closingSpeed = Math.max(0,closing);
+    const hardContact = Math.min(impulse,Math.max(0,closingSpeed-.32)*.70);
+    for (const top of this.tops) {
+      const contactLoss = Math.min(6.2,hardContact*(.24+.08*top.bit.drain))+
+        top.spin*Math.min(.019,hardContact*.00185);
+      const ringRetention = 1-(top.blade.freeRing ?? 0)*clamp(ringHit[top.player]/impulse,0,1);
+      this.spendSpin(top,contactLoss*(gentlePair ? .15 : 1)*ringRetention*REFERENCE_MASS/top.inertia.mass);
+    }
+    if (impulse > .11) this.equalizeSpin(a,b,closingSpeed);
+    const { strike, dash, attack } = closing > 1.8 && strongest > .23 ?
+      this.followThrough(contactNormal,approach,Math.min(impulse,closingSpeed*1.15),at) : { strike: 0, dash: 0, attack: false };
+    if (closing > 2 && impulse > .45) {
+      for (const top of this.tops) {
+        if (top.move?.kind === 'attack') top.move = null;
+      }
+    }
+    const severity = Math.min(impulse, .26 + Math.max(0, closing) * .72) + strike;
+    const defender = this.reflex && closingSpeed >= 10 && severity >= 7.4 &&
+      !a.escape?.zone && !b.escape?.zone && this.time-this.lastQte > 12 ?
+      this.criticalDefender(normal,approach,dash>.65) : null;
+    const qte = defender !== null;
+    if (severity > 4.8) for (const top of this.tops) {
+      if (horizontalSpeed(top.body.linvel()) > 8) top.impactTrailUntil = this.time+.29;
+    }
+    if (qte) this.lastQte = this.time;
+    this.onEvent({ type: 'hit', at: asArray(at), strength: clamp(severity / 5.7, .035, 2.5), dashHit: dash > .65, attackHit: attack, qte,
+      normal: [normal.x, normal.z], sparkAxis: [contactNormal.x,contactNormal.z], ratchetHit, defender,
+      advantage: clamp((ratchetHit[1] - ratchetHit[0]) * .13, -.4, .4) });
+  }
+
+  cushionGlancingHit(a,b,normal,closing) {
+    if (closing <= 0) return;
+    const separation = dot(sub(b.body.linvel(),a.body.linvel()),normal);
+    const maximum = .44 + closing*.29;
+    if (separation <= maximum) return;
+    const mass = a.inertia.mass*b.inertia.mass/(a.inertia.mass+b.inertia.mass);
+    const soft = scale(normal,(separation-maximum)*mass);
+    a.body.applyImpulse(soft,true);
+    b.body.applyImpulse(scale(soft,-1),true);
+  }
+
+  followThrough(normal, approach, contactImpulse, point) {
+    const drive = this.tops.map((top, i) => {
+      const decay = clamp(1 - (this.time - top.dashAt) / DASH_CARRY_TIME,0,1);
+      const entering = Math.max(0,approach[i]);
+      const attack = top.blade.hit * top.bit.attack;
+      const reserve = clamp(top.spin/top.launchSpin,0,1);
+      const power = .14+.86*reserve**.78;
+      const advancing = top.move?.kind === 'attack';
+      const q = top.body.rotation(), offset = sub(point,top.body.translation());
+      const localOffset = rotateVector(offset,{x:-q.x,y:-q.y,z:-q.z,w:q.w});
+      const { reach,slope,prominence } = bladeContact(top.blade,Math.atan2(localOffset.z,localOffset.x));
+      const facing = scale(normal,i ? -1 : 1);
+      const sweep = dot(cross(top.body.angvel(),offset),facing);
+      const tooth = clamp(prominence*11,0,1)*clamp((reach-.86)*7.5,0,1);
+      const hook = top.blade.catch*(.22+tooth*1.16+.28*clamp(sweep/35,0,1));
+      const glancing = clamp((1-tooth)*.67+Math.abs(slope)*.23,0,1);
+      const momentum = top.inertia.mass/REFERENCE_MASS;
+      const wing = (top.blade.smash ?? 0)*clamp((reach-.91)*9,0,1)*clamp((entering-5)/9,0,1);
+      const lobe = entering*momentum*Math.max(0,attack-.66)*(.15+hook*.94+wing)*power;
+      const lunge = advancing ? entering*(.07+.20*top.bit.style)*power : 0;
+      const dash = decay*Math.min(top.dashCarry,entering)*momentum*Math.max(.13,attack-.43) *
+        power * (.62+railRating(top.bit)*.008);
+      return { lobe:lobe+lunge,dash,attack,advancing,glancing,power };
+    });
+    const player = drive[0].lobe + drive[0].dash >= drive[1].lobe + drive[1].dash ? 0 : 1;
+    const { lobe,dash,attack,advancing,power } = drive[player];
+    const attacker = this.tops[player], target = this.tops[1-player];
+    const heightDifference = target.body.translation().y-attacker.body.translation().y;
+    const upper = (attacker.blade.upper ?? 0)*clamp((heightDifference-.017)/.12,0,1)*
+      clamp((approach[player]-4.5)/7,0,1)*power;
+    const guard = (target.blade.verticalGuard ?? 0)*clamp((Math.abs(heightDifference)-.024)/.14,0,1);
+    const boundReady = top => top.blade.bound && top.spin > 28 && this.time-top.boundAt > .44;
+    const boundStrike = boundReady(attacker) ? attacker.blade.bound*clamp((contactImpulse-1.8)/5,0,1)*power : 0;
+    const boundCounter = boundReady(target) ? target.blade.bound*clamp((contactImpulse-2.5)/6,0,1) : 0;
+    if (boundStrike > .10) attacker.boundAt = this.time;
+    if (boundCounter > .10) target.boundAt = this.time;
+    const defense = target.blade.deflect*(.58+.42*drive[1-player].glancing) +
+      (target.bit.type === 'defense' ? .12 : 0) + (target.move?.kind === 'defense' ? .11 : 0) +
+      (target.blade.rigid ?? 0)*.60+guard*.52+boundCounter*.25;
+    const brace = clamp(target.spin/target.launchSpin,0,1) * defense;
+    const cleanDash = dash > 2.0 && approach[player] > 12 && contactImpulse > 2.7;
+    const surge = cleanDash ? 1.92 : 1.23;
+    const impact = Math.min(22,contactImpulse*1.70,(lobe+dash)*surge+contactImpulse*(upper*.21+boundStrike*.48));
+    const knockback = impact*(1-brace*.79);
+    const reboundStrength = Math.min(5.0,contactImpulse*(brace*.37+boundCounter*.56));
+    if (knockback < .23 && reboundStrength < .23) return { strike: 0, dash: 0, attack: false };
+    const direction = player === 0 ? 1 : -1;
+    // A hard contact immediately after the rail spends part of the spin to
+    // extend the impulse. Apply the horizontal recoil through the COMs.
+    const kick = scale(normal,direction * knockback);
+    const rebound = scale(normal,direction*reboundStrength);
+    const targetVelocity = target.body.linvel();
+    if (guard > .05 && targetVelocity.y > 0) {
+      target.body.setLinvel({...targetVelocity,y:targetVelocity.y*(1-guard*.82)},true);
+    }
+    const lift = (attack > 1.03 && knockback > 2.4 || upper > .06) ?
+      Math.max(0,Math.min(9,knockback*.77+upper*5.2)*(1-guard)-Math.max(0,target.body.linvel().y)) : 0;
+    if (lift) target.liftUntil = this.time+.14;
+    if (attack > 1 && (cleanDash || knockback > 5.0 || upper > .30)) target.rimStrikeUntil = this.time+.44;
+    target.body.applyImpulse({x:kick.x,y:lift*target.inertia.mass,z:kick.z},true);
+    attacker.body.applyImpulse({x:-kick.x*.82-rebound.x,y:0,z:-kick.z*.82-rebound.z},true);
+    const closing = Math.max(0,approach[0]+approach[1]);
+    const shove = (top,sign) => {
+      const v = top.body.linvel(), side = scale(normal,sign);
+      const toward = dot(v,side);
+      const minimum = Math.min(6,closing*.19+impact*.24)*
+        clamp((closing-1.4)/3.5,0,1)*(.23+.77*power);
+      if (toward < minimum) top.body.applyImpulse(scale(side,(minimum-toward)*top.inertia.mass),true);
+    };
+    if (closing > 2.5 && impact+reboundStrength > .75) {
+      shove(attacker,-direction);
+      shove(target,direction);
+    }
+    if (cleanDash && attack > 1.02) {
+      // On a square hit the sustained drive has more weight than the side
+      // component from an individual lobe. Oblique hits retain their ricochet.
+      const forward = scale(normal,direction);
+      const v = target.body.linvel();
+      const along = dot(v,forward), sideways = sub({x:v.x,y:0,z:v.z},scale(forward,along));
+      const push = Math.max(along,Math.min(29,approach[player]*.89*attacker.inertia.mass/target.inertia.mass));
+      const adjusted = add(scale(forward,push),scale(sideways,.78));
+      target.body.setLinvel({...adjusted,y:v.y},true);
+      target.rimStrikeUntil = this.time+.44;
+    }
+    this.spendSpin(attacker,knockback*Math.sqrt(attacker.bit.drain)*(dash>.65 ? .45+railRating(attacker.bit)*.0035 : .32));
+    this.spendSpin(target,knockback*.26*(1-brace)*REFERENCE_MASS/target.inertia.mass);
+    attacker.dashCarry = 0;
+    target.dashCarry = 0;
+    return { strike: knockback, dash: Math.min(dash,knockback), attack: advancing && knockback > .60 };
+  }
+
+  pocketThreat(position, direction) {
+    let risk = 0, aim = null;
+    for (const zone of POCKETS) {
+      const reach = mouthRadius(zone.angle)+.9;
+      const toward = {x:Math.cos(zone.angle)*reach-position.x,y:0,z:Math.sin(zone.angle)*reach-position.z};
+      const distance = horizontalSpeed(toward);
+      if (distance < .08) continue;
+      const unit = scale(toward,1/distance);
+      const alignment = dot(unit,direction);
+      const minimum = zone.points === 3 ? .89 : .54;
+      const access = zone.points === 3 ? 4.4 : 5.5;
+      const score = clamp((alignment-minimum)/(1-minimum),0,1)*clamp(1-distance/access,0,1);
+      if (score <= risk) continue;
+      risk = score;
+      aim = unit;
+    }
+    return {risk,aim};
+  }
+
+  reflexDefender(normal, approach) {
+    const danger = this.tops.map((top,i) => {
+      const position = top.body.translation();
+      const outward = scale(normal,i === 0 ? -1 : 1);
+      const radius = horizontalSpeed(position), distanceToEdge = mouthRadius(Math.atan2(position.z,position.x))-radius;
+      const rim = clamp(1-distanceToEdge/3.2,0,1) * clamp(dot(position,outward)/Math.max(.1,radius),0,1);
+      return this.pocketThreat(position,outward).risk*1.2+rim*.65;
+    });
+    if (Math.abs(danger[0]-danger[1]) < .035) return approach[0] >= approach[1] ? 1 : 0;
+    return danger[0] > danger[1] ? 0 : 1;
+  }
+
+  criticalDefender(normal,approach,dashHit) {
+    const player = this.reflexDefender(normal,approach);
+    const defender = this.tops[player], attacker = this.tops[1-player];
+    if (attacker.spin < 75 || defender.spin < 40) return null;
+    const pos = defender.body.translation(), velocity = defender.body.linvel();
+    const speed = horizontalSpeed(velocity);
+    const outward = scale(normal,player === 0 ? -1 : 1);
+    const direction = speed > .1 ? {x:velocity.x/speed,y:0,z:velocity.z/speed} : outward;
+    const threat = this.pocketThreat(pos,direction).risk;
+    const radialSpeed = dot(pos,velocity)/Math.max(.1,horizontalSpeed(pos));
+    const projected = add(pos,scale(velocity,.18));
+    const angle = Math.atan2(projected.z,projected.x);
+    const nearRim = horizontalSpeed(projected)>mouthRadius(angle)-.55 && radialSpeed>9;
+    const strike = approach[1-player] >= 7 || dashHit;
+    return strike && (threat>.075 && speed>9 && dot(direction,outward)>.35 || nearRim && speed>15) ? player : null;
+  }
+
+  counter(player, hit, margin = 1) {
+    const [x, z] = hit.normal;
+    const direction = player === 0 ? 1 : -1;
+    const winner = this.tops[player], loser = this.tops[1 - player];
+    const from = loser.body.translation(), opponent = winner.body.translation();
+    const away = sub(from,opponent), separation = horizontalSpeed(away);
+    const awayFromWinner = separation > .05 ? {x:away.x/separation,y:0,z:away.z/separation} : {x:x*direction,y:0,z:z*direction};
+    const defended = player === hit.defender;
+    const {risk,aim} = this.pocketThreat(from,awayFromWinner);
+    const force = clamp(hit.strength/2.5,0,1);
+    const chance = clamp(.08+margin*.43+risk*.39+force*.13-(defended ? .10 : 0),.05,.88);
+    const heavy = Math.random() < chance;
+    const normal = heavy && aim && !defended ? scale(add(awayFromWinner,aim),1/horizontalSpeed(add(awayFromWinner,aim))) : awayFromWinner;
+    const counterPower = clamp(.53+.31*winner.blade.hit*winner.bit.attack,.66,1.05);
+    const kick = (5+hit.strength*2.2+8.4*margin+(heavy ? 5.1 : 0))*
+      (1+direction*hit.advantage*.36)*counterPower;
+    const along = dot(loser.body.linvel(),normal);
+    const shove = scale(normal,(kick-along*.92)*Math.sqrt(winner.inertia.mass*REFERENCE_MASS));
+    loser.body.applyImpulse(shove,true);
+    if (defended) {
+      const velocity = winner.body.linvel();
+      const inward = scale(normal,2.3+2.8*margin);
+      winner.body.setLinvel({x:velocity.x*.22+inward.x,y:Math.min(velocity.y,.6),z:velocity.z*.22+inward.z},true);
+      winner.rimStrikeUntil = 0;
+      winner.liftUntil = 0;
+      winner.rimLiftUntil = 0;
+    } else winner.body.applyImpulse(scale(shove,-.26),true);
+    this.releaseRail(loser,.34);
+    loser.impactUntil = this.time+.21;
+    loser.pushedUntil = this.time+.75;
+    loser.rimStrikeUntil = heavy ? this.time+.48 : 0;
+    this.spendSpin(loser,3.5+kick*.26);
+    this.spendSpin(winner,3.5+kick*.24);
+    const direct = hit.ratchetHit?.[loser.player] ?? 0;
+    if (heavy && direct > 4.0 && counterPower > .78) {
+      loser.lockDamage += Math.min(.80,(direct-4)*.115)/loser.burstLock;
+    }
+    if (winner.move?.kind === 'defense') winner.move = null;
+    return {defended,heavy,chance};
+  }
+
+  carryStrikeOverRim(top) {
+    if (this.time >= top.rimStrikeUntil || top.rail) return;
+    const { body } = top, p = body.translation(), v = body.linvel();
+    const r = Math.hypot(p.x,p.z);
+    const speed = horizontalSpeed(v);
+    if (r < 4 || speed < 7 || p.y-top.standing > floorAt(p.x,p.z)+.52) return;
+    const ahead = {x:p.x+v.x*.076,z:p.z+v.z*.076};
+    const angle = Math.atan2(ahead.z,ahead.x);
+    const mouth = mouthRadius(angle);
+    const outward = (p.x*v.x+p.z*v.z)/r;
+    const zone = pocketAt(angle);
+    const arrival = (mouth-r)/Math.max(1,outward);
+    const delta = zone ? Math.abs(angleDelta(angle,zone.angle)) : Infinity;
+    if (!zone || r >= mouth || outward < 6 || arrival < .021 || arrival > .088 ||
+      delta > zone.width-(zone.points === 3 ? .132 : .047)) return;
+    const pace = Math.min(1,23.8/speed);
+    const clearanceTime = (mouth+top.blade.radius*.78-r)/(outward*pace);
+    const height = lipHeight(angle)+top.standing+.11-p.y;
+    const launch = Math.min(24,Math.max(v.y,(height+.5*GRAVITY*clearanceTime**2)/clearanceTime));
+    body.setLinvel({x:v.x*pace,y:launch,z:v.z*pace},true);
+    top.liftUntil = this.time+clearanceTime+.015;
+    top.rimLiftUntil = top.liftUntil;
+    top.rimStrikeUntil = 0;
+  }
+
+  tryPocketJump(top,p,v) {
+    const entry = top.escape;
+    const {zone,speed} = entry;
+    const r = horizontalSpeed(p), a = Math.atan2(p.z,p.x);
+    const lip = lipHeight(a), depth = r-mouthRadius(a);
+    const xtreme = zone.points === 3;
+    const ratio = clamp(top.spin/top.launchSpin,0,1);
+    const spring = top.blade.bound ?? 0;
+    const springSupport = xtreme ? 0 : spring;
+    if (entry.triedJump || entry.deep || ratio < .34-springSupport*.13 || speed < 9-springSupport*3 ||
+      pocketAt(a) !== zone || depth < -.08 || depth > (xtreme ? .48 : 1.45)) return;
+    const age = this.time-entry.at;
+    const ready = xtreme ? age >= .025 && p.y > lip-.18 && p.y < lip+top.standing+.12 && v.y > -6 :
+      age >= entry.jumpAfter && p.y <= lip+top.standing && v.y <= 2.5;
+    if (!ready) return;
+    entry.triedJump = true;
+    const momentum = clamp((speed-8)/17,0,1)*clamp((ratio-.28)/.58,0,1);
+    const shape = .80+top.rimVariation*.86+top.bit.style*.15;
+    const rated = top.ratchet.pocketJump ?? .37;
+    const chance = (xtreme ? .20 : 1)*rated*clamp(momentum*shape+springSupport*.75,0,1.16);
+    if (Math.random() >= chance) return;
+    const height = Math.max(.20,lip+top.standing+.20-p.y);
+    const inwardSpeed = clamp(7.8+Math.max(0,depth)*4.4,7.8,13.4);
+    const launch = Math.sqrt(2*GRAVITY*height)+4;
+    // At the Xtreme lip the Bit needs to clear the ledge before moving inward.
+    const initialSpeed = xtreme ? .7 : inwardSpeed;
+    top.body.setLinvel({x:-p.x/r*initialSpeed,y:launch,z:-p.z/r*initialSpeed},true);
+    if (xtreme) {
+      entry.inwardAt = this.time+.032;
+      entry.inwardSpeed = inwardSpeed;
+    }
+    entry.jumpUntil = this.time+.42;
+    top.liftUntil = entry.jumpUntil;
+    top.rimLiftUntil = entry.jumpUntil;
+    if (spring) top.boundAt = this.time;
+    this.spendSpin(top,8+height*4);
+  }
+
+  checkFinish(beforeContact) {
+    if (this.finished) return;
+    for (const top of this.tops) {
+      if (top.defeat) continue;
+      const p = top.body.translation(), r = Math.hypot(p.x,p.z), a = Math.atan2(p.z,p.x);
+      const v = top.body.linvel();
+      const pocket = pocketAt(a);
+      const mouth = mouthRadius(a), lip = lipHeight(a);
+      const inBowl = r + top.blade.radius < mouth;
+      if (inBowl && p.y > -.15 && top.escape) {
+        if (top.spin > 5) {
+          this.onEvent({type:'reverse',player:top.player,fromPocket:!!top.escape.zone});
+          top.escape = null;
+        } else if (top.resting) {
+          if (top.escape.zone) top.escape = null;
+          else {
+            top.defeat = {points:0,title:'Saída fora dos bolsos',at:top.escape.at};
+            continue;
+          }
+        }
+      }
+      const nearMouth = pocket && r >= mouth-.12 && p.y < lip+top.standing+.25;
+      if (nearMouth && top.escape?.zone !== pocket &&
+        (top.escape?.stayedSince == null || p.y > lip+.40)) {
+        const speed = Math.max(horizontalSpeed(v),horizontalSpeed(beforeContact?.[top.player]??v));
+        const jumpAfter = top.blade.bound ? .15+Math.random()*.24 : .37+Math.random()*.36;
+        top.escape = {zone:pocket,at:this.time,speed,jumpAfter,stayedSince:null};
+      } else if (r - top.blade.radius > edgeRadius(a)+.23 && !top.escape) {
+        top.escape = {zone:null,at:this.time};
+      }
+      if (top.escape?.zone) {
+        const entry = top.escape;
+        const {zone} = entry;
+        const belowOpening = p.y <= lip+.40;
+        const centerInside = pocketContains(zone,p.x,p.z) && r >= mouth+.24 && p.y <= lip+.18;
+        // Wall contacts can move the center across the edge of the pocket
+        // sector without getting it back over the lip.
+        const stillInside = entry.stayedSince !== null && r >= mouth+.08 &&
+          Math.abs(angleDelta(a,zone.angle)) <= zone.width+.085 && belowOpening;
+        const inPocket = centerInside || stillInside;
+        if (zone.points === 3 && inPocket && r > mouth+.54 && p.y < lip-.24) entry.deep = true;
+        this.tryPocketJump(top,p,v);
+        if (!inPocket || this.time < (entry.jumpUntil ?? 0)) entry.stayedSince = null;
+        else entry.stayedSince ??= this.time;
+        if (this.time < (entry.jumpUntil ?? 0)) continue;
+        if (inPocket && v.y < 0 && p.y < lip+top.standing-.11 &&
+          pocketContains(zone,p.x,p.z,top.blade.radius*.955)) {
+          // The recessed pocket absorbs the landing after the entire Blade
+          // clears the lip. It can still jump out with the remaining spin.
+          top.body.applyImpulse({x:-v.x*top.inertia.mass*.14,y:0,z:-v.z*top.inertia.mass*.14},true);
+        }
+        if (entry.stayedSince !== null && this.time-entry.stayedSince >= POCKET_FINISH_DELAY) {
+          top.defeat = {points:zone.points,title:zone.title,at:entry.stayedSince,zone};
+          continue;
+        }
+      }
+      if (p.y < -1.75 || r > 9.25 || top.escape && !top.escape.zone && this.time-top.escape.at > .85 && top.stopped > .13) {
+        top.defeat = {points:0,title:'Saída fora dos bolsos',at:top.escape?.at ?? this.time};
+      } else if (!top.escape?.zone && top.lockDamage >= 1) {
+        top.defeat = {points:2,title:'Burst Finish',at:this.time};
+      } else if (top.resting && (!top.escape || top.escape.zone && top.escape.stayedSince === null)) {
+        top.defeat = {points:1,title:'Spin Finish',at:this.time-top.stopped};
+      }
+    }
+    const [a, b] = this.tops;
+    if (!a.defeat && !b.defeat) return;
+    const ordered = this.tops.filter(t => t.defeat).sort((x,y)=>x.defeat.at-y.defeat.at);
+    const first = ordered[0], other = this.tops[1-first.player];
+    const otherEntry = other.escape?.zone ? other.escape.stayedSince : other.escape?.at;
+    if (!other.defeat && otherEntry != null && otherEntry <= first.defeat.at + .035) return;
+    if (!other.defeat && this.time < first.defeat.at + .045) return;
+    if (other.defeat && Math.abs(other.defeat.at-first.defeat.at)<=.035) return this.replay('Empate');
+    if (!first.defeat.points) return this.replay(first.defeat.title);
+    this.finished = true;
+    for (const top of this.tops) top.move = null;
+    this.onEvent({type:'finish',winner:other.player,points:first.defeat.points,title:first.defeat.title});
+  }
+
+  replay(title) {
+    this.finished = true;
+    this.onEvent({type:'finish',winner:null,points:0,title});
+  }
+
+  frames() {
+    return this.tops.map(top => {
+      const p = top.body.translation(), q = top.body.rotation();
+      return {
+        p: asArray(p), q: [q.x, q.y, q.z, q.w], spin: clamp(top.spin / top.launchSpin, 0, 1),
+        v: asArray(top.body.linvel()), w: asArray(top.body.angvel()),
+        dash: !!top.rail?.announced || top.dashCarry > 0 && this.time - top.dashAt < .18,
+        attack: top.move?.kind === 'attack',
+        impactTrail: this.time < top.impactTrailUntil,
+        bound: Math.max(0,1-(this.time-top.boundAt)/.18),
+        moves: { ...top.charges, ready: Object.keys(top.charges).filter(kind => this.canMove(top,kind)) },
+        burst: top.defeat?.title === 'Burst Finish',
+      };
+    });
+  }
+
+  dispose() {
+    this.world.free();
+  }
+}

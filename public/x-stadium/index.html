@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#202c28">
+  <meta name="description" content="Batalhas 3D de Beyblade X no estádio BX-10. Monte seu pião e dispute um duelo 1v1.">
+  <title>X Stadium — Arena Beyblade X</title>
+  <link rel="icon" href="./assets/mark.svg">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<main class="stage" id="stage" data-phase="setup" aria-label="X Stadium · Arena BX-10">
+  <div id="world"></div>
+  <div class="arena-fit" aria-hidden="true"></div>
+  <header class="top-bar">
+    <div class="brand"><img src="./assets/mark.svg" width="30" height="30" alt=""><h1>X STADIUM</h1></div>
+    <div class="round-badge"><span id="round-label">RODADA 1</span><span id="stage-state">PREPARAÇÃO</span></div>
+    <nav class="session-tools" aria-label="Partida">
+      <button class="mode-pill" data-action="multiplayer" aria-label="Modo de jogo e multijogador" title="Modo de jogo e multijogador"><i data-icon="cpu"></i><span id="mode-name">TREINO COM IA</span></button>
+      <button class="icon-btn" data-action="sound" title="Ativar som" aria-label="Ativar som" aria-pressed="false"><i data-icon="muted"></i></button>
+      <button class="icon-btn" data-action="help" title="Como jogar" aria-label="Como jogar"><i data-icon="help"></i></button>
+    </nav>
+  </header>
+
+  <div class="player-hud" aria-label="Placar e piões">
+    <section class="player-panel p1" id="player1-panel">
+      <div class="player-score"><div><span>JOGADOR 1</span><div class="score-pips" id="pips1" aria-hidden="true"></div></div><strong id="score1">0</strong></div>
+      <div id="bey1" class="bey-card"></div>
+    </section>
+    <section class="player-panel p2" id="player2-panel">
+      <div class="player-score"><div><span id="player2-label">CPU</span><div class="score-pips" id="pips2" aria-hidden="true"></div></div><strong id="score2">0</strong></div>
+      <div id="bey2" class="bey-card"></div>
+    </section>
+  </div>
+
+  <div class="stage-tools" aria-label="Câmera">
+    <div class="camera-group">
+      <button id="camera-orbit" class="icon-btn selected" data-action="orbit" title="Órbita 3D" aria-label="Órbita 3D" aria-pressed="true"><i data-icon="cube"></i></button>
+      <button id="camera-top" class="icon-btn" data-action="top" title="Vista superior" aria-label="Vista superior" aria-pressed="false"><i data-icon="top"></i></button>
+      <button id="camera-follow" class="icon-btn" data-action="follow" title="Seguir as Beys" aria-label="Seguir as Beys" aria-pressed="false"><i data-icon="focus"></i></button>
+    </div>
+    <div class="camera-group">
+      <button class="icon-btn" data-action="zoom-out" title="Afastar câmera" aria-label="Afastar câmera"><i data-icon="minus"></i></button>
+      <button class="icon-btn" data-action="zoom-in" title="Aproximar câmera" aria-label="Aproximar câmera"><i data-icon="plus"></i></button>
+      <button class="icon-btn" data-action="camera-reset" title="Recentralizar câmera" aria-label="Recentralizar câmera"><i data-icon="reset"></i></button>
+    </div>
+    <div class="camera-group">
+      <button class="icon-btn" id="camera-drag" data-action="camera-drag" title="Arrastar para mover a câmera" aria-label="Arrastar para mover a câmera" aria-pressed="false"><i data-icon="hand"></i></button>
+      <button class="icon-btn" id="fullscreen" data-action="fullscreen" title="Tela cheia do navegador" aria-label="Tela cheia do navegador" aria-pressed="false" hidden><i data-icon="expand"></i></button>
+    </div>
+  </div>
+
+  <section class="launch-panel" id="launch-panel" aria-label="Ajustes de lançamento">
+    <div class="launch-title"><div><h2 id="launch-title">Lançamento</h2><p id="launch-hint">Arraste o lançador na sua metade.</p></div></div>
+    <div class="launch-ranges" id="launch-ranges">
+      <div class="range-wrap"><label for="heading">Mira <output id="heading-value">0°</output></label><input id="heading" type="range" min="-180" max="179" value="0" step="1"></div>
+      <div class="range-wrap"><label for="angle">Inclinação <output id="angle-value">0°</output></label><input id="angle" type="range" min="-35" max="35" value="0" step="1"></div>
+      <div class="range-wrap"><label for="power">Força <output id="power-value">94%</output></label><input id="power" type="range" min="45" max="100" value="94" step="1"></div>
+    </div>
+    <button class="launch-button" id="launch" disabled><i data-icon="bolt"></i><span>Puxar corda</span><kbd>ESPAÇO</kbd></button>
+  </section>
+
+  <div id="combat-controls" class="combat-controls" role="group" aria-label="Comandos de batalha" hidden></div>
+  <p class="sr-only" id="last-event" role="status">Arena pronta para o lançamento.</p>
+  <div id="callout" class="callout" hidden></div>
+  <div id="battle-overlay" class="battle-overlay" aria-live="polite" hidden></div>
+  <div id="webgl-error" class="battle-overlay" role="alert" hidden>O navegador precisa de WebGL 2 para abrir a arena.</div>
+  <div class="loading" id="loading" role="status"><span></span> Carregando arena</div>
+  <dialog id="dialog"><div id="dialog-content"></div></dialog>
+</main>
+<script defer src="./vendor/peer.js"></script>
+<script type="module" src="./game.js"></script>
+</body>
+</html>

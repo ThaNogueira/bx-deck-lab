@@ -738,6 +738,7 @@
     ['community', '/decks', 'Decks da comunidade'],
     ['popular', '/#popular', 'Decks populares'],
     ['tournaments', '/torneios', 'Torneios'],
+    ['stadium', '/x-stadium/', 'X Stadium'],
     ['trophy', '/ranking', 'Ranking de jogadores'],
     ['feed', '/comunidade', 'Comunidade'],
   ];
@@ -746,7 +747,7 @@
     ['produtos', '/produtos', 'Produtos'],
     ['vendas', '/vendas', 'Vendas'],
   ];
-  const PATH_KEY = { '/comunidade': 'feed', '/decks': 'community', '/pecas': 'pecas', '/produtos': 'produtos', '/torneios': 'tournaments', '/ranking': 'trophy', '/vendas': 'vendas' };
+  const PATH_KEY = { '/comunidade': 'feed', '/decks': 'community', '/pecas': 'pecas', '/produtos': 'produtos', '/torneios': 'tournaments', '/x-stadium/': 'stadium', '/ranking': 'trophy', '/vendas': 'vendas' };
   const IS_APP_PAGE = () => location.pathname === '/' || location.pathname === '/index.html';
 
   async function userChipHtml() {
