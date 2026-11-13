@@ -7,6 +7,13 @@ import { ArenaAudio } from './audio.js';
 
 const $ = id => document.getElementById(id);
 const icons = {
+  menu:'<path d="M4 6h16M4 12h16M4 18h16"/>',
+  camera:'<path d="M3 7h5l2-3h4l2 3h5v13H3z"/><circle cx="12" cy="13" r="3.5"/>',
+  lock:'<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3m-4 4v3"/>',
+  strike:'<path d="m3 17 8-7-2 6 11-12-3 10-9 7 3-6zM3 11l3-3m9 11 4-2"/>',
+  guard:'<path d="M12 2 4 6v6c0 4 3 7 8 10 5-3 8-6 8-10V6zM8 15V9l4-2 4 2v6m-4-8v10"/>',
+  circulation:'<path d="M21 9a9 9 0 0 0-15-4L3 8m0-5v5h5m-5 7a9 9 0 0 0 15 4l3-3m0 5v-5h-5"/><circle cx="12" cy="12" r="3"/>',
+  dash:'<path d="m6 19 3-6H6l8-10-2 7h4L6 19zM13 21l8-11m-4 11 5-7"/>',
   arena:'<path d="m2 9 4-5h12l4 5-3 10H5z"/><ellipse cx="12" cy="10" rx="6" ry="3"/>',
   parts:'<path d="m12 3 9 5-9 5-9-5 9-5zm-9 9 9 5 9-5M3 16l9 5 9-5"/>',
   users:'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m20 0v-2a4 4 0 0 0-3-4m-2-12a4 4 0 0 1 0 8"/><circle cx="9" cy="7" r="4"/>',
@@ -48,6 +55,15 @@ const state = {
 let view, available = false, workPlayer = 0, accumulator = 0, flashTimer, lastTime = performance.now(), lastSent = 0, lastHud = 0;
 let workPart = null;
 const audio = new ArenaAudio();
+const graphics = $('graphics');
+try {
+  const saved = localStorage.getItem('x-stadium-graphics');
+  if ([...graphics.options].some(option => option.value === saved)) graphics.value = saved;
+} catch { /* O navegador pode bloquear armazenamento local. */ }
+graphics.addEventListener('change', () => {
+  view?.setGraphics(graphics.value);
+  try { localStorage.setItem('x-stadium-graphics', graphics.value); } catch { /* Preferência da sessão. */ }
+});
 let previousFrames = null, newestSnapshot = null;
 const snapshots = [];
 let onlineDraft = '';
@@ -60,10 +76,10 @@ const activePlayer = () => state.mode === 'local' ? state.turn : state.localPlay
 const canEdit = i => state.phase === 'setup' && !state.ready[i] && (state.mode !== 'online' || i === state.localPlayer);
 const controls = $('combat-controls');
 const moves = {
-  attack: { name: 'Xtreme Attack', icon: 'target', text: ' avançou para o ataque.' },
-  defense: { name: 'Full Defense', icon: 'arena', text: ' firmou posição no centro.' },
-  circle: { name: 'Full Circle', icon: 'top', text: ' entrou em órbita no centro.' },
-  dash: { name: 'Xtreme Dash', icon: 'bolt', text: ' acelerou em direção ao trilho.' },
+  attack: { name: 'Xtreme Attack', icon: 'strike', text: ' avançou para o ataque.' },
+  defense: { name: 'Full Defense', icon: 'guard', text: ' firmou posição no centro.' },
+  circle: { name: 'Full Circle', icon: 'circulation', text: ' entrou em órbita no centro.' },
+  dash: { name: 'Xtreme Dash', icon: 'dash', text: ' acelerou em direção ao trilho.' },
 };
 const specialFor = player => specialMove(BITS[state.configs[player].bit]);
 controls.innerHTML = [0,1].map(player =>
@@ -306,6 +322,7 @@ const qteWindow = 470;
 const qteFeedback = 320;
 
 function showQte(event) {
+  closeToolMenus();
   state.phase = 'qte';
   const start = performance.now();
   const cues = event.cues.map(({at,target}) => ({at,target}));
@@ -319,7 +336,9 @@ function showQte(event) {
     }));
   }
   overlay.setAttribute('aria-live','off');
-  overlay.innerHTML = '<div class="qte-panel"><h2>Disputa de reflexo</h2><p>Aperte o botão quando ele acender.</p>' +
+  const threatLabel = {pocket:'Risco de cair no bolso',wall:'Risco de bater na parede',knockback:'Recuo forte'}[event.threat];
+  overlay.innerHTML = '<div class="qte-panel"><h2>Disputa de reflexo</h2><p>' + (threatLabel ? threatLabel + ' · ' : '') + 'Aperte o botão aceso.</p>' +
+    '<div class="qte-duel" aria-label="Pontuação da disputa"><span>J1 <b>0</b></span><span><b>0</b> ' + (state.mode === 'cpu' ? 'CPU' : 'J2') + '</span></div>' +
     '<div class="qte-actions">' + players.map(i => {
       const keyRow = state.mode === 'local' ? i : 0;
       const role = i === event.defender ? 'Defesa' : 'Ataque';
@@ -334,6 +353,8 @@ function showQte(event) {
     }).join('') + '</div><div class="qte-track" aria-hidden="true"><b></b></div></div>';
   drawIcons(overlay);
   state.qte.track = overlay.querySelector('.qte-track b');
+  state.qte.duel = overlay.querySelector('.qte-duel');
+  state.qte.scoreLabels = state.qte.duel.querySelectorAll('b');
   state.qte.rows = players.map((i,index) => {
     const row = overlay.querySelectorAll('.qte-player')[index];
     return {player:i,buttons:[...row.querySelectorAll('.qte-btn')],rounds:row.querySelector('.qte-rounds')};
@@ -357,14 +378,25 @@ function recordReaction(q,player,stage,index,delay) {
   return true;
 }
 
+function reflexScores(q, now) {
+  const scores = [0,0];
+  q.cues.forEach(({at}, stage) => {
+    q.reactions[stage].forEach((hit, player) => {
+      if (hit?.correct) scores[player] += 100 + Math.round(50*(1-hit.delay/qteWindow));
+      else if (hit || now >= q.start+at+qteWindow) scores[player] -= 45;
+    });
+  });
+  return scores;
+}
+
 function react(player,index) {
   const q = state.qte, now = performance.now();
   if (state.phase !== 'qte') return;
   const stage = qteCue(q,now);
   if (stage < 0) return;
   const delay = now-q.start-q.cues[stage].at;
-  if (recordReaction(q,player,stage,index,delay) && state.mode === 'online' && !isHost()) {
-    link.send({type:'reaction',id:q.id,stage,index,delay});
+  if (recordReaction(q,player,stage,index,delay) && state.mode === 'online') {
+    link.send({type:isHost() ? 'reaction-ack' : 'reaction',id:q.id,stage,index,delay});
   }
   drawQte(now);
 }
@@ -377,9 +409,13 @@ function drawQte(now) {
     const reaction = q.reactions[latest]?.[player];
     return reaction && now < reaction.feedbackUntil ? reaction : null;
   });
-  const signature = [stage,latest,...feedback.map(hit=>hit?.index ?? '-'),...q.reactions.flat().map(hit=>hit?.index ?? '-')].join('/');
+  const scores = reflexScores(q, now);
+  const signature = [stage,latest,...scores,...feedback.map(hit=>hit?.index ?? '-'),...q.reactions.flat().map(hit=>hit?.index ?? '-')].join('/');
   if (signature !== q.shown) {
     q.shown = signature;
+    const share = clamp(.5+(scores[0]-scores[1])/(q.cues.length*390),.06,.94);
+    q.duel.style.setProperty('--lead', (share*100)+'%');
+    q.scoreLabels.forEach((label,i) => { label.textContent = scores[i]; });
     const target = stage >= 0 ? q.cues[stage].target : -1;
     q.rows.forEach(({player,buttons,rounds},row) => {
       const locked = stage < 0 || q.reactions[stage][player] !== null;
@@ -406,12 +442,8 @@ function drawQte(now) {
 
 function resolveQte() {
   const q = state.qte;
-  const correct = [0,1].map(player => q.reactions.map(row => row[player]).filter(hit => hit?.correct));
-  const [a,b] = correct.map(list => list.length);
-  const [timeA,timeB] = correct.map(list => list.reduce((total,hit) => total+hit.delay,0));
-  let winner = null;
-  if (a !== b) winner = a > b ? 0 : 1;
-  else if (a && Math.abs(timeA-timeB) >= 8) winner = timeA < timeB ? 0 : 1;
+  const [a,b] = reflexScores(q,q.close);
+  const winner = a === b ? null : a > b ? 0 : 1;
   let outcome = null;
   state.qte = null;
   state.phase = 'fight';
@@ -421,26 +453,24 @@ function resolveQte() {
   overlay.setAttribute('aria-live','polite');
   updateControls();
   if (winner !== null) {
-    const accuracyLead = Math.abs(a-b)/q.cues.length;
-    const winningTime = correct[winner].reduce((total,hit) => total+hit.delay,0)/correct[winner].length;
-    const losingHits = correct[1-winner];
-    const losingTime = losingHits.length ? losingHits.reduce((total,hit) => total+hit.delay,0)/losingHits.length : qteWindow;
-    const timingLead = clamp((losingTime-winningTime)/qteWindow,0,1);
-    const margin = clamp(accuracyLead*.82+timingLead*(a === b ? .80 : .18),0,1);
+    const margin = Math.abs(a-b)/(q.cues.length*195);
     outcome = state.physics.counter(winner,q,margin);
   } else announce('Batalha retomada.');
   previousFrames = state.frames = state.physics.frames();
   if (outcome) showReflexOutcome(winner,outcome,q.at);
+  else flash('REFLEXOS EMPATADOS');
   if (state.mode === 'online') link.send({type:'resume',winner,outcome,at:q.at,frames:state.frames,time:state.physics.time});
 }
 
 function showReflexOutcome(winner,outcome,at) {
-  const action = outcome.defended ? 'CONTRA-ATAQUE' : outcome.heavy ? 'ATAQUE FORTE' : 'ATAQUE';
+  const action = outcome.defended ? 'DEFESA' : 'ATAQUE';
   const label = action + ' J' + (winner+1);
   const special = state.frames?.[winner]?.moves;
   const boosted = special?.reflexBoost === 'ready' && special[specialFor(winner)] > 0;
-  flash(boosted ? 'HABILIDADE REFORÇADA · J' + (winner+1) : label);
-  announce(boosted ? label + '. Use a habilidade reforçada em até 2,5 segundos.' : label + '!');
+  const name = state.mode === 'cpu' && winner === 1 ? 'CPU' : 'J'+(winner+1);
+  flash(name + ' VENCEU' + (boosted ? ' · ESPECIAL +' : ''));
+  const duration = outcome.boostDuration ?? (outcome.defended ? 1.5 : 2.5);
+  announce(boosted ? label + '. Use a habilidade reforçada em até ' + duration.toLocaleString('pt-BR') + ' segundos.' : label + '!');
   view.spark(at,outcome.heavy ? 1.65 : .85);
 }
 
@@ -599,6 +629,9 @@ const link = new Link((message, status) => {
         }
       }
       break;
+    case 'reaction-ack':
+      if (!isHost() && state.qte?.id === data.id) recordReaction(state.qte,remote,data.stage,data.index,data.delay);
+      break;
     case 'resume':
       if (isHost() || state.phase !== 'qte') break;
       state.qte = null;
@@ -609,6 +642,7 @@ const link = new Link((message, status) => {
       overlay.setAttribute('aria-live','polite');
       updateControls();
       if (data.winner !== null && data.outcome) showReflexOutcome(data.winner,data.outcome,data.at);
+      else flash('REFLEXOS EMPATADOS');
       break;
     case 'finish':
       if (isHost()) break;
@@ -739,7 +773,7 @@ function multiplayer() {
     (state.mode === 'local' ? 'Cada jogador prepara seu lançamento na mesma tela. Nos impactos, J1 usa A/S/D e J2 usa J/K/L.' :
       state.mode === 'cpu' ? 'Teste combinações de peças e lançamentos em uma partida contra a CPU.' : 'Crie uma sala em um navegador e use o código no outro dispositivo.') +
     '</p><label class="reflex-toggle"><input id="reflex" type="checkbox"' + (state.reflex ? ' checked' : '') +
-    (state.phase !== 'setup' || !isHost() ? ' disabled' : '') + '> Disputa de reflexo em impactos fortes</label>' +
+    (state.phase !== 'setup' || !isHost() ? ' disabled' : '') + '> Disputa de reflexo em impactos decisivos</label>' +
     (state.mode === 'online' ? '<div class="dialog-actions"><button class="secondary-btn" data-action="host">Criar sala</button>' +
     '<button class="secondary-btn" data-action="copy-room">Copiar código</button></div><label class="field">Código da sala' +
     '<input id="room-code" maxlength="6" placeholder="Ex. X4F9KM" autocomplete="off" autocapitalize="characters" spellcheck="false"></label>' +
@@ -765,7 +799,14 @@ function help() {
     '<li>Na disputa de reflexo em câmera lenta, toque ou clique no botão que acender. Também dá para usar <b>A/S/D</b> ou <b>←/↓/→</b>. No duelo local, J2 usa <b>J/K/L</b>. A opção fica em Multijogador.</li></ul>');
 }
 
+const toolMenus = [...document.querySelectorAll('.tool-menu')];
+function closeToolMenus(except) {
+  for (const menu of toolMenus) if (menu !== except) menu.open = false;
+}
+
 document.addEventListener('click', async e => {
+  const tool = e.target.closest('.tool-menu');
+  closeToolMenus(tool);
   const btn = e.target.closest('[data-action]');
   if (!btn) return;
   const action = btn.dataset.action;
@@ -780,8 +821,11 @@ document.addEventListener('click', async e => {
     if (workPart) $('part-picker').scrollIntoView({block:'nearest'});
   } else if (action === 'part-choice') selectPart(btn.dataset.code);
   else if (action === 'inspect-top' || action === 'inspect-side') view?.inspectAngle(action === 'inspect-top');
-  else if (action === 'multiplayer') multiplayer();
-  else if (action === 'help') help();
+  else if (action === 'multiplayer' || action === 'help') {
+    closeToolMenus();
+    if (action === 'multiplayer') multiplayer();
+    else help();
+  }
   else if (['stamina-trial','attack-trial','normal-trial'].includes(action)) {
     if (!available) return;
     const trial = action.split('-')[0];
@@ -812,20 +856,31 @@ document.addEventListener('click', async e => {
   else if (action === 'combat') requestMove(Number(btn.dataset.player),btn.dataset.move);
   else if (action === 'next') nextRound();
   else if (action === 'sound') {
-    state.sound = !state.sound;
+    btn.disabled = true;
+    try { state.sound = await audio.toggle(!state.sound); }
+    catch { state.sound = false; announce('Áudio indisponível neste navegador.'); }
+    finally { btn.disabled = false; }
     btn.setAttribute('aria-pressed', state.sound);
     btn.title = state.sound ? 'Silenciar som' : 'Ativar som';
     btn.setAttribute('aria-label', btn.title);
+    btn.querySelector('span').textContent = btn.title;
     btn.querySelector('i').dataset.icon = state.sound ? 'sound' : 'muted';
     drawIcons(btn);
-    try { audio.toggle(state.sound); } catch { announce('Áudio indisponível neste navegador.'); }
+    if (state.sound) audio.play('launch');
   } else if (['orbit', 'top', 'follow'].includes(action) && view) {
+    view.setCameraLocked(false);
+    $('camera-lock').setAttribute('aria-pressed',false);
     state.camera = action; view.setCamera(action);
     for (const mode of ['orbit', 'top', 'follow']) {
       $('camera-' + mode).classList.toggle('selected', mode === action);
       $('camera-' + mode).setAttribute('aria-pressed', mode === action);
     }
     updateControls();
+    closeToolMenus();
+  } else if (action === 'camera-lock' && view) {
+    view.setCameraLocked(!view.lockedCamera);
+    btn.setAttribute('aria-pressed', Boolean(view.lockedCamera));
+    closeToolMenus();
   } else if (action === 'camera-reset') {
     view?.setCamera(state.camera);
   } else if (action === 'zoom-in' || action === 'zoom-out') {
@@ -833,6 +888,7 @@ document.addEventListener('click', async e => {
   } else if (action === 'camera-drag') {
     state.cameraDrag = !state.cameraDrag;
     updateControls();
+    closeToolMenus();
   } else if (action === 'fullscreen') {
     try {
       if (document.fullscreenElement) await document.exitFullscreen();
@@ -848,9 +904,20 @@ document.addEventListener('fullscreenchange', () => {
   fullscreen.setAttribute('aria-pressed',active);
   fullscreen.title = active ? 'Sair da tela cheia' : 'Tela cheia do navegador';
   fullscreen.setAttribute('aria-label',fullscreen.title);
+  fullscreen.querySelector('span').textContent = active ? 'Sair da tela cheia' : 'Tela cheia';
   fullscreen.querySelector('i').dataset.icon = active ? 'shrink' : 'expand';
   drawIcons(fullscreen);
 });
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  const menu = toolMenus.find(item => item.open);
+  if (!menu) return;
+  closeToolMenus();
+  menu.querySelector('summary').focus();
+});
+document.addEventListener('pointerdown', e => {
+  if (state.sound && !e.target.closest('[data-action="sound"]')) audio.unlock().catch(() => {});
+}, { passive:true });
 
 dialog.addEventListener('click', e => { if (e.target === dialog) dialog.close(); });
 document.addEventListener('change', e => {
@@ -1003,6 +1070,7 @@ try {
     change: partial => configure(partial,false),
     commit: sendSetup,
   });
+  view.setGraphics(graphics.value);
   view.setLoadouts(state.configs);
   view.ready(state.configs, 0);
   available = true;

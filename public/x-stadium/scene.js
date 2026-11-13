@@ -305,6 +305,7 @@ export class ArenaView {
     this.launchControls = launchControls;
     this.mobile = matchMedia('(any-pointer: coarse)').matches;
     this.renderScale = 1;
+    this.graphics = 'auto';
     this.slowFrames = 0;
     this.dirty = true;
     this.scene = new T.Scene();
@@ -372,6 +373,22 @@ export class ArenaView {
       aura.renderOrder = 4;
       return aura;
     });
+    this.smoke = colors.map(color => {
+      const map = canvasTexture(32,32,ctx => {
+        const gradient = ctx.createRadialGradient(16,16,1,16,16,16);
+        gradient.addColorStop(0,'#fff');
+        gradient.addColorStop(1,'#fff0');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0,0,32,32);
+      });
+      const puffs = Array.from({length:6}, () => {
+        const puff = new T.Sprite(new T.SpriteMaterial({map,color,depthWrite:false,transparent:true}));
+        puff.visible = false;
+        this.scene.add(puff);
+        return puff;
+      });
+      return puffs;
+    });
     this.trails = [this.makeTrail(0x4aacff), this.makeTrail(0xff874a)];
     const observer = new ResizeObserver(() => this.resize());
     observer.observe(container);
@@ -420,7 +437,8 @@ export class ArenaView {
   resize() {
     const { clientWidth: w, clientHeight: h } = this.container;
     if (!w || !h) return;
-    const ratio = this.mobile ? Math.min(devicePixelRatio, 1, Math.sqrt(520_000 / (w * h))) * this.renderScale : Math.min(devicePixelRatio, 1.35);
+    const ratio = this.graphics === 'auto' ? (this.mobile ? Math.min(devicePixelRatio, 1, Math.sqrt(520_000 / (w * h))) * this.renderScale : Math.min(devicePixelRatio, 1.35)) :
+      Math.min(devicePixelRatio, {low:.7,medium:1,high:1.5}[this.graphics]);
     if (w !== this.width || h !== this.height || ratio !== this.renderer.getPixelRatio()) {
       this.renderer.setDrawingBufferSize(w, h, ratio);
       this.width = w;
@@ -431,6 +449,15 @@ export class ArenaView {
     this.updateFraming();
     this.dirty = true;
     if (this.inspection) this.inspection.dirty = true;
+  }
+
+  setGraphics(quality) {
+    this.graphics = quality;
+    this.renderScale = 1;
+    this.slowFrames = 0;
+    this.renderer.shadowMap.enabled = quality !== 'low';
+    this.renderer.shadowMap.needsUpdate = true;
+    this.resize();
   }
 
   updateFraming() {
@@ -483,11 +510,17 @@ export class ArenaView {
     }
   }
 
+  setCameraLocked(locked) {
+    this.lockedCamera = locked ? {focus:this.focus.clone(), distance:this.cameraDistance} : null;
+  }
+
   changeZoom(factor) {
+    if (this.lockedCamera) return;
     this.zoom = clamp(this.zoom*factor,.43,1.88);
   }
 
   panCamera(dx,dy) {
+    if (this.lockedCamera) return;
     const amount = this.camera.position.distanceTo(this.focus)*.79/Math.max(1,this.container.clientHeight);
     this.pan.x -= (dx*Math.cos(this.azimuth)+dy*Math.sin(this.azimuth))*amount;
     this.pan.z += (dx*Math.sin(this.azimuth)-dy*Math.cos(this.azimuth))*amount;
@@ -543,7 +576,7 @@ export class ArenaView {
         p.changed = true;
       } else if (p.mode === 'pan' || this.cameraMode === 'top') {
         this.panCamera(dx,dy);
-      } else {
+      } else if (!this.lockedCamera) {
         this.azimuth -= dx * .008;
         this.elevation = clamp(this.elevation + dy * .007,.22,1.55);
       }
@@ -672,6 +705,7 @@ export class ArenaView {
   ready(configs, localPlayer, editing = true) {
     this.dirty = true;
     for (const aura of this.reflexAuras) aura.visible = false;
+    for (const puffs of this.smoke) for (const puff of puffs) puff.visible = false;
     this.launchStarted = 0;
     for (const impact of this.impactRings) {
       impact.life = 0;
@@ -783,9 +817,12 @@ export class ArenaView {
         aura.position.copy(bey.holder.position);
         aura.position.y += .18;
         aura.scale.setScalar(1.09 + .14*Math.sin(performance.now()*.012));
-        aura.material.opacity = boost === 'active' ? .9 : .62;
+        aura.material.color.setHex(0xdcff72);
+        aura.material.opacity = .98;
       }
-      const rushing = effects.dash || effects.impactTrail;
+      const rushing = effects.dash || effects.impactTrail || Boolean(boost);
+      trail.line.material.opacity = boost ? .98 : .65;
+      trail.line.material.color.setHex(boost ? 0xdcff72 : bey.blade.accent);
       const {x,z} = bey.holder.position;
       const y = floorAt(x,z)+.073;
       if (rushing && !trail.dash) for (const p of trail.points) p.set(x,y,z);
@@ -805,13 +842,22 @@ export class ArenaView {
         }
         trail.sparks.instanceMatrix.needsUpdate = true;
       }
+      this.smoke[i].forEach((puff,j) => {
+        puff.visible = Boolean(boost) && (this.graphics !== 'low' || j < 3);
+        if (!puff.visible) return;
+        const age = ((performance.now()*.0017+j/6) % 1);
+        const point = trail.points[Math.floor(age*(trail.points.length-1))];
+        puff.position.set(point.x+.18*Math.sin(j*2.4),point.y+.38+age*.6,point.z+.18*Math.cos(j*2.4));
+        puff.scale.setScalar(.25+age*.65);
+        puff.material.opacity = .33*(1-age);
+      });
     });
   }
 
   spark(at, strength, isRail = false, impactAxis) {
     const strong = impactAxis && strength >= .78;
     const count = isRail ? 12 : Math.ceil(7 + strength*(strong ? 13 : 7));
-    const n = this.mobile ? Math.max(0, Math.min(32 - this.sparks.length, Math.ceil(count / 2))) : count;
+    const n = this.mobile || this.graphics === 'low' ? Math.max(0, Math.min(32 - this.sparks.length, Math.ceil(count / 2))) : count;
     if (strong) {
       const impact = this.impactRings.reduce((first,current)=>current.life < first.life ? current : first);
       impact.life = .17;
@@ -834,7 +880,7 @@ export class ArenaView {
     if (!this.width || !this.height) return;
     const phase = this.stage.dataset.phase;
     const moving = phase !== 'setup';
-    if (this.mobile && phase === 'fight') {
+    if (this.graphics === 'auto' && this.mobile && phase === 'fight') {
       this.slowFrames = dt > .027 ? this.slowFrames + 1 : Math.max(0, this.slowFrames - 2);
       if (this.slowFrames >= 24 && this.renderScale > .7) {
         this.renderScale = Math.max(.7, this.renderScale - .15);
@@ -855,13 +901,15 @@ export class ArenaView {
     }
     this.updateFraming();
     const reflex = phase === 'qte' && this.beys.length === 2;
-    const follow = this.cameraMode === 'follow' && this.beys.length === 2 && moving;
+    const locked = reflex ? null : this.lockedCamera;
+    const follow = !locked && this.cameraMode === 'follow' && this.beys.length === 2 && moving;
     const focusY = this.cameraMode === 'top' ? .65 : moving ? .97 : 1.5;
     const look = reflex || follow ? this.cameraTarget.lerpVectors(this.beys[0].holder.position,this.beys[1].holder.position,.5) :
       this.cameraTarget.set(0,focusY,.44);
     if (!reflex) {
       if (follow) look.setY(.45);
       look.add(this.pan);
+      if (locked) look.copy(locked.focus);
     }
     if (this.cameraDistance === undefined) this.focus.copy(look);
     else this.focus.lerp(look, 1 - Math.exp(-dt * (reflex ? 12 : 6)));
@@ -869,7 +917,7 @@ export class ArenaView {
     const span = reflex || follow ? this.beys[0].holder.position.distanceTo(this.beys[1].holder.position) : 0;
     const baseDistance = follow ? fitted*(.53+.40*clamp(span/11,0,1)) : fitted;
     const {visibleWidth, visibleHeight, height} = this.framing;
-    let distanceTarget = baseDistance*this.zoom;
+    let distanceTarget = locked?.distance ?? baseDistance*this.zoom;
     if (reflex) {
       const tangent = Math.tan(T.MathUtils.degToRad(this.camera.fov*.5));
       const offset = this.nextPosition.subVectors(this.beys[1].holder.position,this.beys[0].holder.position).multiplyScalar(.5);

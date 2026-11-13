@@ -25,7 +25,8 @@ const DASH_CARRY_TIME = .61;
 const BLADE_SHELL_CLEARANCE = .018;
 const POCKET_FINISH_DELAY = 1.5;
 const MOVE_DURATION = {attack:.68,dash:1.62,defense:2.65,circle:3.35};
-const REFLEX_BOOST_TIME = 2.5;
+const REFLEX_BOOST_TIME = { defense: 1.5, attack: 2.5 };
+const REFLEX_COOLDOWN = 4;
 const CIRCLE_SPIN_REWARD = .08;
 const upright = { x: 0, y: 0, z: 0, w: 1 };
 const vertical = { x: 0, y: 1, z: 0 };
@@ -320,7 +321,7 @@ export class Battle {
     if (boosted) {
       top.reflexBoostUntil = 0;
       top.move.boosted = true;
-      top.move.until = this.time + REFLEX_BOOST_TIME;
+      top.move.until = this.time + top.reflexBoostDuration;
     }
     top.charges[kind]--;
     top.moveReadyAt = this.time+1.05;
@@ -1064,17 +1065,16 @@ export class Battle {
       }
     }
     const severity = Math.min(impulse, .26 + Math.max(0, closing) * .72) + strike;
-    const defender = this.reflex && closingSpeed >= 10 && severity >= 7.4 &&
-      !a.escape?.zone && !b.escape?.zone && this.time-this.lastQte > 12 ?
-      this.criticalDefender(normal,approach,dash>.65) : null;
-    const qte = defender !== null;
+    const threat = this.reflex && closingSpeed >= 3 && severity >= 2 &&
+      !a.escape?.zone && !b.escape?.zone && this.time-this.lastQte >= REFLEX_COOLDOWN ?
+      this.criticalThreat(pre, contactNormal, severity) : null;
+    const qte = threat !== null;
     if (severity > 4.8) for (const top of this.tops) {
       if (horizontalSpeed(top.body.linvel()) > 8) top.impactTrailUntil = this.time+.29;
     }
     if (qte) this.lastQte = this.time;
     this.onEvent({ type: 'hit', at: asArray(at), strength: clamp(severity / 5.7, .035, 2.5), dashHit: dash > .65, attackHit: attack, qte,
-      normal: [normal.x, normal.z], sparkAxis: [contactNormal.x,contactNormal.z], ratchetHit, defender,
-      advantage: clamp((ratchetHit[1] - ratchetHit[0]) * .13, -.4, .4) });
+      sparkAxis: [contactNormal.x,contactNormal.z], threat: threat?.kind, defender: threat?.player ?? null });
   }
 
   cushionGlancingHit(a,b,normal,closing) {
@@ -1186,94 +1186,82 @@ export class Battle {
     return { strike: knockback, dash: Math.min(dash,knockback), attack: advancing && knockback > .60 };
   }
 
-  pocketThreat(position, direction) {
-    let risk = 0, aim = null;
-    for (const zone of POCKETS) {
-      const reach = mouthRadius(zone.angle)+.9;
-      const toward = {x:Math.cos(zone.angle)*reach-position.x,y:0,z:Math.sin(zone.angle)*reach-position.z};
-      const distance = horizontalSpeed(toward);
-      if (distance < .08) continue;
-      const unit = scale(toward,1/distance);
-      const alignment = dot(unit,direction);
-      const minimum = zone.points === 3 ? .89 : .54;
-      const access = zone.points === 3 ? 4.4 : 5.5;
-      const score = clamp((alignment-minimum)/(1-minimum),0,1)*clamp(1-distance/access,0,1);
-      if (score <= risk) continue;
-      risk = score;
-      aim = unit;
+  criticalThreat(beforeContact, normal, severity) {
+    let strongest = null;
+    const launchStillSettling = this.tops.some(top => this.time-top.landedAt < .85);
+    for (const top of this.tops) {
+      if (top.defeat || top.lockDamage >= 1 || top.spin <= REST_SPIN) continue;
+      const velocity = top.body.linvel();
+      const recoil = sub(velocity, beforeContact[top.player]);
+      if (dot(recoil, normal) * (top.player === 0 ? -1 : 1) < 2.5) continue;
+      const projected = this.projectImpact(top, velocity, severity);
+      // A heavy recoil can destabilize a Bey even in the middle of the stadium.
+      const recoilSpeed = horizontalSpeed(recoil);
+      const shock = severity >= 12 && recoilSpeed >= 21 && horizontalSpeed(velocity) >= 16;
+      const threat = projected ?? (shock ? { kind:'knockback', score:recoilSpeed*.48 } : null);
+      if (!threat || (launchStillSettling && threat.kind !== 'pocket')) continue;
+      const incoming = this.projectImpact(top, beforeContact[top.player], severity);
+      const risk = threat.score - (incoming?.score ?? 0) * .75;
+      if (risk < 2.5 || (strongest && risk <= strongest.risk)) continue;
+      strongest = { kind: threat.kind, player: top.player, risk };
     }
-    return {risk,aim};
+    return strongest;
   }
 
-  reflexDefender(normal, approach) {
-    const danger = this.tops.map((top,i) => {
-      const position = top.body.translation();
-      const outward = scale(normal,i === 0 ? -1 : 1);
-      const radius = horizontalSpeed(position), distanceToEdge = mouthRadius(Math.atan2(position.z,position.x))-radius;
-      const rim = clamp(1-distanceToEdge/3.2,0,1) * clamp(dot(position,outward)/Math.max(.1,radius),0,1);
-      return this.pocketThreat(position,outward).risk*1.2+rim*.65;
-    });
-    if (Math.abs(danger[0]-danger[1]) < .035) return approach[0] >= approach[1] ? 1 : 0;
-    return danger[0] > danger[1] ? 0 : 1;
-  }
-
-  criticalDefender(normal,approach,dashHit) {
-    const player = this.reflexDefender(normal,approach);
-    const defender = this.tops[player], attacker = this.tops[1-player];
-    if (attacker.spin < 75 || defender.spin < 40) return null;
-    const pos = defender.body.translation(), velocity = defender.body.linvel();
-    const speed = horizontalSpeed(velocity);
-    const outward = scale(normal,player === 0 ? -1 : 1);
-    const direction = speed > .1 ? {x:velocity.x/speed,y:0,z:velocity.z/speed} : outward;
-    const threat = this.pocketThreat(pos,direction).risk;
-    const radialSpeed = dot(pos,velocity)/Math.max(.1,horizontalSpeed(pos));
-    const projected = add(pos,scale(velocity,.18));
-    const angle = Math.atan2(projected.z,projected.x);
-    const nearRim = horizontalSpeed(projected)>mouthRadius(angle)-.55 && radialSpeed>9;
-    const strike = approach[1-player] >= 7 || dashHit;
-    return strike && (threat>.075 && speed>9 && dot(direction,outward)>.35 || nearRim && speed>15) ? player : null;
+  projectImpact(top, velocity, severity) {
+    if (horizontalSpeed(velocity) < 6) return null;
+    const position = top.body.translation();
+    // Sample the path until the first wall or pocket mouth. A short horizon
+    // and some deceleration account for the uphill bank without advancing Rapier.
+    for (let t = .016; t <= .256; t += .016) {
+      const projected = add(position, scale(velocity, t*(1-t)));
+      const radius = horizontalSpeed(projected);
+      const angle = Math.atan2(projected.z, projected.x);
+      const pocket = pocketAt(angle);
+      const boundary = pocket ? mouthRadius(angle)+.08 : guardRadius(angle)-top.blade.radius-BLADE_SHELL_CLEARANCE;
+      if (radius < boundary) continue;
+      const outward = (projected.x*velocity.x + projected.z*velocity.z)/radius*(1-2*t);
+      if (pocket && outward >= 6 && Math.abs(angleDelta(angle,pocket.angle)) < pocket.width-.045) {
+        return { kind:'pocket', score:8+outward*.5 };
+      }
+      if (!pocket && outward >= 13 && severity >= 8) return { kind:'wall', score:outward*.6 };
+      return null;
+    }
+    return null;
   }
 
   counter(player, hit, margin = 1) {
-    const [x, z] = hit.normal;
-    const direction = player === 0 ? 1 : -1;
-    const winner = this.tops[player], loser = this.tops[1 - player];
-    const from = loser.body.translation(), opponent = winner.body.translation();
-    const away = sub(from,opponent), separation = horizontalSpeed(away);
-    const awayFromWinner = separation > .05 ? {x:away.x/separation,y:0,z:away.z/separation} : {x:x*direction,y:0,z:z*direction};
+    const winner = this.tops[player];
     const defended = player === hit.defender;
-    const {risk,aim} = this.pocketThreat(from,awayFromWinner);
-    const force = clamp(hit.strength/2.5,0,1);
-    const chance = clamp(.08+margin*.43+risk*.39+force*.13-(defended ? .10 : 0),.05,.88);
-    const heavy = Math.random() < chance;
-    const normal = heavy && aim && !defended ? scale(add(awayFromWinner,aim),1/horizontalSpeed(add(awayFromWinner,aim))) : awayFromWinner;
-    const counterPower = clamp(.53+.31*winner.blade.hit*winner.bit.attack,.66,1.05);
-    const kick = (5+hit.strength*2.2+8.4*margin+(heavy ? 5.1 : 0))*
-      (1+direction*hit.advantage*.36)*counterPower;
-    const along = dot(loser.body.linvel(),normal);
-    const shove = scale(normal,(kick-along*.92)*Math.sqrt(winner.inertia.mass*REFERENCE_MASS));
-    loser.body.applyImpulse(shove,true);
+    let heavy = false;
     if (defended) {
+      const position = winner.body.translation();
       const velocity = winner.body.linvel();
-      const inward = scale(normal,2.3+2.8*margin);
-      winner.body.setLinvel({x:velocity.x*.22+inward.x,y:Math.min(velocity.y,.6),z:velocity.z*.22+inward.z},true);
+      const radius = Math.max(.1, horizontalSpeed(position));
+      const inward = scale(position,-(3.6+2*margin)/radius);
+      winner.body.setLinvel({x:velocity.x*.12+inward.x,y:clamp(velocity.y,-1,.6),z:velocity.z*.12+inward.z},true);
+      this.releaseRail(winner,.30);
       winner.rimStrikeUntil = 0;
       winner.liftUntil = 0;
       winner.rimLiftUntil = 0;
-    } else winner.body.applyImpulse(scale(shove,-.26),true);
-    this.releaseRail(loser,.34);
-    loser.impactUntil = this.time+.21;
-    loser.pushedUntil = this.time+.75;
-    loser.rimStrikeUntil = heavy ? this.time+.48 : 0;
-    this.spendSpin(loser,3.5+kick*.26);
-    this.spendSpin(winner,3.5+kick*.24);
-    const direct = hit.ratchetHit?.[loser.player] ?? 0;
-    if (heavy && direct > 4.0 && counterPower > .78) {
-      loser.lockDamage += Math.min(.80,(direct-4)*.115)/loser.burstLock;
+    } else {
+      const target = this.tops[hit.defender];
+      const velocity = target.body.linvel();
+      const speed = horizontalSpeed(velocity);
+      // Reinforce the existing trajectory occasionally. The stadium still
+      // resolves the bounce or pocket finish, including the chance to escape.
+      heavy = hit.threat === 'pocket' && Math.random() < .22+.20*margin;
+      const extra = heavy ? 2.5+margin : hit.threat !== 'pocket' ? 1+margin : 0;
+      if (speed > .1 && extra) {
+        const factor = 1+extra/speed;
+        target.body.setLinvel({x:velocity.x*factor,y:velocity.y,z:velocity.z*factor},true);
+        if (heavy) target.rimStrikeUntil = Math.max(target.rimStrikeUntil,this.time+.25);
+      }
     }
-    if (winner.move?.kind === 'defense') winner.move = null;
-    if (margin > 0) winner.reflexBoostUntil = this.time + REFLEX_BOOST_TIME;
-    return {defended,heavy,chance};
+    const boostDuration = REFLEX_BOOST_TIME[defended ? 'defense' : 'attack'];
+    winner.reflexBoostDuration = boostDuration;
+    winner.reflexBoostUntil = this.time + boostDuration;
+    return {defended,heavy,boostDuration};
   }
 
   carryStrikeOverRim(top) {

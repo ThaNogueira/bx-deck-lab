@@ -113,11 +113,6 @@ i[data-icon] svg { width:100%;height:100% }
 .stage:not([data-phase=setup]) .bey-info h3 { font-size:16px }
 .stage:not([data-phase=setup]) .bey-info p,.stage:not([data-phase=setup]) .bey-edit { display:none }
 
-.stage-tools {
-  position:absolute;z-index:3;right:var(--right);top:50%;transform:translateY(-42%);
-  display:flex;flex-direction:column;gap:7px;
-}
-.camera-group { display:flex;flex-direction:column;gap:2px;background:var(--glass);border:1px solid var(--line);border-radius:10px;padding:2px }
 .camera-group .icon-btn { border-color:transparent;background:transparent;min-width:42px;min-height:40px }
 .camera-group .icon-btn:hover,.camera-group .icon-btn[aria-pressed=true] { background:#35442c;color:var(--lime) }
 
@@ -190,7 +185,7 @@ i[data-icon] svg { width:100%;height:100% }
   padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right))
     max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));
 }
-.stage[data-phase=qte] :is(.stage-tools,.player-hud) { visibility:hidden }
+.stage[data-phase=qte] .player-hud { visibility:hidden }
 .qte-panel {
   width:min(100%,490px);display:grid;justify-items:stretch;gap:8px;padding:clamp(10px,2.5vw,20px);
   border:1px solid #82968b67;border-radius:15px;background:#101a16ac;box-shadow:0 8px 25px #080b0a70;
@@ -298,8 +293,6 @@ i[data-icon] svg { width:100%;height:100% }
   .brand { gap:4px }
   .brand h1 { font-size:17px }
   .brand img { width:24px;height:24px }
-  .mode-pill { padding-inline:0 }
-  .mode-pill span { display:none }
   .session-tools { gap:2px }
   .round-badge { min-width:70px;padding:5px 6px }
   #round-label { font-size:13px }
@@ -315,12 +308,6 @@ i[data-icon] svg { width:100%;height:100% }
   .bey-info h3 { font-size:17px }
   .bey-info p { font-size:9px }
   .stage:not([data-phase=setup]) .player-panel { width:min(43%,165px) }
-  .stage-tools { top:auto;right:auto;left:50%;bottom:calc(var(--bottom) + 55px);transform:translateX(-50%);flex-direction:row;gap:4px }
-  .camera-group { flex-direction:row;gap:0;padding:1px }
-  .camera-group .icon-btn { min-width:40px;min-height:42px }
-  .stage[data-phase=setup] .stage-tools { bottom:calc(var(--bottom) + 123px) }
-  .stage[data-phase=result] .stage-tools { bottom:calc(var(--bottom) + 86px) }
-  .stage:has(.combat-side.p1:not([hidden]) + .combat-side.p2:not([hidden])) .stage-tools { bottom:calc(var(--bottom) + 103px) }
   .launch-panel {
     width:calc(100% - var(--left) - var(--right));padding:7px 8px 8px;
     grid-template-columns:minmax(0,1fr) auto;gap:4px 8px;
@@ -333,9 +320,6 @@ i[data-icon] svg { width:100%;height:100% }
   .range-wrap input { height:39px }
   #launch { grid-column:2;grid-row:1;font-size:17px;padding-inline:9px }
   #launch kbd,.combat-side kbd { display:none }
-  .combat-side button { min-height:45px;font-size:14px;padding-inline:5px;gap:4px }
-  .combat-side i { display:none }
-  .combat-side { gap:3px }
   .callout { bottom:calc(var(--bottom) + 106px) }
   .dialog-body { padding:15px }
   .field select,.field input { min-height:44px;font-size:16px }
@@ -345,7 +329,6 @@ i[data-icon] svg { width:100%;height:100% }
   .top-bar { grid-template-columns:auto minmax(0,1fr) auto }
   .brand h1 { display:none }
   .round-badge { justify-self:center }
-  .camera-group .icon-btn { min-width:35px }
   .bey-info h3 { font-size:15px }
   .part-slot { grid-template-columns:minmax(0,1fr);justify-items:center;text-align:center }
   .part-slot .part-thumb { width:35px;height:35px }
@@ -357,13 +340,6 @@ i[data-icon] svg { width:100%;height:100% }
   .player-hud { top:calc(var(--top) + var(--header) + 4px) }
   .player-panel { width:min(23%,177px) }
   .stage:not([data-phase=setup]) .player-panel { width:min(21%,152px) }
-  .stage-tools,.stage[data-phase=setup] .stage-tools,.stage[data-phase=result] .stage-tools,
-  .stage:has(.combat-side.p1:not([hidden]) + .combat-side.p2:not([hidden])) .stage-tools {
-    top:calc(var(--top) + var(--header) + 3px);left:50%;right:auto;bottom:auto;
-    transform:translateX(-50%);flex-direction:row;gap:2px;
-  }
-  .camera-group { flex-direction:row;gap:0;padding:1px }
-  .camera-group .icon-btn { min-width:35px;min-height:33px }
   .launch-panel { width:min(620px,calc(100% - var(--left) - var(--right)));grid-template-columns:auto minmax(0,1fr) auto;gap:7px;padding:5px 7px }
   .launch-title,.launch-ranges,#launch { grid-column:auto;grid-row:auto }
   .launch-title p { max-width:118px }
@@ -375,4 +351,55 @@ i[data-icon] svg { width:100%;height:100% }
   .camera-group .icon-btn { min-height:44px }
   .qte-btn kbd { display:none }
   dialog::backdrop { backdrop-filter:none }
+}
+
+.tool-menu { position:relative;pointer-events:auto }
+.tool-menu>summary { cursor:pointer;list-style:none }
+.tool-menu>summary::-webkit-details-marker { display:none }
+.tool-menu[open]>summary { border-color:var(--lime);color:var(--lime) }
+.tool-menu .tool-popover {
+  position:absolute;z-index:6;top:calc(100% + 7px);right:0;left:auto;bottom:auto;transform:none;
+  display:grid;gap:6px;width:max-content;max-width:calc(100vw - 70px);padding:8px;
+  border:1px solid var(--line);border-radius:12px;background:#15211c;box-shadow:0 9px 26px #080d0ac0;
+}
+.tool-menu .camera-group { display:flex;flex-wrap:wrap;gap:4px }
+.tool-menu .icon-btn { min-height:44px;min-width:44px }
+.settings-menu .mode-pill { min-height:44px;justify-content:flex-start;font-size:12px }
+.graphics-setting { display:grid;gap:5px;padding:5px;font-size:12px;color:var(--muted) }
+.graphics-setting select { min-height:44px;padding:5px;border:1px solid var(--line);border-radius:7px;background:#101814;color:var(--ink);font-size:16px }
+.combat-side { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px }
+.combat-side button {
+  min-width:clamp(70px,12vw,130px);min-height:67px;position:relative;flex-direction:column;gap:3px;
+  padding:6px 6px 10px;border-radius:13px;color:#f5f9f7;
+  background:linear-gradient(165deg,color-mix(in srgb,var(--player) 28%,#213329),#121d18 80%);
+  box-shadow:inset 0 1px #ffffff55,inset 0 -5px #070d0b99,0 4px 10px #080f0ac7;
+}
+.combat-side button:active:not(:disabled) { transform:translateY(3px) }
+.combat-side i { display:inline-flex;width:27px;height:27px }
+.combat-charge { position:absolute;top:4px;right:4px }
+.combat-side kbd { position:absolute;top:4px;left:4px }
+.combat-side button[data-boost]:is([data-boost=ready],[data-boost=active]) {
+  border-color:#d3ff6e;background:linear-gradient(160deg,#566e2a,#223316);opacity:1;
+  box-shadow:inset 0 1px #f5ffbfb0,inset 0 -5px #0b150d9c,0 0 18px #b9ff61b0;
+}
+.combat-side button[data-boost]:is([data-boost=ready],[data-boost=active]) i { color:#dcff72 }
+.combat-side button[data-boost=ready] { animation:boost-pulse .7s ease-in-out infinite alternate }
+@keyframes boost-pulse { to { box-shadow:inset 0 1px #f5ffbfb0,inset 0 -5px #0b150d9c,0 0 27px #b9ff61eb } }
+.qte-duel { --lead:50%;position:relative;display:flex;justify-content:space-between;min-height:29px;background:#85472a;border:1px solid #d8e5d080;border-radius:8px;overflow:hidden;font-weight:750;font-size:11px }
+.qte-duel::before { content:'';position:absolute;inset:0 auto 0 0;width:var(--lead);background:#295985;border-right:2px solid white;transition:width .21s ease }
+.qte-duel>span { position:relative;display:flex;align-items:center;gap:5px;padding:0 8px;color:#f4faff;text-shadow:0 1px 3px #000 }
+.qte-duel b { font-size:14px;font-variant-numeric:tabular-nums }
+.stage[data-phase=fight] .callout { bottom:calc(var(--bottom) + 83px) }
+@media (max-width:650px) {
+  .combat-side { width:min(100%,270px) }
+  .combat-side button { min-width:0;font-size:clamp(12px,3.6vw,16px) }
+}
+@media (max-height:460px) and (orientation:landscape) {
+  .qte-duel { min-height:25px }
+  .qte-panel h2 { font-size:clamp(22px,5.5dvh,32px) }
+  .qte-btn { height:clamp(52px,16dvh,74px) }
+}
+@media (prefers-reduced-motion:reduce) {
+  .combat-side button[data-boost=ready] { animation:none }
+  .qte-duel::before { transition:none }
 }

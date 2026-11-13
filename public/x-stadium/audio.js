@@ -13,19 +13,27 @@ export class ArenaAudio {
     this.enabled = false;
   }
 
-  toggle(enabled) {
-    this.enabled = enabled;
+  async toggle(enabled) {
     if (!enabled) {
+      this.enabled = false;
       this.master?.gain.setTargetAtTime(0,this.context.currentTime,.035);
-      return;
+      return false;
     }
     if (!this.context) this.initialize();
-    this.context.resume().catch(() => {});
+    await this.unlock();
+    this.enabled = true;
     this.master.gain.setTargetAtTime(.62,this.context.currentTime,.03);
+    return this.enabled;
+  }
+
+  async unlock() {
+    if (!this.context || this.context.state === 'running') return;
+    await this.context.resume();
   }
 
   initialize() {
-    const ctx = this.context = new AudioContext();
+    const Audio = window.AudioContext || window.webkitAudioContext;
+    const ctx = this.context = new Audio();
     this.master = ctx.createGain();
     this.master.gain.value = 0;
     const limiter = ctx.createDynamicsCompressor();
@@ -37,7 +45,7 @@ export class ArenaAudio {
     this.rotors = Array.from({length:2},() => {
       const motor = ctx.createOscillator(), texture = ctx.createBufferSource();
       const band = ctx.createBiquadFilter(), motorGain = ctx.createGain(), hissGain = ctx.createGain();
-      const pan = ctx.createStereoPanner();
+      const pan = ctx.createStereoPanner?.() ?? ctx.createGain();
       motor.setPeriodicWave(ctx.createPeriodicWave(
         new Float32Array(7),new Float32Array([0,1,.29,.12,.14,.025,.04])));
       texture.buffer = this.noise;
@@ -66,7 +74,7 @@ export class ArenaAudio {
       band.frequency.setTargetAtTime((210+spin*3.2+travel*15)*depth,time,.068);
       motorGain.gain.setTargetAtTime(running*.033,time,.065);
       hissGain.gain.setTargetAtTime(running*(.022+Math.min(.037,travel*.0012)+(frame?.dash ? .048 : 0)),time,.056);
-      pan.pan.setTargetAtTime(frame ? Math.max(-.7,Math.min(.7,frame.p[0]*.105)) : 0,time,.095);
+      pan.pan?.setTargetAtTime(frame ? Math.max(-.7,Math.min(.7,frame.p[0]*.105)) : 0,time,.095);
     });
   }
 
@@ -74,8 +82,8 @@ export class ArenaAudio {
     const cue = effects[name];
     if (!this.enabled || !this.context || !cue) return;
     const ctx = this.context, now = ctx.currentTime;
-    const output = ctx.createStereoPanner();
-    output.pan.value = Math.max(-.74,Math.min(.74,x*.115));
+    const output = ctx.createStereoPanner?.() ?? ctx.createGain();
+    if (output.pan) output.pan.value = Math.max(-.74,Math.min(.74,x*.115));
     output.connect(this.master);
     const level = cue.level*Math.max(.16,Math.min(1.42,Math.sqrt(strength)));
     const variation = .94+Math.random()*.12;

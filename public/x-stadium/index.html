@@ -17,9 +17,33 @@
     <div class="brand"><img src="./assets/mark.svg" width="30" height="30" alt=""><h1>X STADIUM</h1></div>
     <div class="round-badge"><span id="round-label">RODADA 1</span><span id="stage-state">PREPARAÇÃO</span></div>
     <nav class="session-tools" aria-label="Partida">
-      <button class="mode-pill" data-action="multiplayer" aria-label="Modo de jogo e multijogador" title="Modo de jogo e multijogador"><i data-icon="cpu"></i><span id="mode-name">TREINO COM IA</span></button>
-      <button class="icon-btn" data-action="sound" title="Ativar som" aria-label="Ativar som" aria-pressed="false"><i data-icon="muted"></i></button>
-      <button class="icon-btn" data-action="help" title="Como jogar" aria-label="Como jogar"><i data-icon="help"></i></button>
+      <details class="tool-menu">
+        <summary class="icon-btn" aria-label="Câmera" title="Câmera"><i data-icon="camera"></i></summary>
+        <div class="tool-popover" id="camera-tools">
+          <div class="camera-group">
+            <button id="camera-orbit" class="icon-btn selected" data-action="orbit" aria-label="Órbita 3D" title="Órbita 3D" aria-pressed="true"><i data-icon="cube"></i></button>
+            <button id="camera-top" class="icon-btn" data-action="top" aria-label="Vista superior fixa" title="Vista superior fixa" aria-pressed="false"><i data-icon="top"></i></button>
+            <button id="camera-follow" class="icon-btn" data-action="follow" aria-label="Seguir as Beys" title="Seguir as Beys" aria-pressed="false"><i data-icon="focus"></i></button>
+          </div>
+          <div class="camera-group">
+            <button class="icon-btn" data-action="zoom-out" aria-label="Afastar câmera" title="Afastar câmera"><i data-icon="minus"></i></button>
+            <button class="icon-btn" data-action="zoom-in" aria-label="Aproximar câmera" title="Aproximar câmera"><i data-icon="plus"></i></button>
+            <button class="icon-btn" data-action="camera-reset" aria-label="Recentralizar câmera" title="Recentralizar câmera"><i data-icon="reset"></i></button>
+            <button class="icon-btn" id="camera-drag" data-action="camera-drag" aria-label="Arrastar para mover a câmera" title="Arrastar para mover a câmera" aria-pressed="false"><i data-icon="hand"></i></button>
+            <button class="icon-btn" id="camera-lock" data-action="camera-lock" aria-label="Fixar câmera" title="Fixar câmera" aria-pressed="false"><i data-icon="lock"></i></button>
+          </div>
+        </div>
+      </details>
+      <details class="tool-menu">
+        <summary class="icon-btn" aria-label="Configurações" title="Configurações"><i data-icon="menu"></i></summary>
+        <div class="tool-popover settings-menu">
+          <button class="mode-pill" data-action="multiplayer" aria-label="Modo de jogo e multijogador" title="Modo de jogo e multijogador"><i data-icon="cpu"></i><span id="mode-name">TREINO COM IA</span></button>
+          <label class="graphics-setting" for="graphics">Gráficos<select id="graphics"><option value="auto">Automático</option><option value="low">Leve</option><option value="medium">Equilibrado</option><option value="high">Alto</option></select></label>
+          <button class="mode-pill" data-action="sound" aria-pressed="false"><i data-icon="muted"></i><span>Ativar som</span></button>
+          <button class="mode-pill" id="fullscreen" data-action="fullscreen" aria-pressed="false" hidden><i data-icon="expand"></i><span>Tela cheia</span></button>
+          <button class="mode-pill" data-action="help"><i data-icon="help"></i><span>Como jogar</span></button>
+        </div>
+      </details>
     </nav>
   </header>
 
@@ -32,23 +56,6 @@
       <div class="player-score"><div><span id="player2-label">CPU</span><div class="score-pips" id="pips2" aria-hidden="true"></div></div><strong id="score2">0</strong></div>
       <div id="bey2" class="bey-card"></div>
     </section>
-  </div>
-
-  <div class="stage-tools" aria-label="Câmera">
-    <div class="camera-group">
-      <button id="camera-orbit" class="icon-btn selected" data-action="orbit" title="Órbita 3D" aria-label="Órbita 3D" aria-pressed="true"><i data-icon="cube"></i></button>
-      <button id="camera-top" class="icon-btn" data-action="top" title="Vista superior" aria-label="Vista superior" aria-pressed="false"><i data-icon="top"></i></button>
-      <button id="camera-follow" class="icon-btn" data-action="follow" title="Seguir as Beys" aria-label="Seguir as Beys" aria-pressed="false"><i data-icon="focus"></i></button>
-    </div>
-    <div class="camera-group">
-      <button class="icon-btn" data-action="zoom-out" title="Afastar câmera" aria-label="Afastar câmera"><i data-icon="minus"></i></button>
-      <button class="icon-btn" data-action="zoom-in" title="Aproximar câmera" aria-label="Aproximar câmera"><i data-icon="plus"></i></button>
-      <button class="icon-btn" data-action="camera-reset" title="Recentralizar câmera" aria-label="Recentralizar câmera"><i data-icon="reset"></i></button>
-    </div>
-    <div class="camera-group">
-      <button class="icon-btn" id="camera-drag" data-action="camera-drag" title="Arrastar para mover a câmera" aria-label="Arrastar para mover a câmera" aria-pressed="false"><i data-icon="hand"></i></button>
-      <button class="icon-btn" id="fullscreen" data-action="fullscreen" title="Tela cheia do navegador" aria-label="Tela cheia do navegador" aria-pressed="false" hidden><i data-icon="expand"></i></button>
-    </div>
   </div>
 
   <section class="launch-panel" id="launch-panel" aria-label="Ajustes de lançamento">
