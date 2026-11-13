@@ -330,10 +330,14 @@ function showQte(event) {
   state.qte = { ...event, start, cues, close: start+cues.at(-1).at+qteWindow,
     reactions: cues.map(() => [null,null]), shown: null, feedbackUntil:start };
   if (state.mode === 'cpu') {
-    state.qte.cpu = cues.map(cue => ({
-      index: Math.random() < .13 ? (cue.target+1)%3 : cue.target,
-      delay: 160+Math.random()*230,
-    }));
+    state.qte.cpu = cues.map(({target}) => {
+      const accuracy = Math.random();
+      if (accuracy < .12) return null;
+      return {
+        index: accuracy < .28 ? (target+(Math.random() < .5 ? 1 : 2))%3 : target,
+        delay: 280+Math.random()*155,
+      };
+    });
   }
   overlay.setAttribute('aria-live','off');
   const threatLabel = {pocket:'Risco de cair no bolso',wall:'Risco de bater na parede',knockback:'Recuo forte'}[event.threat];
@@ -1024,9 +1028,9 @@ function frame(now) {
     drawQte(now);
     if (isHost()) {
       const stage = qteCue(q,now);
-      if (q.cpu && stage >= 0 && now >= q.start+q.cues[stage].at+q.cpu[stage].delay) {
-        const { index,delay } = q.cpu[stage];
-        recordReaction(q,1,stage,index,delay);
+      const response = q.cpu?.[stage];
+      if (response && now >= q.start+q.cues[stage].at+response.delay) {
+        recordReaction(q,1,stage,response.index,response.delay);
       }
       const grace = state.mode === 'online' ? 420 : 0;
       if (now >= q.feedbackUntil && (now >= q.close+grace || q.reactions.every(row => row.every(hit => hit !== null)))) resolveQte();
