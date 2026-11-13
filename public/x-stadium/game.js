@@ -53,7 +53,7 @@ const snapshots = [];
 let onlineDraft = '';
 const dialog = $('dialog'), content = $('dialog-content'), overlay = $('battle-overlay');
 const phases = { setup: 'PREPARAÇÃO', countdown: 'LANÇAMENTO', fight: 'EM BATALHA', qte: 'IMPACTO', result: 'RESULTADO' };
-const QTE_SPEED = .035;
+const QTE_SPEED = .012;
 
 const isHost = () => state.mode !== 'online' || state.localPlayer === 0;
 const activePlayer = () => state.mode === 'local' ? state.turn : state.localPlayer;

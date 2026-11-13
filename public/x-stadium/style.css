@@ -183,14 +183,14 @@ i[data-icon] svg { width:100%;height:100% }
 .overlay-label { color:#e5f4df;font-size:10px;font-weight:700;letter-spacing:.1em;text-shadow:0 2px 9px #08100b }
 .battle-overlay p { color:#e0eade;font-size:12px;line-height:1.35;max-width:34ch }
 .stage[data-phase=qte] #battle-overlay {
-  background:#0a100e86;place-content:stretch;place-items:center;pointer-events:auto;
+  background:#0a100e15;align-content:end;justify-content:stretch;justify-items:center;pointer-events:auto;
   padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right))
     max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));
 }
-.stage[data-phase=qte] .stage-tools { visibility:hidden }
+.stage[data-phase=qte] :is(.stage-tools,.player-hud) { visibility:hidden }
 .qte-panel {
   width:min(100%,490px);display:grid;justify-items:stretch;gap:8px;padding:clamp(10px,2.5vw,20px);
-  border:1px solid #82968b80;border-radius:15px;background:#141c19f5;box-shadow:0 15px 40px #080b0aba;
+  border:1px solid #82968b67;border-radius:15px;background:#101a16ac;box-shadow:0 8px 25px #080b0a70;
 }
 .qte-panel:has(.qte-player:nth-child(2)) { width:min(100%,870px) }
 .qte-panel h2 { font:800 italic clamp(25px,5.5vw,40px)/.95 var(--heading);color:#f2f7ee }
@@ -211,7 +211,7 @@ i[data-icon] svg { width:100%;height:100% }
 .qte-buttons { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(7px,2vw,13px) }
 .qte-btn {
   position:relative;display:grid;place-items:center;min-width:0;height:clamp(86px,25vw,130px);padding:0;
-  border:2px solid #525b58;border-radius:12px;background:#303734;color:#b6bfbb;
+  border:2px solid #77827c;border-radius:12px;background:#303734c2;color:#e3eae6;
   box-shadow:inset 0 -4px #12191665;touch-action:manipulation;
 }
 .qte-btn[aria-disabled=true] { cursor:default }
@@ -239,8 +239,10 @@ i[data-icon] svg { width:100%;height:100% }
   .qte-actions:has(.qte-player:nth-child(2)) { grid-template-columns:1fr;gap:12px }
 }
 @media (max-height:460px) and (orientation:landscape) {
-  .qte-btn { height:clamp(75px,29dvh,112px) }
-  .qte-panel { gap:5px }
+  .stage[data-phase=qte] #battle-overlay { justify-items:end }
+  .qte-panel,.qte-panel:has(.qte-player:nth-child(2)) { width:46%;gap:5px;padding:8px }
+  .qte-actions:has(.qte-player:nth-child(2)) { grid-template-columns:1fr;gap:7px }
+  .qte-btn { height:clamp(64px,19dvh,90px) }
 }
 .stage[data-phase=result] #battle-overlay {
   inset:auto;left:50%;bottom:var(--bottom);transform:translateX(-50%);width:min(510px,calc(100% - var(--left) - var(--right)));

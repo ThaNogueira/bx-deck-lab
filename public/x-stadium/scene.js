@@ -431,10 +431,18 @@ export class ArenaView {
     const phase = this.stage.dataset.phase;
     if (w === this.framing.width && h === this.framing.height && phase === this.framing.phase) return;
     const guide = this.frameGuide.getBoundingClientRect(), bounds = this.container.getBoundingClientRect();
-    const centerX = guide.left-bounds.left+guide.width*.5;
-    const centerY = guide.top-bounds.top+guide.height*.5;
+    const panel = phase === 'qte' ? this.stage.querySelector('.qte-panel') : null;
+    const besidePanel = panel && matchMedia('(max-height:460px) and (orientation:landscape)').matches;
+    const panelBounds = panel?.getBoundingClientRect();
+    const top = panel ? this.stage.querySelector('.top-bar').getBoundingClientRect().bottom + 8 : guide.top;
+    const bottom = besidePanel ? bounds.bottom - 12 : panel ? panelBounds.top - 8 : guide.bottom;
+    const visibleHeight = Math.max(1, bottom - top);
+    const visibleWidth = besidePanel ? panelBounds.left - bounds.left - 20 : panel ? w*.86 : Math.max(w*.39,guide.width);
+    const centerX = besidePanel ? 10 + visibleWidth*.5 : panel ? w*.5 : guide.left-bounds.left+guide.width*.5;
+    const centerY = top - bounds.top + visibleHeight*.5;
     this.camera.setViewOffset(w,h,w*.5-centerX,h*.5-centerY,w,h);
-    this.framing = {width:w,height:h,phase,visibleWidth:Math.max(w*.39,guide.width),visibleHeight:Math.max(h*.36,guide.height)};
+    this.framing = {width:w,height:h,phase,visibleWidth,
+      visibleHeight:panel ? visibleHeight : Math.max(h*.36,visibleHeight)};
     this.dirty = true;
   }
 
@@ -828,18 +836,34 @@ export class ArenaView {
       if (t >= 1) this.launchStarted = 0;
     }
     this.updateFraming();
+    const reflex = phase === 'qte' && this.beys.length === 2;
     const follow = this.cameraMode === 'follow' && this.beys.length === 2 && moving;
     const focusY = this.cameraMode === 'top' ? .65 : moving ? .97 : 1.5;
-    const look = follow ? this.cameraTarget.lerpVectors(this.beys[0].holder.position,this.beys[1].holder.position,.5).setY(.45) :
+    const look = reflex || follow ? this.cameraTarget.lerpVectors(this.beys[0].holder.position,this.beys[1].holder.position,.5) :
       this.cameraTarget.set(0,focusY,.44);
-    look.add(this.pan);
+    if (!reflex) {
+      if (follow) look.setY(.45);
+      look.add(this.pan);
+    }
     if (this.cameraDistance === undefined) this.focus.copy(look);
-    else this.focus.lerp(look, 1 - Math.exp(-dt * 6));
+    else this.focus.lerp(look, 1 - Math.exp(-dt * (reflex ? 12 : 6)));
     const fitted = this.fitDistance(focusY,.44,this.azimuth,this.elevation);
-    const span = follow ? this.beys[0].holder.position.distanceTo(this.beys[1].holder.position) : 0;
+    const span = reflex || follow ? this.beys[0].holder.position.distanceTo(this.beys[1].holder.position) : 0;
     const baseDistance = follow ? fitted*(.53+.40*clamp(span/11,0,1)) : fitted;
+    const {visibleWidth, visibleHeight, height} = this.framing;
+    let distanceTarget = baseDistance*this.zoom;
+    if (reflex) {
+      const tangent = Math.tan(T.MathUtils.degToRad(this.camera.fov*.5));
+      const offset = this.nextPosition.subVectors(this.beys[1].holder.position,this.beys[0].holder.position).multiplyScalar(.5);
+      const across = offset.x*Math.cos(this.azimuth) - offset.z*Math.sin(this.azimuth);
+      const depth = offset.x*Math.sin(this.azimuth) + offset.z*Math.cos(this.azimuth);
+      const up = offset.y*Math.cos(this.elevation) - depth*Math.sin(this.elevation);
+      const forward = depth*Math.cos(this.elevation) + offset.y*Math.sin(this.elevation);
+      distanceTarget = Math.abs(forward) + Math.max((Math.abs(across)+1.55)*height/(tangent*visibleWidth),
+        (Math.abs(up)+1.55)*height/(tangent*visibleHeight));
+    }
     this.cameraDistance ??= baseDistance;
-    this.cameraDistance += (baseDistance*this.zoom-this.cameraDistance)*(1-Math.exp(-dt*14));
+    this.cameraDistance += (distanceTarget-this.cameraDistance)*(1-Math.exp(-dt*14));
     const distance = this.cameraDistance;
     const lateral = Math.cos(this.elevation) * distance;
     this.nextPosition.set(this.focus.x + Math.sin(this.azimuth) * lateral,
