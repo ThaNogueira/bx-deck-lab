@@ -145,9 +145,11 @@ function updateCards() {
 
 function updateStamina() {
   state.configs.forEach((_, i) => {
-    const value = Math.round((state.frames?.[i].spin ?? 1) * 100);
-    $('spin-fill' + i).style.width = value + '%';
-    $('spin' + i).textContent = value + '%';
+    const value = Math.round((state.frames?.[i].spin ?? 1) * 100) + '%';
+    const output = $('spin' + i);
+    if (output.textContent === value) return;
+    $('spin-fill' + i).style.width = value;
+    output.textContent = value;
   });
 }
 
@@ -911,15 +913,15 @@ function frame(now) {
     if (state.countShown !== n) {
       overlay.innerHTML = '<span class="overlay-label">PREPARE-SE</span><strong>' + n + '</strong>';
       state.countShown = n;
+      if (n === 1) state.configs.forEach((config,i)=>view.setCord(i,config.power));
     }
-    if (n === 1) state.configs.forEach((config,i)=>view.setCord(i,config.power));
     if (now >= state.deadline && isHost()) startFight();
   }
   if (state.physics && ['fight','qte','result'].includes(state.phase) && isHost()) {
     const phase = state.phase, rate = phase === 'qte' ? QTE_SPEED : 1;
     accumulator += dt*rate;
     while (accumulator >= DT && state.phase === phase) {
-      if (accumulator < 2*DT) previousFrames = state.physics.frames();
+      if (accumulator < 2*DT) previousFrames = state.physics.poses();
       state.physics.step(phase !== 'fight');
       accumulator -= DT;
     }

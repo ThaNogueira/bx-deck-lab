@@ -1383,11 +1383,18 @@ export class Battle {
     this.onEvent({type:'finish',winner:null,points:0,title});
   }
 
-  frames() {
+  poses() {
     return this.tops.map(top => {
       const p = top.body.translation(), q = top.body.rotation();
+      return { p: asArray(p), q: [q.x, q.y, q.z, q.w] };
+    });
+  }
+
+  frames() {
+    return this.poses().map((pose, i) => {
+      const top = this.tops[i];
       return {
-        p: asArray(p), q: [q.x, q.y, q.z, q.w], spin: clamp(top.spin / top.launchSpin, 0, 1),
+        ...pose, spin: clamp(top.spin / top.launchSpin, 0, 1),
         v: asArray(top.body.linvel()), w: asArray(top.body.angvel()),
         dash: !!top.rail?.announced || top.dashCarry > 0 && this.time - top.dashAt < .18,
         attack: top.move?.kind === 'attack',

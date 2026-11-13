@@ -203,7 +203,7 @@ function stadium(scene) {
   }
 }
 
-function environment(renderer, scene) {
+function environment(renderer, scene, mobile) {
   const studio = new T.Scene();
   studio.background = new T.Color(0x556266);
   const lightCard = (color, w, h, x, y, z, power) => {
@@ -214,7 +214,7 @@ function environment(renderer, scene) {
   lightCard(0xafff93, 6, 4, 4, 3, -6, 2);
   lightCard(0xf3f6ff, 8, 3, 5, 8, 5, 2.5);
   const pmrem = new T.PMREMGenerator(renderer);
-  scene.environment = pmrem.fromScene(studio, .034).texture;
+  scene.environment = pmrem.fromScene(studio, .034, .1, 100, { size: mobile ? 128 : 256 }).texture;
   scene.environmentIntensity = .69;
   pmrem.dispose();
   studio.traverse(item => { item.geometry?.dispose(); item.material?.dispose(); });
@@ -223,7 +223,8 @@ function environment(renderer, scene) {
   const main = new T.DirectionalLight(0xf6fcff, 2.25);
   main.position.set(-6, 13, 5);
   main.castShadow = true;
-  main.shadow.mapSize.set(1024, 1024);
+  const shadowSize = mobile ? 512 : 1024;
+  main.shadow.mapSize.set(shadowSize, shadowSize);
   Object.assign(main.shadow.camera, { left: -11, right: 11, top: 11, bottom: -11, near: .5, far: 31 });
   main.shadow.normalBias = .027;
   main.shadow.bias = -.0002;
@@ -302,10 +303,13 @@ export class ArenaView {
   constructor(container, launchControls) {
     this.container = container;
     this.launchControls = launchControls;
+    this.mobile = matchMedia('(any-pointer: coarse)').matches;
+    this.renderScale = 1;
+    this.slowFrames = 0;
+    this.dirty = true;
     this.scene = new T.Scene();
     this.scene.background = new T.Color(0x293830);
-    this.renderer = new T.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio, 1.35));
+    this.renderer = new T.WebGLRenderer({ antialias: !this.mobile, powerPreference: 'high-performance' });
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = T.PCFShadowMap;
     this.renderer.shadowMap.autoUpdate = false;
@@ -313,7 +317,7 @@ export class ArenaView {
     this.renderer.toneMapping = T.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.17;
     container.append(this.renderer.domElement);
-    environment(this.renderer, this.scene);
+    environment(this.renderer, this.scene, this.mobile);
     stadium(this.scene);
     floor(this.scene);
     this.camera = new T.PerspectiveCamera(43, 1, .12, 100);
@@ -362,7 +366,9 @@ export class ArenaView {
     this.contactShadowMap = startShadowTexture();
     this.shadows = [0,1].map(() => this.makeContactShadow());
     this.trails = [this.makeTrail(0x4aacff), this.makeTrail(0xff874a)];
-    new ResizeObserver(() => this.resize()).observe(container);
+    const observer = new ResizeObserver(() => this.resize());
+    observer.observe(container);
+    observer.observe(this.frameGuide);
     this.bindPointer();
     this.resize();
   }
@@ -407,14 +413,21 @@ export class ArenaView {
   resize() {
     const { clientWidth: w, clientHeight: h } = this.container;
     if (!w || !h) return;
-    this.renderer.setSize(w, h, false);
+    const ratio = this.mobile ? Math.min(devicePixelRatio, 1, Math.sqrt(520_000 / (w * h))) * this.renderScale : Math.min(devicePixelRatio, 1.35);
+    if (w !== this.width || h !== this.height || ratio !== this.renderer.getPixelRatio()) {
+      this.renderer.setDrawingBufferSize(w, h, ratio);
+      this.width = w;
+      this.height = h;
+    }
     this.camera.aspect = w / h;
+    this.framing.phase = '';
     this.updateFraming();
+    this.dirty = true;
     if (this.inspection) this.inspection.dirty = true;
   }
 
   updateFraming() {
-    const w = this.container.clientWidth, h = this.container.clientHeight;
+    const { width: w, height: h } = this;
     const phase = this.stage.dataset.phase;
     if (w === this.framing.width && h === this.framing.height && phase === this.framing.phase) return;
     const guide = this.frameGuide.getBoundingClientRect(), bounds = this.container.getBoundingClientRect();
@@ -422,6 +435,7 @@ export class ArenaView {
     const centerY = guide.top-bounds.top+guide.height*.5;
     this.camera.setViewOffset(w,h,w*.5-centerX,h*.5-centerY,w,h);
     this.framing = {width:w,height:h,phase,visibleWidth:Math.max(w*.39,guide.width),visibleHeight:Math.max(h*.36,guide.height)};
+    this.dirty = true;
   }
 
   fitDistance(y,z,azimuth,elevation) {
@@ -549,7 +563,8 @@ export class ArenaView {
       this.scene.remove(old.holder);
       disposeBey(old);
     }
-    this.beys = configs.map((config,i) => makeBey(config,i));
+    this.beys = configs.map((config,i) => makeBey(config,i, () => { this.dirty = true; }));
+    this.dirty = true;
     this.scene.add(...this.beys.map(b => b.holder));
     for (const trail of this.trails) trail.dash = trail.line.visible = false;
   }
@@ -636,9 +651,11 @@ export class ArenaView {
     renderer.setScissorTest(false);
     renderer.setViewport(0,0,this.container.clientWidth,this.container.clientHeight);
     preview.dirty = false;
+    return true;
   }
 
   ready(configs, localPlayer, editing = true) {
+    this.dirty = true;
     this.launchStarted = 0;
     for (const impact of this.impactRings) {
       impact.life = 0;
@@ -685,6 +702,7 @@ export class ArenaView {
 
   setCord(player,power) {
     this.launchers[player].setPull(.35 + power * .011);
+    this.dirty = true;
   }
 
   launchAnimation() {
@@ -695,6 +713,7 @@ export class ArenaView {
   showFrames(frames, nextFrames, blend, span, moving, burstTime, dt) {
     this.beys.forEach((bey, i) => {
       const frame = frames[i], next = nextFrames?.[i];
+      const effects = frame.w ? frame : next;
       this.aims[i].visible = false;
       bey.holder.position.fromArray(frame.p);
       bey.holder.quaternion.fromArray(frame.q);
@@ -723,24 +742,24 @@ export class ArenaView {
         }
       }
       bey.rotor.rotation.y = 0;
-      if (bey.freeRing && moving && frame.w) {
-        bey.freeRing.rotation.y = (bey.freeRing.rotation.y-frame.w[1]*dt*.73)%TAU;
+      if (bey.freeRing && moving && effects.w) {
+        bey.freeRing.rotation.y = (bey.freeRing.rotation.y-effects.w[1]*dt*.73)%TAU;
       }
-      if (bey.boundPlate) bey.boundPlate.position.y = Math.sin((frame.bound ?? 0)*Math.PI)*.034;
-      if (moving && frame.w) {
-        const spin = Math.hypot(...frame.w);
+      if (bey.boundPlate) bey.boundPlate.position.y = Math.sin((effects.bound ?? 0)*Math.PI)*.034;
+      if (moving && effects.w) {
+        const spin = Math.hypot(...effects.w);
         // A short exposure removes the strobing of sharp teeth at high RPM.
         bey.setExposure(spin * Math.min(dt, 1/60) * .57);
       } else {
         bey.setExposure(0);
       }
-      if (frame.burst) {
+      if (effects.burst) {
         const t = Math.min(1, burstTime);
         bey.under.position.set(t * (i ? 1.5 : -1.5), t * (1 - t) * 4, t * .5);
       }
       this.placeShadow(this.shadows[i],bey);
       const trail = this.trails[i];
-      const rushing = frame.dash || frame.impactTrail;
+      const rushing = effects.dash || effects.impactTrail;
       const {x,z} = bey.holder.position;
       const y = floorAt(x,z)+.073;
       if (rushing && !trail.dash) for (const p of trail.points) p.set(x,y,z);
@@ -765,7 +784,8 @@ export class ArenaView {
 
   spark(at, strength, isRail = false, impactAxis) {
     const strong = impactAxis && strength >= .78;
-    const n = isRail ? 12 : Math.ceil(7 + strength*(strong ? 13 : 7));
+    const count = isRail ? 12 : Math.ceil(7 + strength*(strong ? 13 : 7));
+    const n = this.mobile ? Math.max(0, Math.min(32 - this.sparks.length, Math.ceil(count / 2))) : count;
     if (strong) {
       const impact = this.impactRings.reduce((first,current)=>current.life < first.life ? current : first);
       impact.life = .17;
@@ -785,6 +805,17 @@ export class ArenaView {
   }
 
   draw(dt, motionRate) {
+    if (!this.width || !this.height) return;
+    const phase = this.stage.dataset.phase;
+    const moving = phase !== 'setup';
+    if (this.mobile && phase === 'fight') {
+      this.slowFrames = dt > .027 ? this.slowFrames + 1 : Math.max(0, this.slowFrames - 2);
+      if (this.slowFrames >= 24 && this.renderScale > .7) {
+        this.renderScale = Math.max(.7, this.renderScale - .15);
+        this.slowFrames = 0;
+        this.resize();
+      }
+    } else this.slowFrames = 0;
     if (this.launchStarted) {
       const t = clamp((performance.now()-this.launchStarted)/460,0,1);
       for (const [i,launcher] of this.launchers.entries()) {
@@ -797,12 +828,13 @@ export class ArenaView {
       if (t >= 1) this.launchStarted = 0;
     }
     this.updateFraming();
-    const follow = this.cameraMode === 'follow' && this.beys.length === 2 && this.stage.dataset.phase !== 'setup';
-    const focusY = this.cameraMode === 'top' ? .65 : this.stage.dataset.phase === 'setup' ? 1.5 : .97;
+    const follow = this.cameraMode === 'follow' && this.beys.length === 2 && moving;
+    const focusY = this.cameraMode === 'top' ? .65 : moving ? .97 : 1.5;
     const look = follow ? this.cameraTarget.lerpVectors(this.beys[0].holder.position,this.beys[1].holder.position,.5).setY(.45) :
       this.cameraTarget.set(0,focusY,.44);
     look.add(this.pan);
-    this.focus.lerp(look, 1 - Math.exp(-dt * 6));
+    if (this.cameraDistance === undefined) this.focus.copy(look);
+    else this.focus.lerp(look, 1 - Math.exp(-dt * 6));
     const fitted = this.fitDistance(focusY,.44,this.azimuth,this.elevation);
     const span = follow ? this.beys[0].holder.position.distanceTo(this.beys[1].holder.position) : 0;
     const baseDistance = follow ? fitted*(.53+.40*clamp(span/11,0,1)) : fitted;
@@ -810,8 +842,13 @@ export class ArenaView {
     this.cameraDistance += (baseDistance*this.zoom-this.cameraDistance)*(1-Math.exp(-dt*14));
     const distance = this.cameraDistance;
     const lateral = Math.cos(this.elevation) * distance;
-    this.camera.position.set(this.focus.x + Math.sin(this.azimuth) * lateral,
+    this.nextPosition.set(this.focus.x + Math.sin(this.azimuth) * lateral,
       this.focus.y + Math.sin(this.elevation) * distance, this.focus.z + Math.cos(this.azimuth) * lateral);
+    // Give the camera time to settle, then reuse the last frame during setup.
+    const cameraChanged = this.camera.position.distanceToSquared(this.nextPosition) > .000001;
+    const previewDrawn = this.drawInspection();
+    if (!moving && !this.dirty && !cameraChanged && !previewDrawn) return;
+    this.camera.position.copy(this.nextPosition);
     this.camera.lookAt(this.focus);
     const effectTime = dt*motionRate;
     for (const impact of this.impactRings) {
@@ -835,7 +872,7 @@ export class ArenaView {
         this.sparks.splice(i, 1);
       }
     }
-    this.drawInspection();
     this.renderer.render(this.scene, this.camera);
+    this.dirty = false;
   }
 }
