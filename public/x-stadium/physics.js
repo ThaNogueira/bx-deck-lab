@@ -29,6 +29,7 @@ const POCKET_REVERSE_EXTRA_COST = .34;
 const MOVE_DURATION = {attack:.68,dash:1.62,defense:2.65,circle:3.35};
 const REFLEX_BOOST_TIME = { defense: 1.5, attack: 2.5 };
 const REFLEX_COOLDOWN = 4;
+const REFLEX_SPIN_REWARD = .04;
 const CIRCLE_SPIN_REWARD = .08;
 const BOOSTED_ATTACK_RANGE = 2.45;
 const BOOSTED_ATTACK_WINDUP = .29;
@@ -288,6 +289,14 @@ export class Battle {
     top.body.applyTorqueImpulse(scale(axis,correction*top.inertia.polar),true);
   }
 
+  recoverSpin(top, fraction, axis = axisOf(top.body.rotation())) {
+    const gain = Math.max(0,Math.min(top.launchSpin-top.spin,top.launchSpin*fraction));
+    if (!gain) return;
+    top.spin += gain;
+    const axial = dot(axis,top.body.angvel());
+    top.body.applyTorqueImpulse(scale(axis,(top.spin*top.spinDirection-axial)*top.inertia.polar),true);
+  }
+
   equalizeSpin(a,b,closing) {
     if (a.spinDirection === b.spinDirection || closing > 4 || a.resting || b.resting) return;
     const [donor,receiver] = a.spin > b.spin ? [a,b] : [b,a];
@@ -468,13 +477,10 @@ export class Battle {
     const axial = dot(axis,omega), spin = Math.max(0,axial * top.spinDirection);
     const speed = horizontalSpeed(v);
     if (top.move && this.time >= top.move.until) {
-      if (!this.finished && top.move.kind === 'circle' && top.move.boosted && !top.move.wasHit && !top.escape && !top.defeat) {
-        const gain = Math.min(top.launchSpin - top.spin, top.launchSpin * CIRCLE_SPIN_REWARD);
-        if (gain > 0) {
-          top.spin += gain;
-          body.applyTorqueImpulse(scale(axis, (top.spin*top.spinDirection-axial)*inertia.polar), true);
-          this.onEvent({type:'spin-reward',player:top.player,at:asArray(p)});
-        }
+      if (!this.finished && top.move.kind === 'circle' && top.move.boosted && !top.move.wasHit && !top.escape && !top.defeat &&
+        top.spin < top.launchSpin) {
+        this.recoverSpin(top,CIRCLE_SPIN_REWARD,axis);
+        this.onEvent({type:'spin-reward',player:top.player,at:asArray(p)});
       }
       top.move = null;
     }
@@ -1298,6 +1304,17 @@ export class Battle {
     const boostDuration = REFLEX_BOOST_TIME[defended ? 'defense' : 'attack'];
     winner.reflexBoostDuration = boostDuration;
     winner.reflexBoostUntil = this.time + boostDuration;
+    if (!winner.defeat && !winner.resting && !winner.settling) {
+      this.recoverSpin(winner,REFLEX_SPIN_REWARD);
+      const velocity = winner.body.linvel();
+      const speed = horizontalSpeed(velocity);
+      const position = winner.body.translation();
+      const radius = horizontalSpeed(position);
+      const direction = speed > .15 ? scale(velocity,1/speed) :
+        radius > .15 ? scale(position,-1/radius) : winner.launch.direction;
+      const extra = Math.min(1,Math.max(.55,speed*.08),Math.max(0,MAX_TRANSLATION-speed));
+      winner.body.setLinvel({x:velocity.x+direction.x*extra,y:velocity.y,z:velocity.z+direction.z*extra},true);
+    }
     return {defended,heavy,boostDuration};
   }
 
