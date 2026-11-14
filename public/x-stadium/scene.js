@@ -313,6 +313,8 @@ function placeAim(aim,x,z,direction,length) {
     coordinates.setXYZ(i,px,tipSurfaceAt(px,pz)+.13,pz);
   });
   coordinates.needsUpdate = true;
+  const px = x+direction.x*length, pz = z+direction.z*length;
+  aim.userData.tip = [px,tipSurfaceAt(px,pz)+.13,pz];
 }
 
 function makeLaunchArea(player,color) {
@@ -565,8 +567,9 @@ export class ArenaView {
   }
 
   bindPointer() {
-    const canvas = this.renderer.domElement;
+    const canvas = this.renderer.domElement, {panel,aimGrip} = this.launchControls;
     const pointers = new Map();
+    let grip = null;
     const floorPlane = new T.Plane(yAxis,0);
     const pointAt = (e, floor = false) => {
       const rect = canvas.getBoundingClientRect();
@@ -582,28 +585,66 @@ export class ArenaView {
       }
       return target;
     };
-    const steer = (e,point) => {
-      const target = pointAt(e,true);
-      if (!target || Math.hypot(target.x-point[0],target.z-point[1]) < .24) return;
-      const radians = Math.atan2(target.z-point[1],target.x-point[0])-Math.atan2(-point[1],-point[0]);
-      this.launchControls.change({heading:Math.round(radians*180/Math.PI)});
+    const dragLauncher = (e,drag) => {
+      if (this.launchControls.active()?.player !== drag.player) return;
+      if (!drag.changed && Math.hypot(e.clientX-drag.x,e.clientY-drag.y) < 3) return;
+      if (drag.mode === 'angle') {
+        const angle = clamp(Math.round(drag.angle+(drag.y-e.clientY)*.52),-MAX_LAUNCH_ANGLE,MAX_LAUNCH_ANGLE);
+        this.launchControls.change({angle});
+      } else {
+        const target = pointAt(e,drag.mode === 'heading');
+        if (!target || !drag.offset) return;
+        const [x,z] = drag.point;
+        const dx = target.x-drag.offset.x, dz = target.z-drag.offset.z;
+        if (drag.mode === 'heading') {
+          if (Math.hypot(dx-x,dz-z) < .24) return;
+          const radians = Math.atan2(dz-z,dx-x)-Math.atan2(-z,-x);
+          this.launchControls.change({heading:Math.round(radians*180/Math.PI)});
+        } else this.launchControls.change({point:[dx,dz]});
+      }
+      drag.changed = true;
     };
+    const startDrag = (e,mode,{config,player}) => {
+      const target = pointAt(e,mode === 'heading');
+      const [x,,z] = mode === 'heading' ? this.aims[player].userData.tip : [config.point[0],0,config.point[1]];
+      return {mode,player,point:config.point,angle:config.angle,x:e.clientX,y:e.clientY,changed:false,
+        offset:target ? {x:target.x-x,z:target.z-z} : null};
+    };
+    for (const handle of [...panel.querySelectorAll('[data-launch-grip]'),aimGrip]) {
+      handle.addEventListener('pointerdown', e => {
+        const active = this.launchControls.active();
+        if (!active || grip || !e.isPrimary || e.button !== 0) return;
+        grip = {id:e.pointerId, ...startDrag(e,handle.dataset.launchGrip,active)};
+        handle.setPointerCapture(e.pointerId);
+      });
+      handle.addEventListener('pointermove', e => {
+        if (grip?.id === e.pointerId) dragLauncher(e,grip);
+      });
+      const release = e => {
+        if (grip?.id !== e.pointerId) return;
+        if (e.type === 'pointerup' && grip.changed) dragLauncher(e,grip);
+        if (grip.changed) this.launchControls.commit();
+        grip = null;
+      };
+      handle.addEventListener('pointerup',release);
+      handle.addEventListener('pointercancel',release);
+      handle.addEventListener('lostpointercapture',release);
+    }
     canvas.addEventListener('pointerdown', e => {
       if (e.button !== 0 && e.button !== 1 && e.button !== 2 || pointers.size >= 2) return;
       if (pointers.size) {
         for (const p of pointers.values()) {
-          if (p.changed) this.launchControls.commit();
+          if (p.drag?.changed) this.launchControls.commit();
           p.mode = 'orbit';
+          p.drag = null;
         }
       }
       const active = !pointers.size && e.button === 0 && !e.altKey ? this.launchControls.active() : null;
       const target = active ? pointAt(e) : null;
-      const aiming = target && target.x*(active.player === 0 ? -1 : 1) >= 0 &&
-        Math.hypot(target.x,target.z) < openingRadius(Math.atan2(target.z,target.x))+.15;
-      const mode = active?.mode === 'heading' ? 'heading' : active?.mode === 'angle' || aiming && e.shiftKey ? 'angle' :
-        aiming ? 'position' : e.altKey || e.button === 1 ? 'pan' : 'orbit';
-      pointers.set(e.pointerId,{x:e.clientX,y:e.clientY,sx:e.clientX,sy:e.clientY,mode,
-        angle:active?.config.angle,point:active?.config.point,changed:false});
+      const onLauncher = target && Math.hypot(target.x-active.config.point[0],target.z-active.config.point[1]) < 1.25;
+      const drag = onLauncher ? startDrag(e,e.shiftKey ? 'angle' : 'position',active) : null;
+      const mode = e.altKey || e.button === 1 ? 'pan' : 'orbit';
+      pointers.set(e.pointerId,{x:e.clientX,y:e.clientY,mode,drag});
       canvas.setPointerCapture(e.pointerId);
     });
     canvas.addEventListener('pointermove', e => {
@@ -616,20 +657,8 @@ export class ArenaView {
         const after = Math.hypot(e.clientX - other.x, e.clientY - other.y);
         if (before > 8 && after > 8) this.changeZoom(before/after);
         this.panCamera(dx*.5,dy*.5);
-      } else if (p.mode === 'position') {
-        if (p.changed || Math.hypot(e.clientX-p.sx,e.clientY-p.sy) > 4) {
-          const target = pointAt(e);
-          if (target) {
-            this.launchControls.change({point:[target.x,target.z]});
-            p.changed = true;
-          }
-        }
-      } else if (p.mode === 'heading') {
-        steer(e,p.point);
-        p.changed = true;
-      } else if (p.mode === 'angle') {
-        this.launchControls.change({angle:clamp(Math.round(p.angle+(e.clientX-p.sx)*.29),-MAX_LAUNCH_ANGLE,MAX_LAUNCH_ANGLE)});
-        p.changed = true;
+      } else if (p.drag) {
+        dragLauncher(e,p.drag);
       } else if (p.mode === 'pan' || this.cameraMode === 'top') {
         this.panCamera(dx,dy);
       } else if (!this.lockedCamera) {
@@ -638,21 +667,12 @@ export class ArenaView {
       }
       Object.assign(p, { x: e.clientX, y: e.clientY });
     });
-    canvas.addEventListener('pointerup', e => {
-      const pointer = pointers.get(e.pointerId);
-      pointers.delete(e.pointerId);
-      if (pointer?.mode === 'position' && !pointer.changed) {
-        const target = pointAt(e);
-        if (target) this.launchControls.change({point:[target.x,target.z]});
-      }
-      if (pointer?.mode === 'heading' && !pointer.changed) steer(e,pointer.point);
-      if (['position','heading','angle'].includes(pointer?.mode)) this.launchControls.commit();
-    });
     const cancel = e => {
       const pointer = pointers.get(e.pointerId);
       pointers.delete(e.pointerId);
-      if (pointer?.changed) this.launchControls.commit();
+      if (pointer?.drag?.changed) this.launchControls.commit();
     };
+    canvas.addEventListener('pointerup',cancel);
     canvas.addEventListener('pointercancel',cancel);
     canvas.addEventListener('lostpointercapture',cancel);
     canvas.addEventListener('contextmenu', e => e.preventDefault());
@@ -806,6 +826,23 @@ export class ArenaView {
   setCord(player,power) {
     this.launchers[player].setPull(.35 + power * .011);
     this.dirty = true;
+  }
+
+  positionLauncherControls() {
+    const {panel,aimGrip} = this.launchControls;
+    const active = this.launchControls.active();
+    if (!active || panel.hidden) return;
+    const {player} = active;
+    const coords = this.nextPosition;
+    const place = (element,offsetY) => {
+      element.style.setProperty('--x',Math.round((coords.x+1)*this.width*.5)+'px');
+      element.style.setProperty('--y',Math.round((1-coords.y)*this.height*.5+offsetY)+'px');
+    };
+    this.camera.updateMatrixWorld();
+    coords.copy(this.launchers[player].anchor).project(this.camera);
+    place(panel,0);
+    coords.fromArray(this.aims[player].userData.tip).project(this.camera);
+    place(aimGrip,29);
   }
 
   launchAnimation() {
@@ -998,6 +1035,7 @@ export class ArenaView {
     if (!moving && !this.dirty && !cameraChanged && !previewDrawn) return;
     this.camera.position.copy(this.nextPosition);
     this.camera.lookAt(this.focus);
+    if (phase === 'setup') this.positionLauncherControls();
     const effectTime = dt*motionRate;
     for (const impact of this.impactRings) {
       if (impact.life <= 0) continue;

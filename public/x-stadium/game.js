@@ -28,6 +28,8 @@ const icons = {
   expand:'<path d="M3 9V3h6m6 0h6v6m0 6v6h-6m-6 0H3v-6"/>',
   mouse:'<rect x="6" y="2" width="12" height="20" rx="6"/><path d="M12 5v4"/>',
   target:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 1v3m0 16v3M1 12h3m16 0h3"/>',
+  move:'<path d="M12 3v18M3 12h18M9 6l3-3 3 3m-6 12 3 3 3-3M6 9l-3 3 3 3m12-6 3 3-3 3"/>',
+  tilt:'<path d="m4 17 15-8M5 20h14M10 10a6 6 0 0 1 6-6m-2-2 2 2-2 3"/>',
   bolt:'<path d="m13 2-9 12h7l-1 8 10-12h-7z"/>',
   trophy:'<path d="M8 21h8m-4-5v5m-5-18h10v6a5 5 0 0 1-10 0zm0 2H3v2a4 4 0 0 0 4 4m10-6h4v2a4 4 0 0 1-4 4"/>',
   activity:'<path d="M2 12h5l3-7 4 14 3-7h5"/>',
@@ -53,7 +55,7 @@ const state = {
   result: null, qte: null, reflex: true, trial: null, sound: false, camera: 'orbit', cameraDrag: false, connected: false, roomStatus: '',
 };
 let view, available = false, workPlayer = 0, accumulator = 0, flashTimer, lastTime = performance.now(), lastSent = 0, lastHud = 0;
-let launchMode = 'position';
+let timingPlayer = null, meterStart = 0, meterPower = 45;
 let workPart = null;
 const audio = new ArenaAudio();
 const graphics = $('graphics');
@@ -72,10 +74,14 @@ const dialog = $('dialog'), content = $('dialog-content'), overlay = $('battle-o
 const phases = { setup: 'PREPARAÇÃO', countdown: 'LANÇAMENTO', fight: 'EM BATALHA', qte: 'IMPACTO', result: 'RESULTADO' };
 const QTE_SPEED = .012;
 const PHYSICS_FRAME_BUDGET = 8;
+const METER_RISE_MS = 1700;
+const METER_PEAK_MS = 150;
 
 const isHost = () => state.mode !== 'online' || state.localPlayer === 0;
 const activePlayer = () => state.mode === 'local' ? state.turn : state.localPlayer;
 const canEdit = i => state.phase === 'setup' && !state.ready[i] && (state.mode !== 'online' || i === state.localPlayer);
+const launchButton = $('launch'), launcherControls = $('launcher-controls'), aimGrip = $('launcher-aim-grip');
+const meterTrack = $('launch-power-track'), powerValue = $('power-value');
 const controls = $('combat-controls');
 const moves = {
   attack: { name: 'Xtreme Attack', icon: 'strike', text: ' avançou para o ataque.' },
@@ -173,28 +179,43 @@ function updateStamina() {
   });
 }
 
+function showLaunchPower(power) {
+  meterPower = power;
+  meterTrack.style.setProperty('--power',(power-45)/55);
+  meterTrack.setAttribute('aria-valuenow',power);
+  powerValue.textContent = power + '%';
+}
+
+function updateLaunchMeter(now) {
+  if (timingPlayer === null || dialog.open) return;
+  const progress = Math.min(1,((now-meterStart) % (METER_RISE_MS+METER_PEAK_MS))/METER_RISE_MS);
+  const power = Math.round(45+55*Math.max(0,progress));
+  if (power !== meterPower) showLaunchPower(power);
+}
+
 function updateControls() {
   const local = activePlayer(), config = state.configs[local];
   const editing = canEdit(local);
   const settingUp = state.phase === 'setup';
-  $('heading-value').textContent = Math.round(config.heading) + '°';
   $('angle-value').textContent = Math.round(config.angle) + '°';
-  $('power-value').textContent = Math.round(config.power) + '%';
-  $('launch').style.setProperty('--charge', Math.round(config.power) + '%');
-  for (const button of $('launch-modes').querySelectorAll('button')) {
-    button.setAttribute('aria-pressed',button.dataset.launchMode === launchMode);
+  const launchReady = available && editing && (state.mode !== 'online' || state.connected);
+  const player = launchReady ? local : null;
+  if (player !== timingPlayer) {
+    timingPlayer = player;
+    meterStart = performance.now();
+    showLaunchPower(45);
   }
-  $('launch-title').textContent = state.mode === 'local' ? 'Lançador · J' + (local + 1) : 'Lançador';
-  $('launch-hint').textContent = !editing ? 'Aguardando o adversário' : state.cameraDrag ?
-    'Arraste para mover a câmera.' : {
-      position:'Arraste na arena para posicionar.',
-      heading:'Toque ou arraste para onde quer mirar.',
-      angle:'Arraste na arena para inclinar.',
-    }[launchMode];
-  $('launch-panel').hidden = !settingUp;
-  $('launch-panel').dataset.editing = editing;
-  $('launch-modes').hidden = !editing;
-  $('launch').hidden = !editing;
+  launcherControls.classList.toggle('p1',local === 0);
+  launcherControls.classList.toggle('p2',local === 1);
+  aimGrip.classList.toggle('p1',local === 0);
+  aimGrip.classList.toggle('p2',local === 1);
+  const gripsVisible = available && editing && !state.cameraDrag;
+  launcherControls.hidden = !gripsVisible;
+  aimGrip.hidden = !gripsVisible;
+  const status = $('launch-status');
+  status.hidden = !available || !settingUp || (!state.cameraDrag && launchReady);
+  status.textContent = !editing ? 'Aguardando o adversário' :
+    state.cameraDrag ? 'Ajustando a câmera' : 'Aguardando sala';
   $('camera-drag').hidden = !settingUp;
   $('camera-drag').setAttribute('aria-pressed',state.cameraDrag);
   const trainingLabel = {stamina:'TESTE DE RESISTÊNCIA',attack:'TESTE DE ATAQUE'}[state.trial] || 'TREINO COM IA';
@@ -208,8 +229,8 @@ function updateControls() {
   $('stage-state').textContent = phases[state.phase];
   $('stage').dataset.phase = state.phase;
   $('stage').dataset.gesture = editing && !state.cameraDrag ? 'launch' : 'camera';
-  $('launch').disabled = !available || !editing || state.mode === 'online' && !state.connected;
-  $('launch').querySelector('span').textContent = state.mode === 'online' && !state.connected ? 'Aguardando sala' : 'Puxe e solte';
+  launchButton.disabled = !launchReady || state.cameraDrag;
+  if (gripsVisible) view?.positionLauncherControls();
   document.querySelectorAll('.bey-edit').forEach((el, i) => {
     el.hidden = !canEdit(i);
     $('player' + (i + 1) + '-panel').dataset.active = editing && i === local;
@@ -265,8 +286,9 @@ function sendSetup() {
 }
 
 function launch() {
-  if ($('launch').disabled) return;
+  if (launchButton.disabled) return;
   const i = activePlayer();
+  state.configs[i] = { ...state.configs[i], power:meterPower };
   state.ready[i] = true;
   if (state.mode === 'local' && i === 0) {
     state.turn = 1;
@@ -805,14 +827,14 @@ function multiplayer() {
 }
 
 function help() {
-  openDialog('help', 'COMO JOGAR', '<ul><li>Arraste dentro da abertura para posicionar o lançador na sua metade. Ajuste mira, inclinação e força. Use <b>Shift</b> ao arrastar para inclinar com o mouse.</li>' +
-    '<li>Use <b>Posição</b>, <b>Mira</b> e <b>Inclinação</b> para ajustar direto na arena. Arraste a corda e solte para lançar. Quanto mais longe puxar, mais força. Um toque ou Espaço usa a força atual.</li>' +
+  openDialog('help', 'COMO JOGAR', '<ul><li>Arraste o lançador ou o botão <b>Mover</b> para posicionar. Arraste a ponta da seta para mirar e puxe <b>Inclinar</b> para cima ou para baixo.</li>' +
+    '<li>A força sobe sozinha. Toque em <b>Let it rip</b> ou pressione <b>Espaço</b> no ponto desejado da barra.</li>' +
     '<li>Arraste para orbitar. Durante o lançamento, use o botão direito ou ative a mão nos controles de câmera. Role, faça pinça ou use + e − para dar zoom. Mova dois dedos juntos ou segure Alt enquanto arrasta para deslocar a câmera.</li>' +
     '<li>Com giro e velocidade, o Bit pode engatar no trilho verde e fazer um <b>Xtreme Dash</b>.</li>' +
     '<li>Use <b>E/R</b> para a habilidade do Bit e o Xtreme Dash, com três usos de cada por rodada. No duelo local, J2 usa <b>I/O</b>. Defesa firma o centro e resistência circula ao redor dele.</li>' +
     '<li>Primeiro a 4 pontos vence. Spin Finish vale 1, Over e Burst Finish valem 2 e o bolso central Xtreme vale 3.</li>' +
     '<li>O pião precisa passar por cima do trilho e cair inteiro no bolso. Se voltar girando, é Reverse e a rodada continua. Empate ou saída fora dos bolsos repete a rodada.</li>' +
-    '<li>Durante a preparação, use <b>setas</b> para mover, <b>Q/E</b> para mirar, <b>A/D</b> para inclinar e <b>[ ]</b> para ajustar a força.</li>' +
+    '<li>Durante a preparação, use <b>setas</b> para mover, <b>Q/E</b> para mirar e <b>A/D</b> para inclinar.</li>' +
     '<li>Na disputa de reflexo em câmera lenta, toque ou clique no botão que acender. Também dá para usar <b>A/S/D</b> ou <b>←/↓/→</b>. No duelo local, J2 usa <b>J/K/L</b>. A opção fica em Multijogador.</li></ul>');
 }
 
@@ -942,50 +964,7 @@ document.addEventListener('change', e => {
     state.reflex = e.target.checked;
   }
 });
-$('launch-modes').addEventListener('click', e => {
-  const button = e.target.closest('[data-launch-mode]');
-  if (!button || !canEdit(activePlayer())) return;
-  launchMode = button.dataset.launchMode;
-  state.cameraDrag = false;
-  updateControls();
-});
-const ripcord = $('launch');
-let pull = null;
-function chargeCord(e) {
-  const distance = Math.hypot(e.clientX-pull.x,e.clientY-pull.y);
-  if (distance < 8 && !pull.dragged) return;
-  pull.dragged = true;
-  const power = Math.round(45+55*clamp((distance-8)/122,0,1));
-  configure({power},false);
-  view.setCord(activePlayer(),power);
-}
-ripcord.addEventListener('pointerdown', e => {
-  if (ripcord.disabled || !e.isPrimary || e.button !== 0) return;
-  pull = {id:e.pointerId,x:e.clientX,y:e.clientY,dragged:false,power:state.configs[activePlayer()].power};
-  ripcord.setPointerCapture(e.pointerId);
-  ripcord.dataset.pulling = 'true';
-});
-ripcord.addEventListener('pointermove', e => {
-  if (pull?.id === e.pointerId) chargeCord(e);
-});
-ripcord.addEventListener('pointerup', e => {
-  if (pull?.id !== e.pointerId) return;
-  chargeCord(e);
-  pull = null;
-  delete ripcord.dataset.pulling;
-  launch();
-});
-function cancelPull(e) {
-  if (pull?.id !== e.pointerId) return;
-  configure({power:pull.power},false);
-  pull = null;
-  delete ripcord.dataset.pulling;
-}
-ripcord.addEventListener('pointercancel',cancelPull);
-ripcord.addEventListener('lostpointercapture',cancelPull);
-ripcord.addEventListener('click', e => {
-  if (e.detail === 0 && !pull) launch();
-});
+launchButton.addEventListener('click',launch);
 document.addEventListener('keydown', e => {
   if (dialog.open || e.ctrlKey || e.altKey || e.metaKey) return;
   if (view && !['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName)) {
@@ -1003,12 +982,10 @@ document.addEventListener('keydown', e => {
     const distance = e.shiftKey ? .46 : .18, degrees = e.shiftKey ? 6 : 2;
     const position = {ArrowLeft:[x-distance,z],ArrowRight:[x+distance,z],ArrowUp:[x,z-distance],ArrowDown:[x,z+distance]}[e.code];
     const adjustment = {KeyQ:{heading:config.heading-degrees},KeyE:{heading:config.heading+degrees},
-      KeyA:{angle:config.angle-degrees},KeyD:{angle:config.angle+degrees},
-      BracketLeft:{power:config.power-degrees},BracketRight:{power:config.power+degrees}}[e.code];
+      KeyA:{angle:config.angle-degrees},KeyD:{angle:config.angle+degrees}}[e.code];
     if (position || adjustment) {
       e.preventDefault();
       configure(position ? {point:position} : adjustment);
-      if (adjustment?.power !== undefined) view.setCord(activePlayer(),state.configs[activePlayer()].power);
       return;
     }
   }
@@ -1037,10 +1014,13 @@ document.addEventListener('keydown', e => {
 function frame(now) {
   const dt = clamp((now - lastTime) / 1000, .001, .05);
   lastTime = now;
+  updateLaunchMeter(now);
   if (state.phase === 'countdown') {
     const n = Math.max(1, Math.ceil((state.deadline - now) / 510));
     if (state.countShown !== n) {
-      overlay.innerHTML = '<span class="overlay-label">PREPARE-SE</span><strong>' + n + '</strong>';
+      const power = state.mode === 'local' ? state.configs.map((config,i) => 'J'+(i+1)+' '+config.power+'%').join(' · ') :
+        'FORÇA ' + state.configs[state.localPlayer].power + '%';
+      overlay.innerHTML = '<span class="overlay-label">' + power + '</span><strong>' + n + '</strong>';
       state.countShown = n;
       if (n === 1) state.configs.forEach((config,i)=>view.setCord(i,config.power));
     }
@@ -1127,10 +1107,13 @@ updateCards(); updateScore(); updateControls();
 try {
   await Promise.all([initPhysics(), document.fonts.load('800 italic 24px Barlow').catch(() => {})]);
   view = new ArenaView($('world'), {
-    active: () => canEdit(activePlayer()) && !state.cameraDrag ?
-      {config:state.configs[activePlayer()],player:activePlayer(),mode:launchMode} : null,
+    active: () => canEdit(activePlayer()) && !state.cameraDrag && !dialog.open ?
+      {config:state.configs[activePlayer()],player:activePlayer()} : null,
     change: partial => configure(partial,false),
     commit: sendSetup,
+    panel: launcherControls,
+    aimGrip,
+    power: () => meterPower,
   });
   view.setGraphics(graphics.value);
   view.setLoadouts(state.configs);

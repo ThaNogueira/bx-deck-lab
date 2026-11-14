@@ -58,15 +58,20 @@
     </section>
   </div>
 
-  <section class="launch-panel" id="launch-panel" aria-label="Ajustes de lançamento">
-    <div class="launch-title"><h2 id="launch-title">Lançador</h2><p id="launch-hint">Arraste na arena para posicionar.</p></div>
-    <div class="launch-modes" id="launch-modes" role="group" aria-label="Ajuste na arena">
-      <button type="button" data-launch-mode="position" aria-pressed="true">Posição</button>
-      <button type="button" data-launch-mode="heading" aria-pressed="false">Mira <output id="heading-value">0°</output></button>
-      <button type="button" data-launch-mode="angle" aria-pressed="false">Inclinação <output id="angle-value">0°</output></button>
+  <section class="launcher-controls" id="launcher-controls" aria-label="Controles do lançador" hidden>
+    <div class="launcher-grips">
+      <button type="button" data-launch-grip="position" aria-label="Mover lançador" title="Arraste para mover o lançador"><i data-icon="move"></i>Mover</button>
+      <button type="button" data-launch-grip="angle" aria-label="Inclinar lançador" title="Arraste para cima ou para baixo"><i data-icon="tilt"></i><span>Inclinar <output id="angle-value">0°</output></span></button>
     </div>
-    <button class="launch-button ripcord" id="launch" disabled><i data-icon="bolt"></i><span>Puxe e solte</span><output id="power-value">94%</output></button>
+    <div class="launch-power">
+      <span id="power-label">Força</span>
+      <div class="launch-power-track" id="launch-power-track" role="meter" aria-labelledby="power-label" aria-valuemin="45" aria-valuemax="100" aria-valuenow="45"><b></b></div>
+      <span id="power-value" aria-hidden="true">45%</span>
+    </div>
+    <button class="launch-button" id="launch" type="button" disabled><i data-icon="bolt"></i>Let it rip</button>
   </section>
+  <button type="button" class="launcher-aim-grip" id="launcher-aim-grip" data-launch-grip="heading" aria-label="Arrastar a mira" title="Arraste a ponta da seta para mirar" hidden><i data-icon="target"></i><span>Mira</span></button>
+  <p class="launch-status" id="launch-status" hidden></p>
 
   <div id="combat-controls" class="combat-controls" role="group" aria-label="Comandos de batalha" hidden></div>
   <p class="sr-only" id="last-event" role="status">Arena pronta para o lançamento.</p>
