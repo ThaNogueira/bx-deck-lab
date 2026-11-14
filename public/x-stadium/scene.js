@@ -315,6 +315,7 @@ function placeAim(aim,x,z,direction,length) {
   coordinates.needsUpdate = true;
   const px = x+direction.x*length, pz = z+direction.z*length;
   aim.userData.tip = [px,tipSurfaceAt(px,pz)+.13,pz];
+  aim.userData.origin = [x,tipSurfaceAt(x,z)+.13,z];
 }
 
 function makeLaunchArea(player,color) {
@@ -567,7 +568,7 @@ export class ArenaView {
   }
 
   bindPointer() {
-    const canvas = this.renderer.domElement, {panel,aimGrip} = this.launchControls;
+    const canvas = this.renderer.domElement, {positionGrip,aimGrip} = this.launchControls;
     const pointers = new Map();
     let grip = null;
     const floorPlane = new T.Plane(yAxis,0);
@@ -610,7 +611,7 @@ export class ArenaView {
       return {mode,player,point:config.point,angle:config.angle,x:e.clientX,y:e.clientY,changed:false,
         offset:target ? {x:target.x-x,z:target.z-z} : null};
     };
-    for (const handle of [...panel.querySelectorAll('[data-launch-grip]'),aimGrip]) {
+    for (const handle of [positionGrip,aimGrip]) {
       handle.addEventListener('pointerdown', e => {
         const active = this.launchControls.active();
         if (!active || grip || !e.isPrimary || e.button !== 0) return;
@@ -829,20 +830,28 @@ export class ArenaView {
   }
 
   positionLauncherControls() {
-    const {panel,aimGrip} = this.launchControls;
+    const {panel,positionGrip,aimGrip} = this.launchControls;
     const active = this.launchControls.active();
     if (!active || panel.hidden) return;
     const {player} = active;
     const coords = this.nextPosition;
-    const place = (element,offsetY) => {
-      element.style.setProperty('--x',Math.round((coords.x+1)*this.width*.5)+'px');
-      element.style.setProperty('--y',Math.round((1-coords.y)*this.height*.5+offsetY)+'px');
+    const place = (element,x,y) => {
+      element.style.setProperty('--x',Math.round(x)+'px');
+      element.style.setProperty('--y',Math.round(y)+'px');
     };
     this.camera.updateMatrixWorld();
     coords.copy(this.launchers[player].anchor).project(this.camera);
-    place(panel,0);
-    coords.fromArray(this.aims[player].userData.tip).project(this.camera);
-    place(aimGrip,29);
+    const x = (coords.x+1)*this.width*.5, y = (1-coords.y)*this.height*.5;
+    place(panel,x,y);
+    const side = x < this.width*.5 ? -1 : 1;
+    place(positionGrip,x+side*32,y+12);
+    const {tip,origin} = this.aims[player].userData;
+    coords.fromArray(tip).project(this.camera);
+    const tipX = (coords.x+1)*this.width*.5, tipY = (1-coords.y)*this.height*.5;
+    coords.fromArray(origin).project(this.camera);
+    const dx = tipX-(coords.x+1)*this.width*.5, dy = tipY-(1-coords.y)*this.height*.5;
+    const length = Math.max(1,Math.hypot(dx,dy));
+    place(aimGrip,tipX+dx/length*9,tipY+dy/length*9+5);
   }
 
   launchAnimation() {

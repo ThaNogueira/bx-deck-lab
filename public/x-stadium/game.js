@@ -1,6 +1,6 @@
 import { ArenaView } from './scene.js';
 import { Battle, DT, initPhysics } from './physics.js';
-import { ATTACK, BIT_TYPES, BITS, BLADE_TOP, BLADES, DEFAULTS, GRAMS_PER_MASS_UNIT, MOVE_USES, RATCHETS, STAMINA, getParts, railRating, sanitizeConfig, specialMove } from './rules.js';
+import { ATTACK, BIT_TYPES, BITS, BLADE_TOP, BLADES, DEFAULTS, GRAMS_PER_MASS_UNIT, MAX_LAUNCH_ANGLE, MOVE_USES, RATCHETS, STAMINA, getParts, railRating, sanitizeConfig, specialMove } from './rules.js';
 import { clamp } from './stadium.js';
 import { Link, roomCode } from './online.js';
 import { ArenaAudio } from './audio.js';
@@ -29,7 +29,6 @@ const icons = {
   mouse:'<rect x="6" y="2" width="12" height="20" rx="6"/><path d="M12 5v4"/>',
   target:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 1v3m0 16v3M1 12h3m16 0h3"/>',
   move:'<path d="M12 3v18M3 12h18M9 6l3-3 3 3m-6 12 3 3 3-3M6 9l-3 3 3 3m12-6 3 3-3 3"/>',
-  tilt:'<path d="m4 17 15-8M5 20h14M10 10a6 6 0 0 1 6-6m-2-2 2 2-2 3"/>',
   bolt:'<path d="m13 2-9 12h7l-1 8 10-12h-7z"/>',
   trophy:'<path d="M8 21h8m-4-5v5m-5-18h10v6a5 5 0 0 1-10 0zm0 2H3v2a4 4 0 0 0 4 4m10-6h4v2a4 4 0 0 1-4 4"/>',
   activity:'<path d="M2 12h5l3-7 4 14 3-7h5"/>',
@@ -81,6 +80,7 @@ const isHost = () => state.mode !== 'online' || state.localPlayer === 0;
 const activePlayer = () => state.mode === 'local' ? state.turn : state.localPlayer;
 const canEdit = i => state.phase === 'setup' && !state.ready[i] && (state.mode !== 'online' || i === state.localPlayer);
 const launchButton = $('launch'), launcherControls = $('launcher-controls'), aimGrip = $('launcher-aim-grip');
+const positionGrip = $('launcher-position-grip'), angleDial = $('launch-angle');
 const meterTrack = $('launch-power-track'), powerValue = $('power-value');
 const controls = $('combat-controls');
 const moves = {
@@ -197,7 +197,11 @@ function updateControls() {
   const local = activePlayer(), config = state.configs[local];
   const editing = canEdit(local);
   const settingUp = state.phase === 'setup';
-  $('angle-value').textContent = Math.round(config.angle) + '°';
+  const angle = Math.round(config.angle);
+  $('angle-value').textContent = angle + '°';
+  angleDial.setAttribute('aria-valuenow',angle);
+  angleDial.setAttribute('aria-valuetext',angle + ' graus');
+  angleDial.style.setProperty('--needle',angle/MAX_LAUNCH_ANGLE*65+'deg');
   const launchReady = available && editing && (state.mode !== 'online' || state.connected);
   const player = launchReady ? local : null;
   if (player !== timingPlayer) {
@@ -205,13 +209,12 @@ function updateControls() {
     meterStart = performance.now();
     showLaunchPower(45);
   }
-  launcherControls.classList.toggle('p1',local === 0);
-  launcherControls.classList.toggle('p2',local === 1);
-  aimGrip.classList.toggle('p1',local === 0);
-  aimGrip.classList.toggle('p2',local === 1);
   const gripsVisible = available && editing && !state.cameraDrag;
-  launcherControls.hidden = !gripsVisible;
-  aimGrip.hidden = !gripsVisible;
+  for (const element of [launcherControls,positionGrip,aimGrip]) {
+    element.classList.toggle('p1',local === 0);
+    element.classList.toggle('p2',local === 1);
+    element.hidden = !gripsVisible;
+  }
   const status = $('launch-status');
   status.hidden = !available || !settingUp || (!state.cameraDrag && launchReady);
   status.textContent = !editing ? 'Aguardando o adversário' :
@@ -827,7 +830,7 @@ function multiplayer() {
 }
 
 function help() {
-  openDialog('help', 'COMO JOGAR', '<ul><li>Arraste o lançador ou o botão <b>Mover</b> para posicionar. Arraste a ponta da seta para mirar e puxe <b>Inclinar</b> para cima ou para baixo.</li>' +
+  openDialog('help', 'COMO JOGAR', '<ul><li>Arraste o lançador para posicionar e a bolinha da seta para mirar. Toque no arco do dial ou gire o ponteiro para escolher a inclinação.</li>' +
     '<li>A força sobe sozinha. Toque em <b>Let it rip</b> ou pressione <b>Espaço</b> no ponto desejado da barra.</li>' +
     '<li>Arraste para orbitar. Durante o lançamento, use o botão direito ou ative a mão nos controles de câmera. Role, faça pinça ou use + e − para dar zoom. Mova dois dedos juntos ou segure Alt enquanto arrasta para deslocar a câmera.</li>' +
     '<li>Com giro e velocidade, o Bit pode engatar no trilho verde e fazer um <b>Xtreme Dash</b>.</li>' +
@@ -965,6 +968,33 @@ document.addEventListener('change', e => {
   }
 });
 launchButton.addEventListener('click',launch);
+function setDialAngle(e) {
+  if (!canEdit(activePlayer()) || state.cameraDrag) return;
+  const bounds = angleDial.getBoundingClientRect();
+  const x = e.clientX-bounds.left-bounds.width/2;
+  const y = bounds.top+bounds.height/2-e.clientY;
+  if (Math.hypot(x,y)<4) return;
+  const degrees = Math.atan2(x,Math.max(0,y))*180/Math.PI;
+  configure({angle:Math.round(clamp(degrees/65,-1,1)*MAX_LAUNCH_ANGLE)},false);
+}
+angleDial.addEventListener('pointerdown', e => {
+  if (!e.isPrimary || e.button !== 0) return;
+  angleDial.setPointerCapture(e.pointerId);
+  setDialAngle(e);
+});
+angleDial.addEventListener('pointermove', e => {
+  if (angleDial.hasPointerCapture(e.pointerId)) setDialAngle(e);
+});
+angleDial.addEventListener('pointerup', sendSetup);
+angleDial.addEventListener('pointercancel', sendSetup);
+angleDial.addEventListener('keydown',e => {
+  const angle = state.configs[activePlayer()].angle;
+  const next = {ArrowLeft:angle-1,ArrowDown:angle-1,ArrowRight:angle+1,ArrowUp:angle+1,Home:-MAX_LAUNCH_ANGLE,End:MAX_LAUNCH_ANGLE}[e.key];
+  if (next === undefined) return;
+  e.preventDefault();
+  e.stopPropagation();
+  configure({angle:next});
+});
 document.addEventListener('keydown', e => {
   if (dialog.open || e.ctrlKey || e.altKey || e.metaKey) return;
   if (view && !['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName)) {
@@ -1112,6 +1142,7 @@ try {
     change: partial => configure(partial,false),
     commit: sendSetup,
     panel: launcherControls,
+    positionGrip,
     aimGrip,
     power: () => meterPower,
   });
