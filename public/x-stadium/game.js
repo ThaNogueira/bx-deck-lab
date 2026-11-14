@@ -53,6 +53,7 @@ const state = {
   result: null, qte: null, reflex: true, trial: null, sound: false, camera: 'orbit', cameraDrag: false, connected: false, roomStatus: '',
 };
 let view, available = false, workPlayer = 0, accumulator = 0, flashTimer, lastTime = performance.now(), lastSent = 0, lastHud = 0;
+let launchMode = 'position';
 let workPart = null;
 const audio = new ArenaAudio();
 const graphics = $('graphics');
@@ -70,6 +71,7 @@ let onlineDraft = '';
 const dialog = $('dialog'), content = $('dialog-content'), overlay = $('battle-overlay');
 const phases = { setup: 'PREPARAÇÃO', countdown: 'LANÇAMENTO', fight: 'EM BATALHA', qte: 'IMPACTO', result: 'RESULTADO' };
 const QTE_SPEED = .012;
+const PHYSICS_FRAME_BUDGET = 8;
 
 const isHost = () => state.mode !== 'online' || state.localPlayer === 0;
 const activePlayer = () => state.mode === 'local' ? state.turn : state.localPlayer;
@@ -175,19 +177,23 @@ function updateControls() {
   const local = activePlayer(), config = state.configs[local];
   const editing = canEdit(local);
   const settingUp = state.phase === 'setup';
-  $('heading').value = config.heading;
-  $('heading-value').textContent = config.heading + '°';
-  $('angle').value = config.angle;
-  $('power').value = config.power;
-  $('angle-value').value = config.angle + '°';
-  $('power-value').value = config.power + '%';
-  $('heading').disabled = $('angle').disabled = $('power').disabled = !editing;
-  $('launch-title').textContent = state.mode === 'local' ? 'Lançamento · J' + (local + 1) : 'Lançamento';
+  $('heading-value').textContent = Math.round(config.heading) + '°';
+  $('angle-value').textContent = Math.round(config.angle) + '°';
+  $('power-value').textContent = Math.round(config.power) + '%';
+  $('launch').style.setProperty('--charge', Math.round(config.power) + '%');
+  for (const button of $('launch-modes').querySelectorAll('button')) {
+    button.setAttribute('aria-pressed',button.dataset.launchMode === launchMode);
+  }
+  $('launch-title').textContent = state.mode === 'local' ? 'Lançador · J' + (local + 1) : 'Lançador';
   $('launch-hint').textContent = !editing ? 'Aguardando o adversário' : state.cameraDrag ?
-    'Arraste para mover a câmera.' : 'Toque ou arraste na sua metade.';
+    'Arraste para mover a câmera.' : {
+      position:'Arraste na arena para posicionar.',
+      heading:'Toque ou arraste para onde quer mirar.',
+      angle:'Arraste na arena para inclinar.',
+    }[launchMode];
   $('launch-panel').hidden = !settingUp;
   $('launch-panel').dataset.editing = editing;
-  $('launch-ranges').hidden = !editing;
+  $('launch-modes').hidden = !editing;
   $('launch').hidden = !editing;
   $('camera-drag').hidden = !settingUp;
   $('camera-drag').setAttribute('aria-pressed',state.cameraDrag);
@@ -203,8 +209,7 @@ function updateControls() {
   $('stage').dataset.phase = state.phase;
   $('stage').dataset.gesture = editing && !state.cameraDrag ? 'launch' : 'camera';
   $('launch').disabled = !available || !editing || state.mode === 'online' && !state.connected;
-  $('launch').querySelector('span').textContent = state.mode === 'local' && local === 0 ? 'Confirmar J1' :
-    state.mode === 'online' && !state.connected ? 'Aguardando sala' : 'Puxar corda';
+  $('launch').querySelector('span').textContent = state.mode === 'online' && !state.connected ? 'Aguardando sala' : 'Puxe e solte';
   document.querySelectorAll('.bey-edit').forEach((el, i) => {
     el.hidden = !canEdit(i);
     $('player' + (i + 1) + '-panel').dataset.active = editing && i === local;
@@ -801,7 +806,7 @@ function multiplayer() {
 
 function help() {
   openDialog('help', 'COMO JOGAR', '<ul><li>Arraste dentro da abertura para posicionar o lançador na sua metade. Ajuste mira, inclinação e força. Use <b>Shift</b> ao arrastar para inclinar com o mouse.</li>' +
-    '<li>Pressione Espaço ou <b>Puxar corda</b>. Os dois piões descem pelo vão da tampa. Uma colisão no ar antes de os dois pousarem repete a rodada.</li>' +
+    '<li>Use <b>Posição</b>, <b>Mira</b> e <b>Inclinação</b> para ajustar direto na arena. Arraste a corda e solte para lançar. Quanto mais longe puxar, mais força. Um toque ou Espaço usa a força atual.</li>' +
     '<li>Arraste para orbitar. Durante o lançamento, use o botão direito ou ative a mão nos controles de câmera. Role, faça pinça ou use + e − para dar zoom. Mova dois dedos juntos ou segure Alt enquanto arrasta para deslocar a câmera.</li>' +
     '<li>Com giro e velocidade, o Bit pode engatar no trilho verde e fazer um <b>Xtreme Dash</b>.</li>' +
     '<li>Use <b>E/R</b> para a habilidade do Bit e o Xtreme Dash, com três usos de cada por rodada. No duelo local, J2 usa <b>I/O</b>. Defesa firma o centro e resistência circula ao redor dele.</li>' +
@@ -937,13 +942,50 @@ document.addEventListener('change', e => {
     state.reflex = e.target.checked;
   }
 });
-$('heading').addEventListener('input', e => configure({heading:+e.target.value}));
-$('angle').addEventListener('input', e => configure({angle:+e.target.value}));
-$('power').addEventListener('input', e => {
-  configure({power:+e.target.value});
-  if (canEdit(activePlayer())) view.setCord(activePlayer(),+e.target.value);
+$('launch-modes').addEventListener('click', e => {
+  const button = e.target.closest('[data-launch-mode]');
+  if (!button || !canEdit(activePlayer())) return;
+  launchMode = button.dataset.launchMode;
+  state.cameraDrag = false;
+  updateControls();
 });
-$('launch').addEventListener('click', launch);
+const ripcord = $('launch');
+let pull = null;
+function chargeCord(e) {
+  const distance = Math.hypot(e.clientX-pull.x,e.clientY-pull.y);
+  if (distance < 8 && !pull.dragged) return;
+  pull.dragged = true;
+  const power = Math.round(45+55*clamp((distance-8)/122,0,1));
+  configure({power},false);
+  view.setCord(activePlayer(),power);
+}
+ripcord.addEventListener('pointerdown', e => {
+  if (ripcord.disabled || !e.isPrimary || e.button !== 0) return;
+  pull = {id:e.pointerId,x:e.clientX,y:e.clientY,dragged:false,power:state.configs[activePlayer()].power};
+  ripcord.setPointerCapture(e.pointerId);
+  ripcord.dataset.pulling = 'true';
+});
+ripcord.addEventListener('pointermove', e => {
+  if (pull?.id === e.pointerId) chargeCord(e);
+});
+ripcord.addEventListener('pointerup', e => {
+  if (pull?.id !== e.pointerId) return;
+  chargeCord(e);
+  pull = null;
+  delete ripcord.dataset.pulling;
+  launch();
+});
+function cancelPull(e) {
+  if (pull?.id !== e.pointerId) return;
+  configure({power:pull.power},false);
+  pull = null;
+  delete ripcord.dataset.pulling;
+}
+ripcord.addEventListener('pointercancel',cancelPull);
+ripcord.addEventListener('lostpointercapture',cancelPull);
+ripcord.addEventListener('click', e => {
+  if (e.detail === 0 && !pull) launch();
+});
 document.addEventListener('keydown', e => {
   if (dialog.open || e.ctrlKey || e.altKey || e.metaKey) return;
   if (view && !['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName)) {
@@ -1007,10 +1049,17 @@ function frame(now) {
   if (state.physics && ['fight','qte','result'].includes(state.phase) && isHost()) {
     const phase = state.phase, rate = phase === 'qte' ? QTE_SPEED : 1;
     accumulator += dt*rate;
+    const deadline = performance.now()+PHYSICS_FRAME_BUDGET;
     while (accumulator >= DT && state.phase === phase) {
       if (accumulator < 2*DT) previousFrames = state.physics.poses();
       state.physics.step(phase !== 'fight');
       accumulator -= DT;
+      // Drop excess catch-up work instead of starving rendering and touch input.
+      if (accumulator >= DT && performance.now() >= deadline) {
+        accumulator %= DT;
+        previousFrames = null;
+        break;
+      }
     }
     state.frames = state.physics.frames();
     if (state.phase === 'fight' && state.mode === 'cpu' && !state.trial && (state.physics.time >= state.cpuMoveAt || state.frames[1].moves.reflexBoost === 'ready')) {
@@ -1078,7 +1127,8 @@ updateCards(); updateScore(); updateControls();
 try {
   await Promise.all([initPhysics(), document.fonts.load('800 italic 24px Barlow').catch(() => {})]);
   view = new ArenaView($('world'), {
-    active: () => canEdit(activePlayer()) && !state.cameraDrag ? {config:state.configs[activePlayer()],player:activePlayer()} : null,
+    active: () => canEdit(activePlayer()) && !state.cameraDrag ?
+      {config:state.configs[activePlayer()],player:activePlayer(),mode:launchMode} : null,
     change: partial => configure(partial,false),
     commit: sendSetup,
   });

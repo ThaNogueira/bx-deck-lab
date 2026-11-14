@@ -139,11 +139,15 @@ export function coverSideGeometry() {
   ];
 }
 
-export function floorGeometry() {
+export function floorGeometry({angularStep = .032, bowlBands = 54} = {}) {
   const vertices = [0, 0, 0], faces = [];
-  const angles = sectors.flatMap(s => s.angles.slice(0, -1));
+  const angles = sectors.flatMap(({angles: sector}) => {
+    const start = sector[0], end = sector.at(-1);
+    const segments = Math.ceil((end-start)/angularStep);
+    return Array.from({length:segments},(_,i)=>start+(end-start)*i/segments);
+  });
   const sides = angles.length;
-  const bowlBands = 54, lipBands = 6;
+  const lipBands = 6;
   for (let row=1;row<=bowlBands;row++) {
     for (const angle of angles) vertices.push(...polarPoint(rimStart(angle)*row/bowlBands,angle));
   }

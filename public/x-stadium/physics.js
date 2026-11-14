@@ -1,5 +1,5 @@
 import RAPIER from './vendor/rapier.mjs';
-import { launchSpeed, runningSpeed } from './motion.js';
+import { runningSpeed } from './motion.js';
 import { FREE_RING_PROFILE, bladeContact, bladeHullSectors, bladeLevels, bladeOutline } from './blade-shape.js';
 import { BLADE_BASE, GEAR_HEIGHT, GEAR_HALF_HEIGHT, MOVE_USES, RATCHET_OUTLINES, bitProfile, getParts, launchPose, launchRelease, railRating, ratchetLobes, specialMove } from './rules.js';
 import { POCKETS, RAIL, SHELL, TAU, coverGeometry, coverCollarGeometry, coverSideGeometry, openingRadius, sectors, edgeRadius, mouthRadius, lipHeight, pocketAt, pocketBackHeight, pocketGeometry, pocketContains,
@@ -10,16 +10,20 @@ const GRAVITY = 9.81 / .03;
 const MAX_TRANSLATION = 46;
 const BLADE_COLLISIONS = 0x0002ffff;
 const LOWER_PART_COLLISIONS = 0x0004ffff;
+const BOWL_MEMBERSHIP = 0x0010;
+const SLOW_BOWL_MEMBERSHIP = 0x0020;
 const COVER_COLLISIONS = 0x00080002;
 const STADIUM_SOLVER = 0x0001ffff;
-const ENGAGED_BLADE_SOLVER = 0x0002fffe;
-const ENGAGED_LOWER_SOLVER = 0x0004fffe;
+const RAIL_FLOOR_FILTER = 0xffff & ~(0x0001 | BOWL_MEMBERSHIP | SLOW_BOWL_MEMBERSHIP);
+const ENGAGED_BLADE_SOLVER = 0x00020000 | RAIL_FLOOR_FILTER;
+const ENGAGED_LOWER_SOLVER = 0x00040000 | RAIL_FLOOR_FILTER;
 // The collision solver advances a resolved spin rate. The extra axial inertia
 // represents angular momentum at launch speeds above that resolution.
 const AXIAL_MOMENTUM_SCALE = 1.43;
 const WOBBLE_RATIO = .17;
 const REST_SPIN = 2.8;
 const SPIN_FINISH_DELAY = .60;
+const REST_QUIET_TIME = .32;
 const REFERENCE_MASS = 1.28;
 const DASH_CARRY_TIME = .61;
 const BLADE_SHELL_CLEARANCE = .018;
@@ -174,7 +178,14 @@ export class Battle {
         .setFriction(friction).setRestitution(restitution).setSolverGroups(STADIUM_SOLVER)
     );
     const addFloor = (geo,friction,restitution) => this.floorHandles.add(addMesh(geo,friction,restitution).handle);
-    addFloor(floorGeometry(),.014,.018);
+    const bowl = addMesh(floorGeometry(),.014,.018);
+    bowl.setCollisionGroups(BOWL_MEMBERSHIP<<16 | 0x0006);
+    bowl.setSolverGroups(BOWL_MEMBERSHIP<<16 | 0x0006);
+    const slowBowl = addMesh(floorGeometry({angularStep:.105,bowlBands:18}),.014,.018);
+    slowBowl.setCollisionGroups(SLOW_BOWL_MEMBERSHIP<<16 | 0x0006);
+    slowBowl.setSolverGroups(SLOW_BOWL_MEMBERSHIP<<16 | 0x0006);
+    this.floorHandles.add(bowl.handle);
+    this.floorHandles.add(slowBowl.handle);
     for (const geometry of [coverGeometry(), ...coverCollarGeometry(), ...coverSideGeometry()]) {
       const cover = addMesh(geometry,.075,.10);
       cover.setCollisionGroups(COVER_COLLISIONS);
@@ -213,17 +224,10 @@ export class Battle {
     const { blade, ratchet, ratchetBottom, standing, bit } = parts;
     const inertia = massProfile(parts);
     const {position, rotation:q, direction} = launchPose(config);
-    const speed = launchSpeed(config.power,bit.style);
     const axis = axisOf(q);
     const launchSpin = 68 + config.power * 1.92;
     const spinDirection = blade.spinDirection;
-    const {settle,fall,fraction} = launchRelease(config);
-    const exitX = position.x+direction.x*speed*fraction*.065;
-    const exitZ = position.z+direction.z*speed*fraction*.065;
-    const maxRadius = openingRadius(Math.atan2(exitZ,exitX))-blade.radius-.09;
-    const pathLength = horizontalSpeed(position);
-    const airSpeed = horizontalSpeed({x:exitX,z:exitZ}) <= maxRadius ? speed*fraction :
-      speed*fraction*clamp((maxRadius-pathLength)/.70,0,1);
+    const {settle,fall,speed,airSpeed} = launchRelease(config);
     const body = this.world.createRigidBody(
       RAPIER.RigidBodyDesc.dynamic()
         .setAdditionalMassProperties(inertia.mass, { x: 0, y: inertia.com, z: 0 },
@@ -231,7 +235,7 @@ export class Battle {
         .setTranslation(position.x,position.y,position.z)
         .setRotation(q).setLinvel(direction.x * airSpeed,fall,direction.z * airSpeed)
         .setAngvel(scale(axis, launchSpin * spinDirection))
-        .setLinearDamping(.018).setCanSleep(false)
+        .setLinearDamping(.018)
     );
 
     const bladeHulls = bladeHullSectors(blade);
@@ -242,41 +246,62 @@ export class Battle {
       const angle = i*TAU/outline.length, r = radius+(reach-1)*contour;
       return [{x:r*Math.cos(angle),y,z:r*Math.sin(angle)}];
     }));
-    const bladeColliders = bladeHulls.map(vertices => this.world.createCollider(
-      RAPIER.ColliderDesc.convexHull(vertices).setDensity(0).setCollisionGroups(BLADE_COLLISIONS)
-        .setFriction(.025+blade.catch*.11).setRestitution(.065+blade.catch*.29),body));
+    const createMetal = (vertices,groups = BLADE_COLLISIONS & ~SLOW_BOWL_MEMBERSHIP) => this.world.createCollider(
+      RAPIER.ColliderDesc.convexHull(vertices).setDensity(0).setCollisionGroups(groups)
+        .setFriction(.025+blade.catch*.11).setRestitution(.065+blade.catch*.29),body);
+    const bladeColliders = bladeHulls.map(vertices => createMetal(vertices));
     const freeRingCollider = blade.freeRing ? this.world.createCollider(
-      tipShape(FREE_RING_PROFILE,0,32).setDensity(0).setCollisionGroups(BLADE_COLLISIONS)
+      tipShape(FREE_RING_PROFILE,0,32).setDensity(0).setCollisionGroups(BLADE_COLLISIONS & ~SLOW_BOWL_MEMBERSHIP)
         .setFriction(.002).setRestitution(.10).setFrictionCombineRule(RAPIER.CoefficientCombineRule.Min),body) : null;
     if (freeRingCollider) bladeColliders.push(freeRingCollider);
+    // Low-speed floor contact needs the outline, but not overlapping metal sectors.
+    const lowSpeedHull = [];
+    const levels = bladeLevels(blade);
+    for (const [radius,y,contour] of [levels[0],levels[1],levels[2],levels[3],levels[5],[.379,.207,0]]) {
+      const samples = contour ? blade.lobes*5 : 10;
+      for (let i=0;i<samples;i++) {
+        const sample = i*outline.length/samples;
+        const index = Math.floor(sample);
+        const reach = outline[index]+(outline[(index+1)%outline.length]-outline[index])*(sample-index);
+        const r = radius+(reach-1)*contour;
+        const a = TAU*i/samples;
+        lowSpeedHull.push(r*Math.cos(a),y,r*Math.sin(a));
+      }
+    }
+    const lowSpeedCollider = createMetal(Float32Array.from(lowSpeedHull),BLADE_COLLISIONS & ~BOWL_MEMBERSHIP);
+    lowSpeedCollider.setEnabled(false);
     const ratchetCollider = this.world.createCollider(
       ratchetShape(blade,ratchet,ratchetBottom)
-        .setDensity(0).setCollisionGroups(LOWER_PART_COLLISIONS).setFriction(.10).setRestitution(.20), body
+        .setDensity(0).setCollisionGroups(LOWER_PART_COLLISIONS & ~SLOW_BOWL_MEMBERSHIP).setFriction(.10).setRestitution(.20), body
     );
     const tipProfile = bitProfile(bit);
     const tip = this.world.createCollider(
       tipShape(tipProfile,standing,bit.facets ?? 10)
-        .setDensity(0).setCollisionGroups(LOWER_PART_COLLISIONS).setFriction(.0006).setRestitution(.009)
+        .setDensity(0).setCollisionGroups(LOWER_PART_COLLISIONS & ~SLOW_BOWL_MEMBERSHIP).setFriction(.0006).setRestitution(.009)
         .setFrictionCombineRule(RAPIER.CoefficientCombineRule.Min), body
     );
     const shoulderRadius = bit.shape === 'disk' ? .245 : bit.shape === 'pointFlat' ? bit.tip : bit.gear * .95;
     const shoulderY = bit.shape === 'disk' ? .116 : bit.shape === 'pointFlat' ? .049 : GEAR_HEIGHT;
     const bitShoulder = this.world.createCollider(
       RAPIER.ColliderDesc.roundCylinder(.013, shoulderRadius-.014, .014)
-        .setTranslation(0, -standing + shoulderY, 0).setDensity(0).setCollisionGroups(LOWER_PART_COLLISIONS)
+        .setTranslation(0, -standing + shoulderY, 0).setDensity(0).setCollisionGroups(LOWER_PART_COLLISIONS & ~SLOW_BOWL_MEMBERSHIP)
         .setFriction(.0008).setRestitution(.022)
         .setFrictionCombineRule(RAPIER.CoefficientCombineRule.Min), body
     );
     body.recomputeMassPropertiesFromColliders();
     return {
-      ...parts, inertia, body, bladeColliders, freeRingCollider, rimVariation, rimSupport, ratchetCollider, tip, tipProfile, bitShoulder, player, launchSpin, spinDirection,
+      ...parts, inertia, body, bladeColliders, fullMetal:bladeColliders, lowSpeedMetal:[lowSpeedCollider],
+      freeRingCollider, rimVariation, rimSupport, ratchetCollider, tip, tipProfile, bitShoulder,
+      lowerColliders:[ratchetCollider,tip,bitShoulder], player, launchSpin, spinDirection,
       supportProfile:[...tipProfile,[shoulderRadius-.005,shoulderY-.021]],
       launch: { direction, speed, settle }, landedAt: -1,
-      load: 0, scrape: 0, spin: launchSpin, stoppedAt: null, lockDamage: 0, lastRatchetHit: -1, boundAt: -Infinity,
+      load: 0, scrape: 0, spin: launchSpin, stoppedAt: null, quietSince: null,
+      canBalanceAtRest: bit.shape === 'flat' && Math.random() < .01,
+      lockDamage: 0, lastRatchetHit: -1, boundAt: -Infinity,
       charges: { [specialMove(bit)]: MOVE_USES, dash: MOVE_USES }, move: null, moveReadyAt: 0, nextRunAt: 0,
       rail: null, railReadyAt: 0, railSupportUntil: 0, impactUntil: 0, pushedUntil: 0, liftUntil: 0, driveResumeAt: 0,
       dashCarry: 0, dashAt: -1, lastWall: -1, lastWallWear: -1, impactTrailUntil: 0,
-      escape: null, defeat: null, landed: false, rimStrikeUntil: 0, rimLiftUntil: 0,
+      escape: null, defeat: null, landed: false, rimStrikeUntil: 0, rimLiftUntil: 0, railOverrun: null,
     };
   }
 
@@ -454,7 +479,7 @@ export class Battle {
     // While meshed, the rack supplies the floor constraint at the Bit. Keep
     // Bey-to-Bey contacts active while avoiding a second floor impulse.
     for (const blade of top.bladeColliders) blade.setSolverGroups(engaged ? ENGAGED_BLADE_SOLVER : BLADE_COLLISIONS);
-    for (const part of [top.ratchetCollider,top.bitShoulder,top.tip]) {
+    for (const part of top.lowerColliders) {
       part.setSolverGroups(engaged ? ENGAGED_LOWER_SOLVER : LOWER_PART_COLLISIONS);
     }
   }
@@ -467,6 +492,7 @@ export class Battle {
 
   prepare(top) {
     const { body, bit, blade, inertia } = top;
+    if (body.isSleeping()) return;
     const q = body.rotation(), p = body.translation();
     let v = body.linvel();
     const entry = top.escape;
@@ -506,8 +532,9 @@ export class Battle {
 
     const floor = floorAt(p.x,p.z);
     const nearFloor = clamp((floor + top.standing + .25 - p.y) / .22,0,1);
-    if (top.stoppedAt !== null && supported+abrasion > .03) {
-      const brake = Math.exp(-DT*2.4);
+    const struck = this.time < top.impactUntil;
+    if (top.stoppedAt !== null && supported+abrasion > .03 && !struck && horizontalSpeed(v) > .05) {
+      const brake = Math.exp(-DT*(abrasion > .08 ? 7 : 2.4));
       body.applyImpulse({x:v.x*(brake-1)*inertia.mass,y:0,z:v.z*(brake-1)*inertia.mass},true);
     }
     const stability = (1-end)**2*(.70+.30*Math.sqrt(clamp(spin/top.launchSpin,0,1)));
@@ -515,7 +542,7 @@ export class Battle {
     const brace = top.rail ? 1 : recovering;
     const rocking = sub(omega,scale(axis,axial));
     const endRock = top.landed && !top.rail && nearFloor > .46 ? end : 0;
-    const damping = (supported*.8+stability*(19+25*nearFloor)+2.5*endRock)*top.balance;
+    const damping = (supported*.8+stability*(19+25*nearFloor)+(2.5+(!struck ? 6*abrasion : 0))*endRock)*top.balance;
     const settle = (.46*nearFloor+.54*clamp(supported+abrasion,0,1))*stability*brace;
     let steering = scale(cross(axis,vertical),settle*720*top.balance);
     if (endRock > 0) {
@@ -523,11 +550,16 @@ export class Battle {
       const side = horizontalSpeed(axis);
       const fall = side > .004 ? scale(cross(vertical,axis),1/side) : {x:top.player ? -.8 : .8,y:0,z:.6};
       const narrow = clamp(1-bit.tip/.14,0,1);
-      const desired = endRock*(.58+narrow*.10);
-      const fallTorque = clamp((desired-lean)*21,0,7)*endRock;
+      const rimHeight = Math.atan2(top.standing-.067,blade.radius*.98);
+      const desired = endRock*(rimHeight+.20+narrow*.10);
+      const unstable = !top.canBalanceAtRest || lean > .14 || struck;
+      const tipLeverage = inertia.mass*GRAVITY*bit.tip/inertia.transverse;
+      const fallTorque = unstable ? clamp((desired-lean)*2,0,1)*endRock**2 *
+        (25+tipLeverage*.85) * (1-clamp(abrasion*3.8,0,1)) : 0;
       steering = add(steering,scale(fall,fallTorque));
     }
-    body.applyTorqueImpulse(scale(sub(steering,scale(rocking,damping)),inertia.transverse*DT),true);
+    const torque = sub(steering,scale(rocking,damping));
+    if (dot(torque,torque) > .0001) body.applyTorqueImpulse(scale(torque,inertia.transverse*DT),false);
     if (top.spin <= REST_SPIN) return;
     if (top.launch.settle > .14 && recovering < .84 && top.landed && this.time >= top.impactUntil) {
       const damping = -22*DT*inertia.mass;
@@ -594,12 +626,11 @@ export class Battle {
         return false;
       }
       const rating = railRating(bit);
-      const pitchSpeed = top.spin*bit.gear*(.86+rating*.0052);
-      const maxSpeed = 10+rating*.325;
-      const traction = clamp((Math.min(pitchSpeed,maxSpeed)-run.speed)*11,-59,195)*bit.grip;
+      const pitchSpeed = top.spin*(.22 + (bit.gear-.19)*.28);
+      const maxSpeed = 29+rating*.115;
+      const traction = clamp((Math.min(pitchSpeed,maxSpeed)-run.speed)*11,-59,195)*(.82+bit.grip*.18);
       run.speed = Math.max(4,run.speed + traction*DT);
-      const railLoss = Math.max(0,traction)*inertia.mass*bit.gear/inertia.polar*.55 +
-        (2.5+rating*.067+run.speed*.062)*Math.sqrt(bit.drain);
+      const railLoss = Math.max(0,traction)*inertia.mass*.20/inertia.polar*.58 + 6 + run.speed*.12;
       this.spendSpin(top,railLoss*DT,axis);
       const frame = railFrame(Math.cos(run.angle),Math.sin(run.angle));
       const step = run.speed * DT / (frame.length-bit.gear);
@@ -639,10 +670,11 @@ export class Battle {
     const manual = top.move?.kind === 'dash' && top.move.manual;
     const pushed = this.time < top.pushedUntil;
     const speed = horizontalSpeed(v);
+    const entrySpeed = manual ? 2.2 : pushed ? 6 : 7.5;
     if (top.load+top.scrape < .02 || gap < (manual ? -.30 : -.145) || gap > .18 || gearHeight < RAIL.bottom-verticalMargin ||
       gearHeight > RAIL.top+verticalMargin+(manual ? .035 : 0) || v.y > 3.4 || outward < -.85 ||
-      speed < (manual ? 2.2 : 7.5) || !manual && (axis.y < .966 || outward < .4 && along < 6)) return false;
-    if (!manual && Math.random() >= (pushed ? .42 : .80)) {
+      speed < entrySpeed || !manual && (axis.y < .966 || outward < .4 && along < 6)) return false;
+    if (!manual && Math.random() >= (pushed ? .68 : .80)) {
       const rebound = 1.18*Math.max(3.5,outward);
       body.setLinvel({x:v.x*.75-rail.nx*rebound,y:Math.min(v.y,.8),z:v.z*.75-rail.nz*rebound},true);
       this.spendSpin(top,1.6+.14*speed,axis);
@@ -656,7 +688,7 @@ export class Battle {
     const toExit = positiveAngle((railExitAngle(direction)-rail.angle)*direction);
     const remaining = Math.max(.075,toExit);
     const initialSpeed = Math.max(3.1,along);
-    top.rail = { angle:rail.angle, direction, remaining, travel:0, initialSpeed, speed:initialSpeed, announced:false };
+    top.rail = { angle:rail.angle, direction, remaining, travel:0, initialSpeed, speed:initialSpeed, announced:false, pushed };
     top.move = null;
     top.nextRunAt = Math.max(top.nextRunAt,this.time+2.05);
     this.setRailContact(top,true);
@@ -678,21 +710,49 @@ export class Battle {
     let inward = {x:-x/length+frame.tx*run.direction*bend,y:0,z:-z/length+frame.tz*run.direction*bend};
     const rival = this.tops[1-top.player];
     const target = add(rival.body.translation(),scale(rival.body.linvel(),.095));
-    if (rival.landed && !rival.escape && horizontalSpeed(target) < 3.95) {
+    if (bit.style > 0 && rival.landed && !rival.escape && horizontalSpeed(target) < 3.95) {
       const toward = {x:target.x-x,y:0,z:target.z-z};
       const aim = bit.style*.47;
       inward = add(scale(inward,1-aim),scale(toward,aim/horizontalSpeed(toward)));
     }
     const charge = clamp(run.travel/4.9,0,1);
     const speed = run.speed * (.90 + .15*charge);
+    const pocket = this.railExitPocket(run,x,z,inward);
+    top.railOverrun = null;
+    if (pocket) {
+      const reach = mouthRadius(pocket.angle)+.7;
+      top.railOverrun = {x:Math.cos(pocket.angle)*reach,z:Math.sin(pocket.angle)*reach};
+      inward = sub({...top.railOverrun,y:0},{x,y:0,z});
+      top.rimStrikeUntil = this.time+.85;
+    }
     const drive = scale(inward,speed/horizontalSpeed(inward));
     body.setLinvel(drive,true);
-    this.spendSpin(top,(1.15+(2+run.speed*.13)*charge)*Math.sqrt(bit.drain));
+    this.spendSpin(top,1.7+(3.6+run.speed*.15)*charge);
     this.releaseRail(top,.36);
-    top.driveResumeAt = this.time+.27;
+    top.driveResumeAt = this.time+(pocket ? .43 : .27);
     top.dashAt = this.time;
     top.dashCarry = Math.max(top.dashCarry,run.speed*(.19+.47*charge));
     if (!this.finished) this.onEvent({type:'rail-exit',player:top.player,at:[x,y,z]});
+  }
+
+  railExitPocket(run,x,z,exit) {
+    const speed = clamp((run.speed-18)/23,0,1);
+    const distance = clamp((run.travel-1.8)/8.5,0,1);
+    if (Math.random() >= speed*distance*(run.pushed ? .36 : .24)) return null;
+    const length = horizontalSpeed(exit);
+    const weighted = POCKETS.map(zone => {
+      const reach = mouthRadius(zone.angle)+.65;
+      const dx = Math.cos(zone.angle)*reach-x, dz = Math.sin(zone.angle)*reach-z;
+      const alignment = (dx*exit.x+dz*exit.z)/(Math.hypot(dx,dz)*length);
+      const weight = Math.max(0,.42+alignment)**2*(zone.points === 3 ? .26 : 1);
+      return {zone,weight};
+    });
+    let roll = Math.random()*weighted.reduce((sum,pocket)=>sum+pocket.weight,0);
+    for (const {zone,weight} of weighted) {
+      roll -= weight;
+      if (roll < 0) return zone;
+    }
+    return null;
   }
 
   stadiumContact(collider) {
@@ -814,6 +874,35 @@ export class Battle {
     }
   }
 
+  updateSlowBody(top) {
+    if (!top.landed || top.rail) return;
+    const {body} = top;
+    const slow = endOfSpin(top) > (top.bladeColliders === top.fullMetal ? .34 : .22);
+    const metal = slow ? top.lowSpeedMetal : top.fullMetal;
+    if (top.bladeColliders !== metal) {
+      for (const collider of top.bladeColliders) collider.setEnabled(false);
+      for (const collider of metal) collider.setEnabled(true);
+      const groups = LOWER_PART_COLLISIONS & ~(slow ? BOWL_MEMBERSHIP : SLOW_BOWL_MEMBERSHIP);
+      for (const collider of top.lowerColliders) collider.setCollisionGroups(groups);
+      top.bladeColliders = metal;
+    }
+    if (body.isSleeping()) return;
+    const v = body.linvel(), w = body.angvel();
+    const rimTilt = Math.atan2(top.standing-.067,top.blade.radius*.98);
+    const onRim = axisOf(body.rotation()).y < Math.cos(rimTilt-.04);
+    const balanced = top.canBalanceAtRest || onRim;
+    if (top.spin > REST_SPIN || !balanced || top.load+top.scrape < .025 || this.time < top.impactUntil ||
+      dot(v,v) > .37**2 || dot(w,w) > 1.15**2) {
+      top.quietSince = null;
+      return;
+    }
+    top.quietSince ??= this.time;
+    if (this.time-top.quietSince >= REST_QUIET_TIME) {
+      top.quietSince = null;
+      body.sleep();
+    }
+  }
+
   keepTipAboveFloor(top) {
     if (top.rail || !top.landed || endOfSpin(top) > .68) return;
     const {body,standing} = top, p = body.translation(), rotation = body.rotation();
@@ -851,7 +940,10 @@ export class Battle {
     if (this.finished && !presentation) return;
     this.time += DT;
     const [a, b] = this.tops;
-    for (const top of this.tops) this.prepare(top);
+    for (const top of this.tops) {
+      this.updateSlowBody(top);
+      this.prepare(top);
+    }
     const p1 = a.body.translation(), p2 = b.body.translation();
     const delta = sub(p2, p1);
     const distance = Math.hypot(delta.x, delta.z) || .001;
@@ -867,9 +959,10 @@ export class Battle {
       const sweep = !top.landed && (nearContact || descending);
       if (top.body.isCcdEnabled() !== sweep) top.body.enableCcd(sweep);
     }
-    this.world.step();
+    if (!a.body.isSleeping() || !b.body.isSleeping()) this.world.step();
     for (const top of this.tops) {
       const { body, tip, bitShoulder, ratchetCollider } = top;
+      if (body.isSleeping()) continue;
       const position = body.translation();
       const radius = horizontalSpeed(position);
       const axis = axisOf(body.rotation());
@@ -921,6 +1014,7 @@ export class Battle {
     }
     if (this.finished && !presentation) return;
     for (const top of this.tops) {
+      if (top.body.isSleeping()) continue;
       this.finishRailStep(top);
       this.contain(top);
       if (endOfSpin(top) < .85 || top.escape?.zone) this.settleVertical(top);
@@ -1035,6 +1129,7 @@ export class Battle {
       }
       if (impulse > 1.2) {
         this.releaseRail(top,.22);
+        top.railOverrun = null;
         top.railSupportUntil = 0;
         top.impactUntil = this.time + .095;
         if (closing > 5 && approach[1-top.player] > 3) top.pushedUntil = this.time+.75;
@@ -1143,8 +1238,11 @@ export class Battle {
     const cleanDash = dash > 2.0 && approach[player] > 12 && contactImpulse > 2.7;
     const surge = cleanDash ? 1.92 : 1.23;
     const impact = Math.min(22,contactImpulse*1.70,(lobe+dash)*surge+contactImpulse*(upper*.21+boundStrike*.48));
-    const weakness = endOfSpin(target)*clamp((power-.24)/.65,0,1);
-    const knockback = impact*(1-brace*.79)*(boosted ? 1.65 : 1)*(1+.44*weakness);
+    const reserve = target.spin/target.launchSpin;
+    const unsupported = clamp((.24-reserve)/.22,0,1);
+    const weakness = unsupported*clamp((power-.24)/.65,0,1);
+    const wideRim = clamp((target.blade.radius-.78)/.065,0,1);
+    const knockback = impact*(1-brace*.79)*(boosted ? 1.65 : 1)*(1+(.62+.19*wideRim)*weakness);
     const reboundStrength = Math.min(5.0,contactImpulse*(brace*.37+boundCounter*.56));
     if (knockback < .23 && reboundStrength < .23) return { strike: 0, dash: 0, attack: false };
     const direction = player === 0 ? 1 : -1;
@@ -1160,11 +1258,12 @@ export class Battle {
       Math.max(0,Math.min(9,knockback*.77+upper*5.2)*(1-guard)-Math.max(0,target.body.linvel().y)) : 0;
     if (lift) target.liftUntil = this.time+.14;
     if (attack > 1 && (cleanDash || knockback > 5.0 || upper > .30)) target.rimStrikeUntil = this.time+.44;
-    target.body.applyImpulse({x:kick.x,y:lift*target.inertia.mass,z:kick.z},true);
+    const strike = {x:kick.x,y:lift*target.inertia.mass,z:kick.z};
     if (weakness > 0) {
-      const tip = clamp(knockback*.13*weakness,0,1.2);
-      target.body.applyTorqueImpulse(scale(cross(vertical,normal),tip*direction),true);
-    }
+      const atContact = scale(strike,(.40+.24*wideRim)*weakness);
+      target.body.applyImpulseAtPoint(atContact,point,true);
+      target.body.applyImpulse(sub(strike,atContact),true);
+    } else target.body.applyImpulse(strike,true);
     if (boosted && knockback > 2.4) {
       target.impactTrailUntil = this.time+.48;
       target.pushedUntil = this.time+.75;
@@ -1255,6 +1354,7 @@ export class Battle {
       const inward = scale(position,-(3.6+2*margin)/radius);
       winner.body.setLinvel({x:velocity.x*.12+inward.x,y:clamp(velocity.y,-1,.6),z:velocity.z*.12+inward.z},true);
       this.releaseRail(winner,.30);
+      winner.railOverrun = null;
       winner.rimStrikeUntil = 0;
       winner.liftUntil = 0;
       winner.rimLiftUntil = 0;
@@ -1290,10 +1390,23 @@ export class Battle {
   }
 
   carryStrikeOverRim(top) {
-    if (this.time >= top.rimStrikeUntil || top.rail) return;
-    const { body } = top, p = body.translation(), v = body.linvel();
+    if (this.time >= top.rimStrikeUntil || top.rail) {
+      top.railOverrun = null;
+      return;
+    }
+    const { body } = top, p = body.translation();
     const r = Math.hypot(p.x,p.z);
+    let v = body.linvel();
     const speed = horizontalSpeed(v);
+    if (top.railOverrun && speed > 16 && !top.escape) {
+      const {x,z} = top.railOverrun;
+      const dx = x-p.x, dz = z-p.z, distance = Math.hypot(dx,dz);
+      if (distance > .55 && r < mouthRadius(Math.atan2(p.z,p.x)) && v.x*dx+v.z*dz > 0) {
+        const side = clamp((dx*v.z-dz*v.x)/distance*.15,-1,1);
+        v = {x:v.x+v.z/speed*side,y:v.y,z:v.z-v.x/speed*side};
+        body.setLinvel(v,true);
+      }
+    }
     if (r < 4 || speed < 7 || p.y-top.standing > floorAt(p.x,p.z)+.52) return;
     const ahead = {x:p.x+v.x*.076,z:p.z+v.z*.076};
     const angle = Math.atan2(ahead.z,ahead.x);
@@ -1312,6 +1425,7 @@ export class Battle {
     top.liftUntil = this.time+clearanceTime+.015;
     top.rimLiftUntil = top.liftUntil;
     top.rimStrikeUntil = 0;
+    top.railOverrun = null;
   }
 
   tryPocketJump(top,p,v,inPocket) {

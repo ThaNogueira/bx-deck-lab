@@ -1,10 +1,9 @@
 import * as T from './vendor/three.module.min.js';
 import { BITS, BLADES, MAX_LAUNCH_ANGLE, launchPose, launchRelease } from './rules.js';
-import { launchSpeed } from './motion.js';
 import { disposeBey, makeBey } from './bey-model.js';
 import { makeLauncher } from './launcher.js';
 import { TAU, RIDGE, RAIL, SHELL, SHOOT_HEIGHT, coverAngles, coverPoint, coverGeometry, coverCollarGeometry, coverSideGeometry, openingRadius, shellRadius,
-  floorGeometry, floorAt, height, mouthRadius, pocketGeometry, pocketWalls,
+  floorGeometry, floorAt, tipSurfaceAt, height, mouthRadius, pocketGeometry, pocketWalls,
   polarPoint, railFrame, railRadius, rimShelfGeometry, rimWallGeometry, sectors, stripGeometry, trayRadius, clamp } from './stadium.js';
 
 const mat = (color, roughness = .6, metalness = 0, extra = {}) => new T.MeshStandardMaterial({ color, roughness, metalness, ...extra });
@@ -269,17 +268,51 @@ function startShadowTexture() {
 
 function makeAim(color) {
   const g = new T.Group();
-  const material = new T.MeshBasicMaterial({ color, transparent: true, opacity: .92, depthWrite: false, side: T.DoubleSide });
-  const halo = new T.MeshBasicMaterial({ color, transparent: true, opacity: .19, depthWrite: false, side: T.DoubleSide });
-  ring(g, .80, .85, material, 0, 42);
-  ring(g, .72, 1.02, halo, -.012, 42);
-  for (let i = 0; i < 5; i++) mesh(g, plane(.036, .135), material, 0, 0, -1.06 - i * .20);
-  const arrow = new T.Shape();
-  arrow.moveTo(0, 0); arrow.lineTo(-.17, -.29); arrow.lineTo(0, -.19); arrow.lineTo(.17, -.29); arrow.closePath();
-  mesh(g, new T.ShapeGeometry(arrow).rotateX(-Math.PI / 2), material, 0, 0, -2.31);
-  g.renderOrder = 7;
-  g.children.forEach(child => { child.renderOrder = 7; });
+  const shape = new T.Shape();
+  shape.moveTo(-.09,0);shape.lineTo(.09,0);shape.lineTo(.09,.74);
+  shape.lineTo(.29,.74);shape.lineTo(0,1);shape.lineTo(-.29,.74);shape.lineTo(-.09,.74);shape.closePath();
+  const geometry = new T.ShapeGeometry(shape).rotateX(-Math.PI/2).toNonIndexed();
+  // Drape each small triangle over the bank and rim rather than tilting one flat decal.
+  const triangles = geometry.attributes.position;
+  const points = [];
+  for (let i=0;i<triangles.count;i+=3) {
+    const a = [triangles.getX(i),triangles.getZ(i)];
+    const b = [triangles.getX(i+1),triangles.getZ(i+1)];
+    const c = [triangles.getX(i+2),triangles.getZ(i+2)];
+    const divide = 8;
+    const sample = (u,v) => [a[0]+(b[0]-a[0])*u/divide+(c[0]-a[0])*v/divide,
+      a[1]+(b[1]-a[1])*u/divide+(c[1]-a[1])*v/divide];
+    for (let u=0;u<divide;u++) for (let v=0;v<divide-u;v++) {
+      points.push(sample(u,v),sample(u+1,v),sample(u,v+1));
+      if (u+v+2<=divide) points.push(sample(u+1,v),sample(u+1,v+1),sample(u,v+1));
+    }
+  }
+  geometry.dispose();
+  const decal = new T.BufferGeometry();
+  decal.setAttribute('position',new T.BufferAttribute(new Float32Array(points.length*3),3));
+  const arrow = new T.Mesh(decal,new T.MeshBasicMaterial({color,transparent:true,depthWrite:false,side:T.DoubleSide}));
+  arrow.frustumCulled = false;
+  arrow.renderOrder = 8;
+  g.add(arrow);
+  g.userData = {arrow,points};
   return g;
+}
+
+function placeAim(aim,x,z,direction,length) {
+  const {arrow,points} = aim.userData;
+  const coordinates = arrow.geometry.attributes.position;
+  for (let distance=.12;distance<length;distance+=.12) {
+    const px = x+direction.x*distance, pz = z+direction.z*distance;
+    if (Math.hypot(px,pz) < mouthRadius(Math.atan2(pz,px))-.11) continue;
+    length = distance;
+    break;
+  }
+  points.forEach(([side,forward],i) => {
+    const px = x-direction.x*forward*length+direction.z*side;
+    const pz = z-direction.z*forward*length-direction.x*side;
+    coordinates.setXYZ(i,px,tipSurfaceAt(px,pz)+.13,pz);
+  });
+  coordinates.needsUpdate = true;
 }
 
 function makeLaunchArea(player,color) {
@@ -534,11 +567,26 @@ export class ArenaView {
   bindPointer() {
     const canvas = this.renderer.domElement;
     const pointers = new Map();
-    const pointAt = e => {
+    const floorPlane = new T.Plane(yAxis,0);
+    const pointAt = (e, floor = false) => {
       const rect = canvas.getBoundingClientRect();
       this.cursor.set((e.clientX-rect.left)/rect.width*2-1,1-(e.clientY-rect.top)/rect.height*2);
       this.raycaster.setFromCamera(this.cursor,this.camera);
-      return this.raycaster.ray.intersectPlane(this.launchPlane,this.launchPoint);
+      const target = this.raycaster.ray.intersectPlane(floor ? floorPlane : this.launchPlane,this.launchPoint);
+      if (target && floor) {
+        for (let i=0;i<3;i++) {
+          floorPlane.constant = -tipSurfaceAt(target.x,target.z);
+          this.raycaster.ray.intersectPlane(floorPlane,this.launchPoint);
+        }
+        floorPlane.constant = 0;
+      }
+      return target;
+    };
+    const steer = (e,point) => {
+      const target = pointAt(e,true);
+      if (!target || Math.hypot(target.x-point[0],target.z-point[1]) < .24) return;
+      const radians = Math.atan2(target.z-point[1],target.x-point[0])-Math.atan2(-point[1],-point[0]);
+      this.launchControls.change({heading:Math.round(radians*180/Math.PI)});
     };
     canvas.addEventListener('pointerdown', e => {
       if (e.button !== 0 && e.button !== 1 && e.button !== 2 || pointers.size >= 2) return;
@@ -552,9 +600,10 @@ export class ArenaView {
       const target = active ? pointAt(e) : null;
       const aiming = target && target.x*(active.player === 0 ? -1 : 1) >= 0 &&
         Math.hypot(target.x,target.z) < openingRadius(Math.atan2(target.z,target.x))+.15;
-      const mode = aiming ? e.shiftKey ? 'angle' : 'aim' : e.altKey || e.button === 1 ? 'pan' : 'orbit';
+      const mode = active?.mode === 'heading' ? 'heading' : active?.mode === 'angle' || aiming && e.shiftKey ? 'angle' :
+        aiming ? 'position' : e.altKey || e.button === 1 ? 'pan' : 'orbit';
       pointers.set(e.pointerId,{x:e.clientX,y:e.clientY,sx:e.clientX,sy:e.clientY,mode,
-        angle:active?.config.angle,changed:false});
+        angle:active?.config.angle,point:active?.config.point,changed:false});
       canvas.setPointerCapture(e.pointerId);
     });
     canvas.addEventListener('pointermove', e => {
@@ -567,7 +616,7 @@ export class ArenaView {
         const after = Math.hypot(e.clientX - other.x, e.clientY - other.y);
         if (before > 8 && after > 8) this.changeZoom(before/after);
         this.panCamera(dx*.5,dy*.5);
-      } else if (p.mode === 'aim') {
+      } else if (p.mode === 'position') {
         if (p.changed || Math.hypot(e.clientX-p.sx,e.clientY-p.sy) > 4) {
           const target = pointAt(e);
           if (target) {
@@ -575,6 +624,9 @@ export class ArenaView {
             p.changed = true;
           }
         }
+      } else if (p.mode === 'heading') {
+        steer(e,p.point);
+        p.changed = true;
       } else if (p.mode === 'angle') {
         this.launchControls.change({angle:clamp(Math.round(p.angle+(e.clientX-p.sx)*.29),-MAX_LAUNCH_ANGLE,MAX_LAUNCH_ANGLE)});
         p.changed = true;
@@ -589,11 +641,12 @@ export class ArenaView {
     canvas.addEventListener('pointerup', e => {
       const pointer = pointers.get(e.pointerId);
       pointers.delete(e.pointerId);
-      if (pointer?.mode === 'aim' && !pointer.changed) {
+      if (pointer?.mode === 'position' && !pointer.changed) {
         const target = pointAt(e);
         if (target) this.launchControls.change({point:[target.x,target.z]});
       }
-      if (pointer?.mode === 'aim' || pointer?.changed && pointer.mode === 'angle') this.launchControls.commit();
+      if (pointer?.mode === 'heading' && !pointer.changed) steer(e,pointer.point);
+      if (['position','heading','angle'].includes(pointer?.mode)) this.launchControls.commit();
     });
     const cancel = e => {
       const pointer = pointers.get(e.pointerId);
@@ -718,10 +771,8 @@ export class ArenaView {
     this.beys.forEach((bey, i) => {
       const config = configs[i], {position,rotation,direction} = launchPose(config);
       const {x,z} = position;
-      const {fraction} = launchRelease(config);
-      const lead = launchSpeed(config.power,BITS[config.bit].style)*fraction*.15;
-      const targetX = x+lead*direction.x, targetZ = z+lead*direction.z;
-      const y = floorAt(targetX,targetZ);
+      const {airSpeed} = launchRelease(config);
+      const length = clamp(.70+airSpeed*.21,.72,2.85);
       bey.holder.position.set(x,position.y,z);
       bey.holder.quaternion.set(rotation.x,rotation.y,rotation.z,rotation.w);
       bey.rotor.rotation.y = i * .18;
@@ -747,10 +798,8 @@ export class ArenaView {
       this.launchAreas[i].visible = editing && i === localPlayer;
       this.launchAreas[i].position.setY(.041);
       aim.visible = true;
-      aim.position.set(targetX,y+.13,targetZ);
-      aim.rotation.order = 'YXZ';
-      aim.rotation.set(-z * .056,Math.atan2(-direction.x,-direction.z),x*.056);
-      aim.scale.setScalar(i === localPlayer ? .74 : .62);
+      aim.userData.arrow.material.opacity = i === localPlayer ? 1 : .63;
+      placeAim(aim,x,z,direction,length);
     });
   }
 

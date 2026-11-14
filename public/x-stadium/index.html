@@ -59,13 +59,13 @@
   </div>
 
   <section class="launch-panel" id="launch-panel" aria-label="Ajustes de lançamento">
-    <div class="launch-title"><div><h2 id="launch-title">Lançamento</h2><p id="launch-hint">Arraste o lançador na sua metade.</p></div></div>
-    <div class="launch-ranges" id="launch-ranges">
-      <div class="range-wrap"><label for="heading">Mira <output id="heading-value">0°</output></label><input id="heading" type="range" min="-180" max="179" value="0" step="1"></div>
-      <div class="range-wrap"><label for="angle">Inclinação <output id="angle-value">0°</output></label><input id="angle" type="range" min="-35" max="35" value="0" step="1"></div>
-      <div class="range-wrap"><label for="power">Força <output id="power-value">94%</output></label><input id="power" type="range" min="45" max="100" value="94" step="1"></div>
+    <div class="launch-title"><h2 id="launch-title">Lançador</h2><p id="launch-hint">Arraste na arena para posicionar.</p></div>
+    <div class="launch-modes" id="launch-modes" role="group" aria-label="Ajuste na arena">
+      <button type="button" data-launch-mode="position" aria-pressed="true">Posição</button>
+      <button type="button" data-launch-mode="heading" aria-pressed="false">Mira <output id="heading-value">0°</output></button>
+      <button type="button" data-launch-mode="angle" aria-pressed="false">Inclinação <output id="angle-value">0°</output></button>
     </div>
-    <button class="launch-button" id="launch" disabled><i data-icon="bolt"></i><span>Puxar corda</span><kbd>ESPAÇO</kbd></button>
+    <button class="launch-button ripcord" id="launch" disabled><i data-icon="bolt"></i><span>Puxe e solte</span><output id="power-value">94%</output></button>
   </section>
 
   <div id="combat-controls" class="combat-controls" role="group" aria-label="Comandos de batalha" hidden></div>

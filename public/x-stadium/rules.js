@@ -1,4 +1,5 @@
 import { SHOOT_HEIGHT, clamp, openingRadius } from './stadium.js';
+import { launchSpeed } from './motion.js';
 
 // One unit is 30 mm. Dimensions shared by the workshop, model and colliders.
 export const BLADE_BASE = -.160;
@@ -129,9 +130,29 @@ export function launchPose(config) {
 }
 
 export function launchRelease(config) {
-  const {bit} = getParts(config);
+  const {bit,blade} = getParts(config);
   const settle = clamp((Math.abs(config.angle)-9)/26,0,1) * bit.style;
-  return {settle,fall:-4.6,fraction:(1-.86*settle)*(.15+.18*bit.style)};
+  const speed = launchSpeed(config.power,bit.style);
+  const direction = launchVector(config);
+  const [x,z] = config.point;
+  const fraction = (1-.86*settle)*(.15+.18*bit.style);
+  const fullTravel = launchSpeed(100,bit.style)*fraction*.065;
+  const fits = travel => {
+    const px=x+direction.x*travel, pz=z+direction.z*travel;
+    return Math.hypot(px,pz) <= openingRadius(Math.atan2(pz,px))-blade.radius-.09;
+  };
+  let travel = fullTravel;
+  if (!fits(travel)) {
+    let lower = 0, upper = fullTravel;
+    for (let i=0;i<7;i++) {
+      const middle = (lower+upper)/2;
+      if (fits(middle)) lower = middle;
+      else upper = middle;
+    }
+    travel = lower;
+  }
+  const airSpeed = speed*fraction*clamp(travel/fullTravel,.08,1);
+  return {settle,fall:-4.6,speed,airSpeed};
 }
 
 export function getParts(config) {
