@@ -514,6 +514,10 @@ export class ArenaView {
     this.lockedCamera = locked ? {focus:this.focus.clone(), distance:this.cameraDistance} : null;
   }
 
+  setResultWinner(player) {
+    this.resultWinner = player;
+  }
+
   changeZoom(factor) {
     if (this.lockedCamera) return;
     this.zoom = clamp(this.zoom*factor,.43,1.88);
@@ -901,24 +905,29 @@ export class ArenaView {
     }
     this.updateFraming();
     const reflex = phase === 'qte' && this.beys.length === 2;
-    const locked = reflex ? null : this.lockedCamera;
+    const winner = phase === 'result' ? this.beys[this.resultWinner] : null;
+    const locked = reflex || winner ? null : this.lockedCamera;
     const follow = !locked && this.cameraMode === 'follow' && this.beys.length === 2 && moving;
     const focusY = this.cameraMode === 'top' ? .65 : moving ? .97 : 1.5;
     const look = reflex || follow ? this.cameraTarget.lerpVectors(this.beys[0].holder.position,this.beys[1].holder.position,.5) :
       this.cameraTarget.set(0,focusY,.44);
-    if (!reflex) {
+    if (winner) {
+      look.copy(winner.holder.position);
+    } else if (!reflex) {
       if (follow) look.setY(.45);
       look.add(this.pan);
       if (locked) look.copy(locked.focus);
     }
     if (this.cameraDistance === undefined) this.focus.copy(look);
-    else this.focus.lerp(look, 1 - Math.exp(-dt * (reflex ? 12 : 6)));
+    else this.focus.lerp(look, 1 - Math.exp(-dt * (reflex ? 12 : winner ? 8 : 6)));
     const fitted = this.fitDistance(focusY,.44,this.azimuth,this.elevation);
     const span = reflex || follow ? this.beys[0].holder.position.distanceTo(this.beys[1].holder.position) : 0;
     const baseDistance = follow ? fitted*(.53+.40*clamp(span/11,0,1)) : fitted;
     const {visibleWidth, visibleHeight, height} = this.framing;
     let distanceTarget = locked?.distance ?? baseDistance*this.zoom;
-    if (reflex) {
+    if (winner) {
+      distanceTarget = fitted*.66;
+    } else if (reflex) {
       const tangent = Math.tan(T.MathUtils.degToRad(this.camera.fov*.5));
       const offset = this.nextPosition.subVectors(this.beys[1].holder.position,this.beys[0].holder.position).multiplyScalar(.5);
       const across = offset.x*Math.cos(this.azimuth) - offset.z*Math.sin(this.azimuth);

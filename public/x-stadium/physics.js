@@ -17,10 +17,10 @@ const ENGAGED_LOWER_SOLVER = 0x0004fffe;
 // The collision solver advances a resolved spin rate. The extra axial inertia
 // represents angular momentum at launch speeds above that resolution.
 const AXIAL_MOMENTUM_SCALE = 1.43;
-const WOBBLE_RATIO = .05;
+const WOBBLE_RATIO = .17;
 const REST_SPIN = 2.8;
+const SPIN_FINISH_DELAY = .60;
 const REFERENCE_MASS = 1.28;
-const zero = {x:0,y:0,z:0};
 const DASH_CARRY_TIME = .61;
 const BLADE_SHELL_CLEARANCE = .018;
 const POCKET_FINISH_DELAY = 1.5;
@@ -269,10 +269,10 @@ export class Battle {
     );
     body.recomputeMassPropertiesFromColliders();
     return {
-      ...parts, inertia, body, bladeColliders, bladeHulls, freeRingCollider, rimVariation, rimSupport, ratchetCollider, tip, tipProfile, bitShoulder, player, launchSpin, spinDirection,
+      ...parts, inertia, body, bladeColliders, freeRingCollider, rimVariation, rimSupport, ratchetCollider, tip, tipProfile, bitShoulder, player, launchSpin, spinDirection,
       supportProfile:[...tipProfile,[shoulderRadius-.005,shoulderY-.021]],
       launch: { direction, speed, settle }, landedAt: -1,
-      load: 0, scrape: 0, spin: launchSpin, stopped: 0, resting: false, settling: null, lockDamage: 0, lastRatchetHit: -1, boundAt: -Infinity,
+      load: 0, scrape: 0, spin: launchSpin, stoppedAt: null, lockDamage: 0, lastRatchetHit: -1, boundAt: -Infinity,
       charges: { [specialMove(bit)]: MOVE_USES, dash: MOVE_USES }, move: null, moveReadyAt: 0, nextRunAt: 0,
       rail: null, railReadyAt: 0, railSupportUntil: 0, impactUntil: 0, pushedUntil: 0, liftUntil: 0, driveResumeAt: 0,
       dashCarry: 0, dashAt: -1, lastWall: -1, lastWallWear: -1, impactTrailUntil: 0,
@@ -285,7 +285,10 @@ export class Battle {
     const spent = Math.min(top.spin,loss);
     if (spent <= 0) return;
     top.spin -= spent;
-    const correction = top.spin*top.spinDirection-axial;
+    const controlled = top.spin*top.spinDirection-axial;
+    const free = -top.spinDirection*Math.min(spent,Math.max(0,axial*top.spinDirection));
+    const release = endOfSpin(top)**2;
+    const correction = controlled*(1-release)+free*release;
     top.body.applyTorqueImpulse(scale(axis,correction*top.inertia.polar),true);
   }
 
@@ -293,12 +296,13 @@ export class Battle {
     const gain = Math.max(0,Math.min(top.launchSpin-top.spin,top.launchSpin*fraction));
     if (!gain) return;
     top.spin += gain;
+    if (top.spin > REST_SPIN) top.stoppedAt = null;
     const axial = dot(axis,top.body.angvel());
     top.body.applyTorqueImpulse(scale(axis,(top.spin*top.spinDirection-axial)*top.inertia.polar),true);
   }
 
   equalizeSpin(a,b,closing) {
-    if (a.spinDirection === b.spinDirection || closing > 4 || a.resting || b.resting) return;
+    if (a.spinDirection === b.spinDirection || closing > 4 || Math.min(a.spin,b.spin) <= REST_SPIN) return;
     const [donor,receiver] = a.spin > b.spin ? [a,b] : [b,a];
     const difference = donor.spin-receiver.spin;
     const receiverAxis = axisOf(receiver.body.rotation());
@@ -462,7 +466,6 @@ export class Battle {
   }
 
   prepare(top) {
-    if (top.resting || top.settling) return;
     const { body, bit, blade, inertia } = top;
     const q = body.rotation(), p = body.translation();
     let v = body.linvel();
@@ -489,8 +492,8 @@ export class Battle {
     const drag = (bit.type === 'stamina' ? .0041 : bit.type === 'attack' ? .0040 : .0048)*spin+.000008*spin*spin;
     const contact = clamp(Math.max(supported,top.landed && !top.rail ? .74 : 0),0,1.05);
     const bearing = contact*(.84+.0025*spin)*(bit.type === 'attack' ? .39 : 1)*bit.drain/blade.stamina*(bit.freeTip ? .91 : 1);
-    const end = endOfSpin(top,spin);
-    const endDrag = top.landed ? end*8.5 : 0;
+    const end = endOfSpin(top);
+    const endDrag = top.landed ? end**2*7.5 : 0;
     const scrapeLoss = abrasion*(1.2+spin*.019+endDrag*.45);
     // Once the finish is scored, the pocket's walls quickly scrub off the
     // remaining spin. During play the same contacts still allow a Reverse.
@@ -503,12 +506,16 @@ export class Battle {
 
     const floor = floorAt(p.x,p.z);
     const nearFloor = clamp((floor + top.standing + .25 - p.y) / .22,0,1);
-    const stability = (1-end)*(.70+.30*Math.sqrt(clamp(spin/top.launchSpin,0,1)));
+    if (top.stoppedAt !== null && supported+abrasion > .03) {
+      const brake = Math.exp(-DT*2.4);
+      body.applyImpulse({x:v.x*(brake-1)*inertia.mass,y:0,z:v.z*(brake-1)*inertia.mass},true);
+    }
+    const stability = (1-end)**2*(.70+.30*Math.sqrt(clamp(spin/top.launchSpin,0,1)));
     const recovering = top.landed ? clamp((this.time-top.landedAt)/(.09+.46*top.launch.settle),0,1) : 0;
     const brace = top.rail ? 1 : recovering;
     const rocking = sub(omega,scale(axis,axial));
     const endRock = top.landed && !top.rail && nearFloor > .46 ? end : 0;
-    const damping = (supported*.8+stability*(19+25*nearFloor)+endRock*29)*top.balance;
+    const damping = (supported*.8+stability*(19+25*nearFloor)+2.5*endRock)*top.balance;
     const settle = (.46*nearFloor+.54*clamp(supported+abrasion,0,1))*stability*brace;
     let steering = scale(cross(axis,vertical),settle*720*top.balance);
     if (endRock > 0) {
@@ -516,12 +523,12 @@ export class Battle {
       const side = horizontalSpeed(axis);
       const fall = side > .004 ? scale(cross(vertical,axis),1/side) : {x:top.player ? -.8 : .8,y:0,z:.6};
       const narrow = clamp(1-bit.tip/.14,0,1);
-      const desired = endRock**1.7*(.27+narrow*.12);
-      const drift = scale(cross(axis,fall),-top.spinDirection*(.75+endRock*1.0)*side);
-      const wobble = add(scale(fall,clamp((desired-lean)*18,-4,5)),drift);
-      steering = add(steering,scale(wobble,damping*endRock));
+      const desired = endRock*(.58+narrow*.10);
+      const fallTorque = clamp((desired-lean)*21,0,7)*endRock;
+      steering = add(steering,scale(fall,fallTorque));
     }
     body.applyTorqueImpulse(scale(sub(steering,scale(rocking,damping)),inertia.transverse*DT),true);
+    if (top.spin <= REST_SPIN) return;
     if (top.launch.settle > .14 && recovering < .84 && top.landed && this.time >= top.impactUntil) {
       const damping = -22*DT*inertia.mass;
       body.applyImpulse({x:v.x*damping,y:0,z:v.z*damping},true);
@@ -774,16 +781,17 @@ export class Battle {
     const overFloor = Math.hypot(p.x,p.z) < mouthRadius(Math.atan2(p.z,p.x))
       && p.y < floorAt(p.x,p.z) + top.standing + .26;
     const inContact = (top.load + top.scrape > .012 || overFloor) && velocity.y < 1.65;
-    if (top.spin <= REST_SPIN || top.resting) return;
+    const late = endOfSpin(top);
+    if (late >= .94) return;
     const rotation = body.rotation(), axis = axisOf(rotation);
     const tilt = Math.acos(clamp(axis.y,-1,1));
-    const late = endOfSpin(top);
     const struck = this.time < top.impactUntil;
     const narrow = clamp(1-top.bit.tip/.14,0,1);
-    const freeLimit = (.070+narrow*.035+late**1.4*(.30+narrow*.10)+(struck ? .027 : 0))/Math.sqrt(top.balance);
+    const freeLimit = (.070+narrow*.035+late**1.4*(.73+narrow*.10)+(struck ? .027+.15*late : 0))/Math.sqrt(top.balance);
     const limit = afterRail ? Math.min(freeLimit,.088) : freeLimit+(inContact ? 0 : .022);
-    const response = afterRail ? 250 : inContact ? 240 : 200;
-    const correction = Math.max(Math.max(0,tilt-limit)*(1-Math.exp(-DT*response)),tilt-limit-.047);
+    const control = (1-late)**2;
+    const response = (afterRail ? 250 : inContact ? 240 : 200)*control;
+    const correction = Math.max(Math.max(0,tilt-limit)*(1-Math.exp(-DT*response)),(tilt-limit-.047)*control);
     if (correction <= .00001) return;
 
     // Retain axial speed while damping the sideways rocking from contact.
@@ -793,63 +801,21 @@ export class Battle {
     body.setRotation(turnRotation(rotation,normal,correction),true);
     const omega = body.angvel(), axial = dot(omega,axis);
     const nextAxis = axisOf(body.rotation());
-    body.setAngvel(add(scale(nextAxis,axial),scale(sub(omega,scale(axis,axial)),Math.exp(-DT*46))),true);
+    body.setAngvel(add(scale(nextAxis,axial),scale(sub(omega,scale(axis,axial)),Math.exp(-DT*46*control))),true);
   }
 
-  settleStoppedTop(top) {
-    if (!top.landed || top.rail || top.resting || top.spin >= top.launchSpin*WOBBLE_RATIO) return;
-    const {body} = top, p = body.translation(), v = body.linvel();
-    if (top.settling) {
-      const {started,rotation,axis,tilt,targetTilt,pocket} = top.settling;
-      const progress = clamp((this.time-started)/.44,0,1);
-      const pose = turnRotation(rotation,axis,(targetTilt-tilt)*progress**2*(3-2*progress));
-      const support = offset => (pocket ? pocket.bottom : floorAt(p.x+offset.x,p.z+offset.z))-offset.y;
-      const tipAxis = axisOf(pose);
-      let height = bitSupport(top,tipAxis,p.x,p.z,pocket ? pocket.bottom : floorAt(p.x,p.z),!!pocket);
-      for (const hull of top.bladeHulls) {
-        for (let i=0;i<hull.length;i+=3) {
-          const point = rotateVector({x:hull[i],y:hull[i+1],z:hull[i+2]},pose);
-          height = Math.max(height,support(point));
-        }
-      }
-      body.setRotation(pose,true);
-      body.setTranslation({...p,y:height+.008},true);
-      top.stopped += DT;
-      if (progress >= 1) {
-        top.resting = true;
-        top.settling = null;
-      }
-      return;
+  trackSpinFinish(top) {
+    // Finishing the spin is a scoring state. The whole assembly stays dynamic.
+    if (top.spin > REST_SPIN) {
+      top.stoppedAt = null;
+    } else if (top.landed && top.load+top.scrape > .025) {
+      top.stoppedAt ??= this.time;
+      top.move = null;
     }
-    const finishedPocket = this.finished ? top.defeat?.zone : null;
-    const grounded = top.load+top.scrape > .025 ||
-      finishedPocket && p.y < lipHeight(Math.atan2(p.z,p.x))-.15 && Math.abs(v.y)<.75;
-    if (!grounded) return;
-    const weakness = endOfSpin(top);
-    const brake = Math.exp(-DT*(.8+weakness**2*24));
-    body.setLinvel({x:v.x*brake,y:v.y,z:v.z*brake},true);
-    if (top.spin > REST_SPIN) return;
-    const omega = body.angvel();
-    const axis = axisOf(body.rotation());
-    if (axis.y < .52) body.setAngvel(scale(omega,Math.exp(-DT*23)),true);
-    top.stopped += DT;
-    if (top.stopped < .16 || Math.abs(v.y) > .75) return;
-    const fall = cross(vertical,axis), length = horizontalSpeed(fall);
-    const pocket = finishedPocket ?? POCKETS.find(zone => p.y < lipHeight(Math.atan2(p.z,p.x)) &&
-      pocketContains(zone,p.x,p.z,top.blade.radius*.46));
-    const tilt = Math.acos(clamp(axis.y,-1,1));
-    const rimAngle = Math.atan2(top.standing-.067,top.blade.radius*.98);
-    top.settling = {started:this.time,rotation:body.rotation(),tilt,targetTilt:Math.max(tilt,rimAngle+.045),
-      axis:length > .015 ? scale(fall,1/length) : {x:top.player ? -.8 : .8,y:0,z:.6},pocket};
-    top.spin = 0;
-    top.move = null;
-    body.setLinvel(zero,true);
-    body.setAngvel(zero,true);
-    body.setBodyType(RAPIER.RigidBodyType.Fixed,true);
   }
 
   keepTipAboveFloor(top) {
-    if (top.rail || !top.landed || top.settling || top.resting) return;
+    if (top.rail || !top.landed || endOfSpin(top) > .68) return;
     const {body,standing} = top, p = body.translation(), rotation = body.rotation();
     const axis = axisOf(rotation), radius = horizontalSpeed(p), angle = Math.atan2(p.z,p.x);
     if (axis.y < .60 || radius > mouthRadius(angle) && pocketAt(angle)) return;
@@ -903,7 +869,6 @@ export class Battle {
     }
     this.world.step();
     for (const top of this.tops) {
-      if (top.resting || top.settling) continue;
       const { body, tip, bitShoulder, ratchetCollider } = top;
       const position = body.translation();
       const radius = horizontalSpeed(position);
@@ -940,28 +905,29 @@ export class Battle {
       }
       const omega = body.angvel();
       const solvedSpin = dot(axis,omega)*top.spinDirection;
-      const angleLoss = Math.max(0,top.spin-solvedSpin);
+      const angleLoss = Math.max(0,top.spin-Math.max(0,solvedSpin));
       // Bearing, rail, scrape and hit losses are explicit. Limit axial
       // leakage from contact correction and preserve the solved wobble.
-      top.spin = Math.max(0,top.spin-Math.min(angleLoss,.55*DT));
-      if (Math.abs(solvedSpin-top.spin) > .0001) {
-        body.setAngvel(sub(omega,scale(axis,(solvedSpin-top.spin)*top.spinDirection)),true);
+      const grip = 1-endOfSpin(top)**2;
+      top.spin -= Math.min(angleLoss,.55*DT)*grip+angleLoss*(1-grip);
+      const correction = (top.spin-solvedSpin)*grip;
+      if (Math.abs(correction) > .0001) {
+        body.setAngvel(add(omega,scale(axis,correction*top.spinDirection)),true);
       }
     }
 
-    if (nearContact && !presentation && !a.resting && !b.resting && !a.settling && !b.settling) {
+    if (nearContact && !presentation) {
       this.readImpact(a,b,normal,approach,pre);
     }
     if (this.finished && !presentation) return;
     for (const top of this.tops) {
-      if (top.resting) continue;
       this.finishRailStep(top);
       this.contain(top);
-      this.settleVertical(top);
+      if (endOfSpin(top) < .85 || top.escape?.zone) this.settleVertical(top);
       this.carryStrikeOverRim(top);
       this.steadyTip(top);
       this.keepTipAboveFloor(top);
-      this.settleStoppedTop(top);
+      this.trackSpinFinish(top);
       if (!top.rail) {
         const v = top.body.linvel(), speed = horizontalSpeed(v);
         if (speed > MAX_TRANSLATION) {
@@ -1177,7 +1143,8 @@ export class Battle {
     const cleanDash = dash > 2.0 && approach[player] > 12 && contactImpulse > 2.7;
     const surge = cleanDash ? 1.92 : 1.23;
     const impact = Math.min(22,contactImpulse*1.70,(lobe+dash)*surge+contactImpulse*(upper*.21+boundStrike*.48));
-    const knockback = impact*(1-brace*.79)*(boosted ? 1.65 : 1);
+    const weakness = endOfSpin(target)*clamp((power-.24)/.65,0,1);
+    const knockback = impact*(1-brace*.79)*(boosted ? 1.65 : 1)*(1+.44*weakness);
     const reboundStrength = Math.min(5.0,contactImpulse*(brace*.37+boundCounter*.56));
     if (knockback < .23 && reboundStrength < .23) return { strike: 0, dash: 0, attack: false };
     const direction = player === 0 ? 1 : -1;
@@ -1194,6 +1161,10 @@ export class Battle {
     if (lift) target.liftUntil = this.time+.14;
     if (attack > 1 && (cleanDash || knockback > 5.0 || upper > .30)) target.rimStrikeUntil = this.time+.44;
     target.body.applyImpulse({x:kick.x,y:lift*target.inertia.mass,z:kick.z},true);
+    if (weakness > 0) {
+      const tip = clamp(knockback*.13*weakness,0,1.2);
+      target.body.applyTorqueImpulse(scale(cross(vertical,normal),tip*direction),true);
+    }
     if (boosted && knockback > 2.4) {
       target.impactTrailUntil = this.time+.48;
       target.pushedUntil = this.time+.75;
@@ -1304,7 +1275,7 @@ export class Battle {
     const boostDuration = REFLEX_BOOST_TIME[defended ? 'defense' : 'attack'];
     winner.reflexBoostDuration = boostDuration;
     winner.reflexBoostUntil = this.time + boostDuration;
-    if (!winner.defeat && !winner.resting && !winner.settling) {
+    if (!winner.defeat) {
       this.recoverSpin(winner,REFLEX_SPIN_REWARD);
       const velocity = winner.body.linvel();
       const speed = horizontalSpeed(velocity);
@@ -1415,7 +1386,7 @@ export class Battle {
           }
           this.onEvent({type:'reverse',player:top.player,spinLoss});
           top.escape = null;
-        } else if (top.resting) {
+        } else if (top.stoppedAt !== null) {
           if (top.escape.zone) top.escape = null;
           else {
             top.defeat = {points:0,title:'Saída fora dos bolsos',at:top.escape.at};
@@ -1461,20 +1432,21 @@ export class Battle {
           continue;
         }
       }
-      if (p.y < -1.75 || r > 9.25 || top.escape && !top.escape.zone && this.time-top.escape.at > .85 && top.stopped > .13) {
+      const stoppedFor = top.stoppedAt === null ? 0 : this.time-top.stoppedAt;
+      if (p.y < -1.75 || r > 9.25 || top.escape && !top.escape.zone && this.time-top.escape.at > .85 && stoppedFor > .13) {
         top.defeat = {points:0,title:'Saída fora dos bolsos',at:top.escape?.at ?? this.time};
       } else if (!top.escape?.zone && top.lockDamage >= 1) {
         top.defeat = {points:2,title:'Burst Finish',at:this.time};
-      } else if (top.resting && (!top.escape || top.escape.zone && top.escape.stayedSince === null)) {
-        top.defeat = {points:1,title:'Spin Finish',at:this.time-top.stopped};
+      } else if (stoppedFor >= SPIN_FINISH_DELAY && (!top.escape || top.escape.zone && top.escape.stayedSince === null)) {
+        top.defeat = {points:1,title:'Spin Finish',at:top.stoppedAt};
       }
     }
     const [a, b] = this.tops;
     if (!a.defeat && !b.defeat) return;
     const ordered = this.tops.filter(t => t.defeat).sort((x,y)=>x.defeat.at-y.defeat.at);
     const first = ordered[0], other = this.tops[1-first.player];
-    const otherEntry = other.escape?.zone ? other.escape.stayedSince : other.escape?.at;
-    if (!other.defeat && otherEntry != null && otherEntry <= first.defeat.at + .035) return;
+    const otherPending = other.escape?.zone ? other.escape.stayedSince : other.escape?.at ?? other.stoppedAt;
+    if (!other.defeat && otherPending !== null && otherPending <= first.defeat.at + .035) return;
     if (!other.defeat && this.time < first.defeat.at + .045) return;
     if (other.defeat && Math.abs(other.defeat.at-first.defeat.at)<=.035) return this.replay('Empate');
     if (!first.defeat.points) return this.replay(first.defeat.title);

@@ -249,6 +249,30 @@ i[data-icon] svg { width:100%;height:100% }
 }
 .stage[data-phase=result] #battle-overlay strong { grid-column:1;font-size:clamp(22px,5vw,35px) }
 .stage[data-phase=result] #battle-overlay button { grid-column:2;grid-row:1/4;align-self:center;pointer-events:auto;font-size:clamp(12px,2.3vw,16px) }
+.stage[data-phase=result]:has(.winner-result) .arena-fit {
+  top:calc(var(--top) + var(--header) + 94px);bottom:calc(var(--bottom) + 55px);
+}
+.stage[data-phase=result] #battle-overlay.winner-result {
+  inset:calc(var(--top) + var(--header) + 8px) var(--right) var(--bottom) var(--left);
+  width:auto;transform:none;background:none;border:0;padding:0;
+  grid-template-columns:minmax(0,1fr);grid-template-rows:auto 1fr auto;
+  justify-items:center;align-content:stretch;text-align:center;
+}
+.winner-banner { display:grid;justify-items:center;gap:5px;text-shadow:0 2px 12px #08100b,0 3px 24px #08100b }
+.stage[data-phase=result] .winner-banner strong { font-size:clamp(32px,7.5vmin,68px);text-transform:uppercase }
+.winner-score { display:flex;flex-wrap:wrap;align-items:baseline;justify-content:center;gap:5px 10px;font:700 clamp(16px,4vmin,26px)/1.1 var(--heading) }
+.winner-score b { color:var(--lime) }
+.winner-actions { grid-area:3/1;display:flex;align-items:center;gap:8px }
+.winner-total { display:none }
+.stage[data-phase=result] #battle-overlay.winner-result button { grid-area:auto }
+@media (max-width:650px) {
+  .stage[data-phase=result]:has(.winner-result) .player-hud { visibility:hidden }
+  .winner-total { display:block;padding:8px;border-radius:7px;background:var(--glass);font-weight:700;white-space:nowrap }
+}
+@media (max-height:460px) and (orientation:landscape) {
+  .stage[data-phase=result]:has(.winner-result) .arena-fit { top:calc(var(--top) + var(--header) + 64px) }
+  .stage[data-phase=result] .winner-banner strong { font-size:clamp(25px,7vmin,38px) }
+}
 #webgl-error,.loading { background:#202c28ed;z-index:7 }
 .loading {
   position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:8px;

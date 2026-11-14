@@ -239,6 +239,7 @@ function resetRound(newMatch = false) {
   updateScore();
   updateCards();
   updateControls();
+  view?.setResultWinner(null);
   view?.ready(state.configs, activePlayer());
   announce('Arena pronta para o lançamento.');
 }
@@ -553,11 +554,18 @@ function showResult() {
   const r = state.result;
   const winner = r.winner === null ? null : state.mode === 'cpu' && r.winner === 1 ? 'CPU' : 'Jogador ' + (r.winner + 1);
   const match = state.scores.some(s => s >= 4);
-  const label = match ? winner + ' venceu a partida!' : winner ? winner + ' · +' + r.points + (r.points === 1 ? ' ponto' : ' pontos') : 'A rodada será repetida.';
-  const loser = r.winner === null ? '' : BLADES[state.configs[1-r.winner].blade].name + ' perdeu a rodada.';
-  overlay.innerHTML = '<span class="overlay-label">' + (match ? 'FIM DA PARTIDA' : 'FIM DA RODADA') + '</span><strong>' + r.title.toUpperCase() +
-    '</strong><p>' + [loser,label].filter(Boolean).join(' ') + '</p><button class="launch-button" data-action="next"' + (isHost() ? '' : ' disabled') + '>' +
+  const bey = winner ? BLADES[state.configs[r.winner].blade].name : '';
+  const points = '+' + r.points + (r.points === 1 ? ' ponto' : ' pontos');
+  const label = winner ? winner + ' · ' + bey + ' · ' + points : 'A rodada será repetida.';
+  const next = '<button class="launch-button" data-action="next"' + (isHost() ? '' : ' disabled') + '>' +
     (isHost() ? match ? 'NOVA PARTIDA' : 'PRÓXIMA RODADA' : 'AGUARDANDO ANFITRIÃO') + '</button>';
+  view.setResultWinner(r.winner);
+  overlay.classList.toggle('winner-result', Boolean(winner));
+  overlay.innerHTML = winner ?
+    '<div class="winner-banner"><span class="overlay-label">' + winner + ' · ' + r.title + '</span><strong>Vitória' +
+      (match ? ' na partida' : '') + '</strong><div class="winner-score"><span>' + bey + '</span><b>' + points + '</b></div></div>' +
+      '<div class="winner-actions"><span class="winner-total" aria-label="Placar da partida">' + state.scores.join(' – ') + '</span>' + next + '</div>' :
+    '<span class="overlay-label">FIM DA RODADA</span><strong>' + r.title.toUpperCase() + '</strong><p>' + label + '</p>' + next;
   overlay.hidden = false;
   updateScore(); updateControls(); updateStamina();
   audio.play('finish');
