@@ -9,6 +9,7 @@ export const DT = 1 / 300;
 const REST_DT = 1 / 150;
 const GRAVITY = 9.81 / .03;
 const MAX_TRANSLATION = 46;
+const MAX_DASH_TRANSLATION = 54;
 const BLADE_COLLISIONS = 0x0002ffff;
 const LOWER_PART_COLLISIONS = 0x0004ffff;
 const BOWL_MEMBERSHIP = 0x0010;
@@ -460,8 +461,8 @@ export class Battle {
     } else {
       const rail = top.move.entry;
       direction = {x:rail.x-bit.gear*.72*rail.nx-p.x,z:rail.z-bit.gear*.72*rail.nz-p.z};
-      pace = (12+railRating(bit)*.095)*(.58+.42*reserve);
-      maxForce = 73+24*bit.style;
+      pace = (15+railRating(bit)*.095)*(.78+.22*reserve);
+      maxForce = 85+24*bit.style;
     }
     const distance = horizontalSpeed(direction);
     const rate = Math.min(pace / Math.max(.24,distance),kind === 'dash' ? 17 : boosted ? 16 : 12);
@@ -627,9 +628,11 @@ export class Battle {
         return false;
       }
       const rating = railRating(bit);
-      const pitchSpeed = top.spin*(.22 + (bit.gear-.19)*.28);
-      const maxSpeed = 29+rating*.115;
-      const traction = clamp((Math.min(pitchSpeed,maxSpeed)-run.speed)*11,-59,195)*(.82+bit.grip*.18);
+      // Keep a meaningful surge once the gears mesh, even late in the round.
+      const reserve = clamp((top.spin-31)/175,0,1);
+      const maxSpeed = 42+rating*.090;
+      const driveSpeed = 17+(maxSpeed-17)*reserve**.78;
+      const traction = clamp((driveSpeed-run.speed)*15,-59,245)*(.82+bit.grip*.18);
       run.speed = Math.max(4,run.speed + traction*DT);
       const railLoss = Math.max(0,traction)*inertia.mass*.20/inertia.polar*.58 + 6 + run.speed*.12;
       this.spendSpin(top,railLoss*DT,axis);
@@ -689,7 +692,9 @@ export class Battle {
     const toExit = positiveAngle((railExitAngle(direction)-rail.angle)*direction);
     const remaining = Math.max(.075,toExit);
     const initialSpeed = Math.max(3.1,along);
-    top.rail = { angle:rail.angle, direction, remaining, travel:0, initialSpeed, speed:initialSpeed, announced:false, pushed };
+    const entryBoost = Math.max(0,9+4*clamp(top.spin/top.launchSpin,0,1)-initialSpeed);
+    this.spendSpin(top,entryBoost*inertia.mass*.20/inertia.polar*.58,axis);
+    top.rail = { angle:rail.angle, direction, remaining, travel:0, initialSpeed, speed:initialSpeed+entryBoost, announced:false, pushed };
     top.move = null;
     top.nextRunAt = Math.max(top.nextRunAt,this.time+2.05);
     this.setRailContact(top,true);
@@ -1051,8 +1056,9 @@ export class Battle {
       this.trackSpinFinish(top);
       if (!top.rail) {
         const v = top.body.linvel(), speed = horizontalSpeed(v);
-        if (speed > MAX_TRANSLATION) {
-          const ratio = MAX_TRANSLATION/speed;
+        const limit = top.dashCarry > 0 && this.time-top.dashAt < .18 ? MAX_DASH_TRANSLATION : MAX_TRANSLATION;
+        if (speed > limit) {
+          const ratio = limit/speed;
           top.body.setLinvel({x:v.x*ratio,y:v.y,z:v.z*ratio},true);
         }
       }
