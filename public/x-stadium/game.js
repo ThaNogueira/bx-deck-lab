@@ -1,5 +1,5 @@
 import { ArenaView } from './scene.js';
-import { Battle, DT, initPhysics } from './physics.js';
+import { Battle, initPhysics } from './physics.js';
 import { ATTACK, BIT_TYPES, BITS, BLADE_TOP, BLADES, DEFAULTS, GRAMS_PER_MASS_UNIT, MAX_LAUNCH_ANGLE, MOVE_USES, RATCHETS, STAMINA, getParts, railRating, sanitizeConfig, specialMove } from './rules.js';
 import { clamp } from './stadium.js';
 import { Link, roomCode } from './online.js';
@@ -66,7 +66,7 @@ graphics.addEventListener('change', () => {
   view?.setGraphics(graphics.value);
   try { localStorage.setItem('x-stadium-graphics', graphics.value); } catch { /* Preferência da sessão. */ }
 });
-let previousFrames = null, newestSnapshot = null;
+let previousFrames = null, previousStep = 0, settledFrames = null, newestSnapshot = null;
 const snapshots = [];
 let onlineDraft = '';
 const dialog = $('dialog'), content = $('dialog-content'), overlay = $('battle-overlay');
@@ -256,6 +256,8 @@ function resetRound(newMatch = false) {
   state.phase = 'setup';
   state.frames = state.result = state.qte = null;
   previousFrames = newestSnapshot = null;
+  previousStep = 0;
+  settledFrames = null;
   snapshots.length = 0;
   state.ready = [false, false];
   state.cameraDrag = false;
@@ -1056,22 +1058,27 @@ function frame(now) {
     }
     if (now >= state.deadline && isHost()) startFight();
   }
-  if (state.physics && ['fight','qte','result'].includes(state.phase) && isHost()) {
+  let settled = state.phase === 'result' && state.frames?.every(top => top.sleeping);
+  if (state.physics && !settled && ['fight','qte','result'].includes(state.phase) && isHost()) {
     const phase = state.phase, rate = phase === 'qte' ? QTE_SPEED : 1;
     accumulator += dt*rate;
     const deadline = performance.now()+PHYSICS_FRAME_BUDGET;
-    while (accumulator >= DT && state.phase === phase) {
-      if (accumulator < 2*DT) previousFrames = state.physics.poses();
-      state.physics.step(phase !== 'fight');
-      accumulator -= DT;
+    let step = state.physics.stepSize();
+    while (accumulator >= step && state.phase === phase) {
+      if (accumulator < 2*step) previousFrames = state.physics.poses();
+      previousStep = step;
+      state.physics.step(phase !== 'fight',step);
+      accumulator -= step;
+      step = state.physics.stepSize();
       // Drop excess catch-up work instead of starving rendering and touch input.
-      if (accumulator >= DT && performance.now() >= deadline) {
-        accumulator %= DT;
+      if (accumulator >= step && performance.now() >= deadline) {
+        accumulator %= step;
         previousFrames = null;
         break;
       }
     }
     state.frames = state.physics.frames();
+    settled = state.phase === 'result' && state.frames.every(top => top.sleeping);
     if (state.phase === 'fight' && state.mode === 'cpu' && !state.trial && (state.physics.time >= state.cpuMoveAt || state.frames[1].moves.reflexBoost === 'ready')) {
       const [rival,cpu] = state.frames;
       const radius = Math.hypot(cpu.p[0],cpu.p[2]);
@@ -1085,7 +1092,7 @@ function frame(now) {
         state.cpuMoveAt = state.physics.time+(used ? 5.5 : .65);
       }
     }
-    if (state.mode === 'online' && now - lastSent > 40) {
+    if (state.mode === 'online' && (settled || now - lastSent > 40)) {
       lastSent = now;
       link.send({ type: 'frames', phase:state.phase, frames: state.frames, time: state.physics.time });
     }
@@ -1103,15 +1110,15 @@ function frame(now) {
       if (now >= q.feedbackUntil && (now >= q.close+grace || q.reactions.every(row => row.every(hit => hit !== null)))) resolveQte();
     }
   }
-  if (state.frames) {
-    const moving = ['fight','qte','result'].includes(state.phase);
+  if (state.frames && (!settled || settledFrames !== state.frames)) {
+    const moving = !settled && ['fight','qte','result'].includes(state.phase);
     const rate = state.phase === 'qte' ? QTE_SPEED : 1;
     let from = state.frames, to = null, blend = 0, span = 0;
-    if (moving && isHost() && previousFrames) {
+    if (moving && isHost() && previousFrames && previousStep) {
       from = previousFrames;
       to = state.frames;
-      blend = clamp(accumulator / DT, 0, 1);
-      span = DT;
+      blend = clamp(accumulator / previousStep, 0, 1);
+      span = previousStep;
     } else if (moving && snapshots.length > 1) {
       const target = newestSnapshot.time+(now/1000-newestSnapshot.arrival-.080)*rate;
       while (snapshots.length > 2 && snapshots[1].time <= target) snapshots.shift();
@@ -1121,14 +1128,15 @@ function frame(now) {
       blend = span > 0 ? clamp((target - snapshots[0].time) / span, 0, 1) : 1;
     }
     view.showFrames(from,to,blend,span,moving,(now-(state.burstAt??now))/1000,dt*rate);
+    settledFrames = settled ? state.frames : null;
   }
   if (now - lastHud > 75) {
     updateStamina();
     updateCombatControls();
-    audio.update(state.frames,state.phase === 'qte' ? QTE_SPEED : 1);
+    audio.update(settled ? null : state.frames,state.phase === 'qte' ? QTE_SPEED : 1);
     lastHud = now;
   }
-  view.draw(dt,state.phase === 'qte' ? QTE_SPEED : 1);
+  view.draw(dt,state.phase === 'qte' ? QTE_SPEED : 1,settled);
   requestAnimationFrame(frame);
 }
 

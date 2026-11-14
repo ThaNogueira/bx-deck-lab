@@ -6,6 +6,7 @@ import { POCKETS, RAIL, SHELL, TAU, coverGeometry, coverCollarGeometry, coverSid
   guardRadius, rimShelfGeometry, rimWallGeometry, trayRadius, floorGeometry, floorAt, tipSurfaceAt, railFrame, closestRail, railExitAngle, angleDelta, clamp } from './stadium.js';
 
 export const DT = 1 / 300;
+const REST_DT = 1 / 150;
 const GRAVITY = 9.81 / .03;
 const MAX_TRANSLATION = 46;
 const BLADE_COLLISIONS = 0x0002ffff;
@@ -257,8 +258,8 @@ export class Battle {
     // Low-speed floor contact needs the outline, but not overlapping metal sectors.
     const lowSpeedHull = [];
     const levels = bladeLevels(blade);
-    for (const [radius,y,contour] of [levels[0],levels[1],levels[2],levels[3],levels[5],[.379,.207,0]]) {
-      const samples = contour ? blade.lobes*5 : 10;
+    for (const [radius,y,contour] of [levels[0],levels[2],levels[3],levels[5],[.379,.207,0]]) {
+      const samples = contour ? blade.lobes*Math.ceil(12/blade.lobes) : 8;
       for (let i=0;i<samples;i++) {
         const sample = i*outline.length/samples;
         const index = Math.floor(sample);
@@ -490,7 +491,7 @@ export class Battle {
     top.railReadyAt = this.time+cooldown;
   }
 
-  prepare(top) {
+  prepare(top,dt) {
     const { body, bit, blade, inertia } = top;
     if (body.isSleeping()) return;
     const q = body.rotation(), p = body.translation();
@@ -524,9 +525,9 @@ export class Battle {
     // Once the finish is scored, the pocket's walls quickly scrub off the
     // remaining spin. During play the same contacts still allow a Reverse.
     const pocketDrag = this.finished && top.defeat?.zone ? 42+spin*3.05+abrasion*16 : 0;
-    this.spendSpin(top,((drag+bearing)*(top.ratchet.spinDrain ?? 1)+endDrag+scrapeLoss+pocketDrag)*DT,axis);
+    this.spendSpin(top,((drag+bearing)*(top.ratchet.spinDrain ?? 1)+endDrag+scrapeLoss+pocketDrag)*dt,axis);
     if (pocketDrag) {
-      const brake = Math.exp(-DT*3.8);
+      const brake = Math.exp(-dt*3.8);
       body.setLinvel({x:v.x*brake,y:v.y,z:v.z*brake},true);
     }
 
@@ -534,7 +535,7 @@ export class Battle {
     const nearFloor = clamp((floor + top.standing + .25 - p.y) / .22,0,1);
     const struck = this.time < top.impactUntil;
     if (top.stoppedAt !== null && supported+abrasion > .03 && !struck && horizontalSpeed(v) > .05) {
-      const brake = Math.exp(-DT*(abrasion > .08 ? 7 : 2.4));
+      const brake = Math.exp(-dt*(abrasion > .08 ? 7 : 2.4));
       body.applyImpulse({x:v.x*(brake-1)*inertia.mass,y:0,z:v.z*(brake-1)*inertia.mass},true);
     }
     const stability = (1-end)**2*(.70+.30*Math.sqrt(clamp(spin/top.launchSpin,0,1)));
@@ -559,7 +560,7 @@ export class Battle {
       steering = add(steering,scale(fall,fallTorque));
     }
     const torque = sub(steering,scale(rocking,damping));
-    if (dot(torque,torque) > .0001) body.applyTorqueImpulse(scale(torque,inertia.transverse*DT),false);
+    if (dot(torque,torque) > .0001) body.applyTorqueImpulse(scale(torque,inertia.transverse*dt),false);
     if (top.spin <= REST_SPIN) return;
     if (top.launch.settle > .14 && recovering < .84 && top.landed && this.time >= top.impactUntil) {
       const damping = -22*DT*inertia.mass;
@@ -889,7 +890,8 @@ export class Battle {
     if (body.isSleeping()) return;
     const v = body.linvel(), w = body.angvel();
     const rimTilt = Math.atan2(top.standing-.067,top.blade.radius*.98);
-    const onRim = axisOf(body.rotation()).y < Math.cos(rimTilt-.04);
+    const leaning = axisOf(body.rotation()).y < Math.cos(rimTilt-.04);
+    const onRim = leaning || top.scrape > .025;
     const balanced = top.canBalanceAtRest || onRim;
     if (top.spin > REST_SPIN || !balanced || top.load+top.scrape < .025 || this.time < top.impactUntil ||
       dot(v,v) > .37**2 || dot(w,w) > 1.15**2) {
@@ -936,13 +938,37 @@ export class Battle {
     if (v.y < rise) body.setLinvel({...v,y:clamp(rise,-14,16)},true);
   }
 
-  step(presentation = false) {
+  stepSize() {
+    // High-speed hits, the rail, pocket jumps and launches keep their finer step.
+    for (const top of this.tops) {
+      if (top.rail || !top.landed || top.spin > REST_SPIN || this.time < top.impactUntil ||
+        this.time < Math.max(top.liftUntil,top.rimLiftUntil,top.rimStrikeUntil)) return DT;
+      const v = top.body.linvel();
+      if (dot(v,v) > 2.5**2) return DT;
+    }
+    return REST_DT;
+  }
+
+  get sleeping() {
+    return this.tops.every(top => top.body.isSleeping());
+  }
+
+  step(presentation = false, dt = DT) {
     if (this.finished && !presentation) return;
-    this.time += DT;
+    this.time += dt;
     const [a, b] = this.tops;
+    if (this.sleeping) {
+      if (!presentation) this.checkFinish(undefined,dt);
+      return;
+    }
+    const iterations = dt === REST_DT ? 3 : 6;
+    if (this.world.numSolverIterations !== iterations) {
+      this.world.numSolverIterations = iterations;
+      this.world.timestep = dt;
+    }
     for (const top of this.tops) {
       this.updateSlowBody(top);
-      this.prepare(top);
+      this.prepare(top,dt);
     }
     const p1 = a.body.translation(), p2 = b.body.translation();
     const delta = sub(p2, p1);
@@ -950,6 +976,7 @@ export class Battle {
     const normal = { x: delta.x / distance, y: 0, z: delta.z / distance };
     const pre = [a.body.linvel(),b.body.linvel()];
     const approach = [dot(pre[0],normal),-dot(pre[1],normal)];
+    const contactStepScale = DT/dt;
     const nearContact = distance < a.blade.radius + b.blade.radius + .31;
     for (const top of this.tops) {
       const p = top.body.translation();
@@ -959,7 +986,7 @@ export class Battle {
       const sweep = !top.landed && (nearContact || descending);
       if (top.body.isCcdEnabled() !== sweep) top.body.enableCcd(sweep);
     }
-    if (!a.body.isSleeping() || !b.body.isSleeping()) this.world.step();
+    this.world.step();
     for (const top of this.tops) {
       const { body, tip, bitShoulder, ratchetCollider } = top;
       if (body.isSleeping()) continue;
@@ -974,8 +1001,8 @@ export class Battle {
       const shoulder = tipOnly ? null : this.stadiumContact(bitShoulder);
       const blade = tipOnly ? null : this.metalStadiumContact(top);
       const ratchet = tipOnly ? null : this.stadiumContact(ratchetCollider);
-      top.load = tipLoad.floor+(shoulder?.floor??0);
-      top.scrape = (blade?.floor??0)+(ratchet?.floor??0)+.22*(shoulder?.floor??0);
+      top.load = (tipLoad.floor+(shoulder?.floor??0))*contactStepScale;
+      top.scrape = ((blade?.floor??0)+(ratchet?.floor??0)+.22*(shoulder?.floor??0))*contactStepScale;
       const wall = (blade?.wall??0)+(ratchet?.wall??0)+(shoulder?.wall??0)+tipLoad.wall;
       if (!top.landed && top.load+top.scrape > .05) {
         top.landed = true;
@@ -1002,7 +1029,7 @@ export class Battle {
       // Bearing, rail, scrape and hit losses are explicit. Limit axial
       // leakage from contact correction and preserve the solved wobble.
       const grip = 1-endOfSpin(top)**2;
-      top.spin -= Math.min(angleLoss,.55*DT)*grip+angleLoss*(1-grip);
+      top.spin -= Math.min(angleLoss,.55*dt)*grip+angleLoss*(1-grip);
       const correction = (top.spin-solvedSpin)*grip;
       if (Math.abs(correction) > .0001) {
         body.setAngvel(add(omega,scale(axis,correction*top.spinDirection)),true);
@@ -1030,7 +1057,7 @@ export class Battle {
         }
       }
     }
-    if (!presentation && this.time !== this.lastQte) this.checkFinish(pre);
+    if (!presentation && this.time !== this.lastQte) this.checkFinish(pre,dt);
   }
 
   wallImpact(top, impulse, point) {
@@ -1480,7 +1507,7 @@ export class Battle {
     if (spring) top.boundAt = this.time;
   }
 
-  checkFinish(beforeContact) {
+  checkFinish(beforeContact, dt = DT) {
     if (this.finished) return;
     for (const top of this.tops) {
       if (top.defeat) continue;
@@ -1530,7 +1557,7 @@ export class Battle {
         if (this.time < (entry.jumpUntil ?? 0)) continue;
         if (inPocket) {
           entry.stayedSince ??= this.time;
-          entry.pocketTime += DT;
+          entry.pocketTime += dt;
         } else entry.stayedSince = null;
         if (zone.points === 3 && inPocket && r > mouth+.54 && p.y < lip-.24) entry.deep = true;
         this.tryPocketJump(top,p,v,inPocket);
@@ -1585,7 +1612,7 @@ export class Battle {
     return this.poses().map((pose, i) => {
       const top = this.tops[i];
       return {
-        ...pose, spin: clamp(top.spin / top.launchSpin, 0, 1),
+        ...pose, spin: clamp(top.spin / top.launchSpin, 0, 1), sleeping:top.body.isSleeping(),
         v: asArray(top.body.linvel()), w: asArray(top.body.angvel()),
         dash: !!top.rail?.announced || top.dashCarry > 0 && this.time - top.dashAt < .18,
         attack: top.move?.kind === 'attack',

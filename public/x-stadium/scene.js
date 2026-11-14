@@ -860,6 +860,7 @@ export class ArenaView {
   }
 
   showFrames(frames, nextFrames, blend, span, moving, burstTime, dt) {
+    this.dirty = true;
     this.beys.forEach((bey, i) => {
       const frame = frames[i], next = nextFrames?.[i];
       const effects = frame.w ? frame : next;
@@ -975,11 +976,11 @@ export class ArenaView {
     }
   }
 
-  draw(dt, motionRate) {
+  draw(dt, motionRate, settled = false) {
     if (!this.width || !this.height) return;
     const phase = this.stage.dataset.phase;
     const moving = phase !== 'setup';
-    if (this.graphics === 'auto' && this.mobile && phase === 'fight') {
+    if (this.graphics === 'auto' && this.mobile && (phase === 'fight' || phase === 'result' && !settled)) {
       this.slowFrames = dt > .027 ? this.slowFrames + 1 : Math.max(0, this.slowFrames - 2);
       if (this.slowFrames >= 24 && this.renderScale > .7) {
         this.renderScale = Math.max(.7, this.renderScale - .15);
@@ -1041,7 +1042,8 @@ export class ArenaView {
     // Give the camera time to settle, then reuse the last frame during setup.
     const cameraChanged = this.camera.position.distanceToSquared(this.nextPosition) > .000001;
     const previewDrawn = this.drawInspection();
-    if (!moving && !this.dirty && !cameraChanged && !previewDrawn) return;
+    const effectsActive = this.sparks.length > 0 || this.impactRings.some(impact => impact.life > 0);
+    if ((!moving || settled) && !this.dirty && !cameraChanged && !previewDrawn && !effectsActive) return;
     this.camera.position.copy(this.nextPosition);
     this.camera.lookAt(this.focus);
     if (phase === 'setup') this.positionLauncherControls();
