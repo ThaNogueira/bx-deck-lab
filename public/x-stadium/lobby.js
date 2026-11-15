@@ -43,6 +43,14 @@ export class StadiumLobby {
       if (e.target.id === 'lobby-room-code') this.roomCode = e.target.value;
       if (e.target.id === 'lobby-graphics') this.actions.graphics(e.target.value);
     });
+    root.addEventListener('error',e=>{
+      const image = e.target;
+      if (!image.matches('img[data-part-image]')) return;
+      const [kind,code] = image.dataset.partImage.split(':');
+      const fallback = kind === 'blade' && BLADES[code]?.image;
+      if (fallback && image.getAttribute('src') !== fallback) image.src = fallback;
+      else image.hidden = true;
+    },true);
     this.loadPictures();
     this.render();
   }
@@ -80,7 +88,7 @@ export class StadiumLobby {
 
   thumb(kind,code) {
     const src = this.picture(kind,code);
-    return '<span class="lobby-thumb"><img alt="" draggable="false" data-part-image="'+escape(kind+':'+code)+'"'+
+    return '<span class="lobby-thumb"><img alt="" draggable="false" referrerpolicy="no-referrer" data-part-image="'+escape(kind+':'+code)+'"'+
       (src ? ' src="'+escape(src)+'"' : ' hidden')+'></span>';
   }
 

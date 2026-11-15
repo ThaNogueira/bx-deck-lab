@@ -933,7 +933,7 @@ const partDetail = (kind,code) => {
   return code ? RATCHETS[code].mm + ' mm' : 'UX Expand';
 };
 const partThumb = (kind,code) => {
-  if (code && lobby.picture(kind,code)) return '<span class="part-thumb"><img src="' + safeImage(kind,code) + '" alt=""></span>';
+  if (code && lobby.picture(kind,code)) return '<span class="part-thumb"><img referrerpolicy="no-referrer" src="' + safeImage(kind,code) + '" alt=""></span>';
   if (!code) return '<span class="part-thumb integrated-thumb"><i data-icon="parts"></i></span>';
   const index = Object.keys(partCatalog[kind]).indexOf(code) + (kind === 'bit' ? Object.keys(RATCHETS).length : 0);
   return '<span class="part-thumb part-render" aria-hidden="true" style="--col:' + index%8 + ';--row:' + Math.floor(index/8) + '"></span>';
