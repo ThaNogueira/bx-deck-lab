@@ -4,7 +4,7 @@ export async function stadiumRequest(path,method='GET',body) {
     headers:json ? {'Content-Type':'application/json'} : undefined,
     body:json ? JSON.stringify(body) : body});
   const data = response.headers.get('content-type')?.includes('application/json') ? await response.json() : {};
-  if (!response.ok) throw new Error(data.error || 'Não foi possível concluir. Tente novamente.');
+  if (!response.ok) throw Object.assign(new Error(data.error || 'Não foi possível concluir. Tente novamente.'),{code:data.code});
   return data;
 }
 
@@ -22,6 +22,8 @@ export function avatarMarkup(profile) {
 
 export function insideWebView() {
   const ua = navigator.userAgent;
-  return Boolean(window.ReactNativeWebView || /\bwv\b|\bWebView\b|; wv\)/i.test(ua) ||
-    (/iPhone|iPad|iPod/i.test(ua) && /AppleWebKit/i.test(ua) && !/Safari/i.test(ua)));
+  return Boolean(new URLSearchParams(location.search).get('webview')==='1' || window.ReactNativeWebView ||
+    /\bwv\b|\bWebView\b/i.test(ua) || /Android.*Version\/4\.0.*Chrome\//i.test(ua) ||
+    ((/iPhone|iPad|iPod/i.test(ua) || navigator.platform==='MacIntel' && navigator.maxTouchPoints>1) &&
+      /AppleWebKit/i.test(ua) && !/Safari|CriOS|FxiOS|EdgiOS/i.test(ua)));
 }

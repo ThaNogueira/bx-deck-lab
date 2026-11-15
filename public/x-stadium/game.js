@@ -8,6 +8,8 @@ import { StadiumLobby } from './lobby.js';
 import { Matchmaking } from './matchmaking.js';
 import { StadiumPreparation } from './preparation.js';
 import { loadoutStats, validateLineup } from './deck.js';
+import { BattlePlayback } from './playback.js';
+import { avatarMarkup } from './account.js';
 
 const $ = id => document.getElementById(id);
 const icons = {
@@ -87,8 +89,8 @@ graphics.addEventListener('change', () => {
   view?.setGraphics(graphics.value);
   try { localStorage.setItem('x-stadium-graphics', graphics.value); } catch { /* Preferência da sessão. */ }
 });
-let previousFrames = null, previousStep = 0, settledFrames = null, newestSnapshot = null;
-const snapshots = [];
+let previousFrames = null, previousStep = 0, settledFrames = null, lastSentStep = -1;
+const playback = new BattlePlayback();
 let onlineDraft = '';
 const dialog = $('dialog'), content = $('dialog-content'), overlay = $('battle-overlay');
 const phases = { intro:'DUELO ONLINE', dice:'PAR OU ÍMPAR', side:'LADO DA ARENA', order:'ORDEM DO DECK', reveal:'CONFRONTO', setup: 'PREPARAÇÃO', countdown: 'LANÇAMENTO', fight: 'EM BATALHA', qte: 'IMPACTO', result: 'RESULTADO' };
@@ -176,17 +178,26 @@ function updateScore() {
   state.scores.forEach((score, i) => {
     $('score' + (i + 1)).textContent = score;
     $('pips' + (i + 1)).innerHTML = Array.from({ length: 4 }, (_, p) => '<span' + (p < score ? ' class="won"' : '') + '></span>').join('');
+    $('player'+(i+1)+'-label').textContent = playerName(i);
+    const profile = opponentProfiles?.[i];
+    const avatar = $('player'+(i+1)+'-avatar');
+    const markup = profile ? avatarMarkup(profile) : '';
+    avatar.hidden = !profile;
+    if (avatar.dataset.markup!==markup) {
+      avatar.dataset.markup = markup;
+      avatar.innerHTML = markup;
+      avatar.querySelector('img')?.addEventListener('error',event=>{event.target.hidden = true;},{once:true});
+    }
   });
   $('round-label').textContent = 'RODADA ' + state.round;
-  $('player1-label').textContent = playerName(0);
-  $('player2-label').textContent = playerName(1);
 }
 
 function updateCards() {
   state.configs.forEach((config, i) => {
     const b = BLADES[config.blade];
+    const combo = [config.ratchet ?? 'Base integrada',BITS[config.bit].name+' ('+config.bit+')'].join(' · ');
     $('bey' + (i + 1)).innerHTML =
-      '<div class="bey-image"><img src="' + safeImage('blade',config.blade,b.image) + '" alt=""></div><div class="bey-info"><h3>' + b.name + '</h3><p>' + [config.ratchet,config.bit].filter(Boolean).join(' ') + '</p></div>' +
+      '<div class="bey-image"><img src="' + safeImage('blade',config.blade,b.image) + '" alt=""></div><div class="bey-info"><h3>' + b.name + '</h3><p class="bey-combo">' + combo + '</p></div>' +
       '<button class="icon-btn bey-edit" data-action="edit" data-player="' + i + '" aria-label="Editar ' + b.name + '" title="Trocar peças"><i data-icon="edit"></i></button>' +
       '<div class="stamina"><span>GIRO</span><span class="bar"><span class="fill" id="spin-fill' + i + '"></span></span><output id="spin' + i + '">100%</output></div>';
   });
@@ -284,10 +295,11 @@ function resetRound(newMatch = false) {
   state.physics = null;
   state.phase = 'setup';
   state.frames = state.result = state.qte = null;
-  previousFrames = newestSnapshot = null;
+  previousFrames = null;
   previousStep = 0;
   settledFrames = null;
-  snapshots.length = 0;
+  playback.clear();
+  lastSentStep = -1;
   state.ready = [false, false];
   state.cameraDrag = false;
   state.turn = 0;
@@ -673,14 +685,8 @@ const finiteVector = (values,length) => Array.isArray(values) && values.length =
 function receiveFrames(frames, time, exact = false) {
   if (!Array.isArray(frames) || frames.length !== 2 || !frames.every(frame=>frame &&
     finiteVector(frame.p,3) && finiteVector(frame.q,4) && finiteVector(frame.w,3) && finiteVector(frame.v,3))) return false;
-  const now = performance.now() / 1000;
-  const snapshot = { frames, time: Number.isFinite(time) ? time : now, arrival: now };
-  state.frames = frames;
-  if (exact) snapshots.length = 0;
-  if (snapshot.time === newestSnapshot?.time && snapshots.length) snapshots.pop();
-  snapshots.push(snapshot);
-  if (snapshots.length > 8) snapshots.shift();
-  newestSnapshot = snapshot;
+  const now = performance.now()/1000;
+  if (playback.push(frames,Number.isFinite(time)?time:now,now,exact)) state.frames = frames;
   return true;
 }
 
@@ -837,7 +843,8 @@ function receiveOnline(data) {
       startFight(true);
       break;
     case 'frames':
-      if (!isHost() && state.phase === data.phase && ['fight','qte','result'].includes(state.phase)) receiveFrames(data.frames, data.time);
+      if (!isHost() && (data.round===undefined || data.round===state.round) && state.phase===data.phase &&
+        ['fight','qte','result'].includes(state.phase)) receiveFrames(data.frames,data.time);
       break;
     case 'move':
       if (isHost() && state.phase === 'fight' && state.round === data.round) state.physics.tryMove(remote,data.kind);
@@ -975,6 +982,7 @@ function startLobbyMatch(mode,format,beys,level='normal',side=0,profiles=null,ch
 }
 
 const lobby = new StadiumLobby($('stadium-lobby'),$('stadium-queue'),{
+  icons: drawIcons,
   play: (format,beys,level) => startLobbyMatch('cpu',format,beys,level),
   join: (format,options) => matchmaking.join(format,options),
   cancel: () => matchmaking.close(),
@@ -987,7 +995,7 @@ const lobby = new StadiumLobby($('stadium-lobby'),$('stadium-queue'),{
   local: () => { leaveDemo(); setMode('local'); view.setLoadouts(state.configs); view.ready(state.configs,0); },
   help,
 });
-const preparation = new StadiumPreparation($('stadium-preparation'),(kind,code)=>lobby.thumb(kind,code));
+const preparation = new StadiumPreparation($('stadium-preparation'),(kind,code)=>kind==='blade'?lobby.thumb(kind,code):partThumb(kind,code));
 const matchmaking = new Matchmaking({
   queue: data => lobby.queueChanged(data),
   room: code => lobby.roomReady(code),
@@ -1438,6 +1446,7 @@ function frame(now) {
         break;
       }
     }
+    if (state.phase!==phase) accumulator = 0;
     state.frames = state.physics.frames();
     settled = state.phase === 'result' && state.frames.every(top => top.sleeping);
     const cpuSeat = cpuPlayer();
@@ -1454,9 +1463,10 @@ function frame(now) {
         state.cpuMoveAt = state.physics.time+(used ? 5.5 : .65);
       }
     }
-    if (state.mode === 'online' && (settled || now - lastSent > 40)) {
+    if (state.mode==='online' && (settled || now-lastSent>32 && state.physics.time!==lastSentStep)) {
       lastSent = now;
-      sendOnline({ type: 'frames', phase:state.phase, frames: state.frames, time: state.physics.time });
+      lastSentStep = state.physics.time;
+      sendOnline({type:'frames',round:state.round,phase:state.phase,frames:state.frames,time:lastSentStep});
     }
   }
   if (state.phase === 'qte') {
@@ -1475,21 +1485,21 @@ function frame(now) {
   if (state.frames && (!settled || settledFrames !== state.frames)) {
     const moving = !settled && ['fight','qte','result'].includes(state.phase);
     const rate = state.phase === 'qte' ? QTE_SPEED : 1;
-    let from = state.frames, to = null, blend = 0, span = 0;
-    if (moving && isHost() && previousFrames && previousStep) {
+    let from = state.frames, to = null, blend = 0, span = 0, lead = 0;
+    if (moving && isHost() && state.phase==='qte') {
+      lead = Math.max(0,accumulator);
+    } else if (moving && isHost() && previousFrames && previousStep) {
       from = previousFrames;
       to = state.frames;
       blend = clamp(accumulator / previousStep, 0, 1);
       span = previousStep;
-    } else if (moving && snapshots.length > 1) {
-      const target = newestSnapshot.time+(now/1000-newestSnapshot.arrival-.080)*rate;
-      while (snapshots.length > 2 && snapshots[1].time <= target) snapshots.shift();
-      from = snapshots[0].frames;
-      to = snapshots[1].frames;
-      span = snapshots[1].time - snapshots[0].time;
-      blend = span > 0 ? clamp((target - snapshots[0].time) / span, 0, 1) : 1;
+    } else if (moving && !isHost()) {
+      const pose = playback.sample(now/1000,rate);
+      if (pose) ({from,to,blend,span,lead} = pose);
     }
-    view.showFrames(from,to,blend,span,moving,(now-(state.burstAt??now))/1000,dt*rate);
+    const correct = moving && (state.phase==='qte' || !isHost());
+    view.showFrames(from,to,blend,span,moving,(now-(state.burstAt??now))/1000,dt*rate,lead,
+      correct ? 1-Math.exp(-dt*47) : 1);
     settledFrames = settled ? state.frames : null;
   }
   if (now - lastHud > 75) {

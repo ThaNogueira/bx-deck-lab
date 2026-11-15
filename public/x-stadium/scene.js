@@ -72,7 +72,7 @@ function floor(scene) {
     const [x, z] = [vertices[i], vertices[i + 2]];
     const r = Math.hypot(x, z);
     const t = clamp(r / 6.08, 0, 1);
-    color.set(0xc5cdcb).lerp(new T.Color(0x869c96), t ** 2.5);
+    color.set(0xc8d2dc).lerp(new T.Color(0x8398b3), t ** 2.5);
     colors.push(color.r, color.g, color.b);
   }
   geo.setAttribute('color', new T.Float32BufferAttribute(colors, 3));
@@ -230,13 +230,13 @@ function environment(renderer, scene, mobile) {
   main.shadow.bias = -.0002;
   main.shadow.radius = 2;
   scene.add(main);
-  const rim = new T.DirectionalLight(0xc3ff8f, 1.28);
+  const rim = new T.DirectionalLight(0xa6b9ff, 1.28);
   rim.position.set(5, 4, -8);
   scene.add(rim);
 
-  const ground = mesh(scene, plane(110,110), mat(0x1a2522, .87, .1), 0, SHELL.table);
+  const ground = mesh(scene, plane(110,110), mat(0x11182d, .87, .1), 0, SHELL.table);
   ground.receiveShadow = true;
-  const grid = new T.GridHelper(80, 56, 0x34473c, 0x34443c);
+  const grid = new T.GridHelper(80, 56, 0x384770, 0x304061);
   grid.position.y = SHELL.table+.01;
   grid.material.transparent = true;
   grid.material.opacity = .39;
@@ -247,7 +247,7 @@ function environment(renderer, scene, mobile) {
       scene.add(marker);
       marker.position.set(x, SHELL.table+.017, z);
       marker.rotation.y = Math.sign(x * z) === 1 ? 0 : Math.PI;
-      const markerMat = new T.MeshBasicMaterial({ color: 0x647d49, transparent: true, opacity: .6 });
+      const markerMat = new T.MeshBasicMaterial({ color: 0x7e75da, transparent: true, opacity: .6 });
       for (let i = 0; i < 3; i++) {
         const stripe = mesh(marker, plane(.13,.59), markerMat, i * .23);
         stripe.rotation.y = -.53;
@@ -346,7 +346,7 @@ export class ArenaView {
     this.slowFrames = 0;
     this.dirty = true;
     this.scene = new T.Scene();
-    this.scene.background = new T.Color(0x293830);
+    this.scene.background = new T.Color(0x0e1324);
     this.renderer = new T.WebGLRenderer({ antialias: !this.mobile, powerPreference: 'high-performance' });
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = T.PCFShadowMap;
@@ -397,6 +397,8 @@ export class ArenaView {
     });
     this.nextPosition = new T.Vector3();
     this.nextRotation = new T.Quaternion();
+    this.lastRenderPosition = new T.Vector3();
+    this.lastRenderRotation = new T.Quaternion();
     this.spinAxis = new T.Vector3();
     this.endAxis = new T.Vector3();
     this.swingRotation = new T.Quaternion();
@@ -709,7 +711,7 @@ export class ArenaView {
   inspectLoadout(canvas, config) {
     if (!this.inspection) {
       const scene = new T.Scene();
-      scene.background = new T.Color(0x141d1a);
+      scene.background = new T.Color(0x151b2e);
       scene.environment = this.scene.environment;
       scene.environmentIntensity = .82;
       scene.add(new T.HemisphereLight(0xf0f7ff, 0x83988b, 2.3));
@@ -875,12 +877,19 @@ export class ArenaView {
     for (const guide of this.launchAreas) guide.visible = false;
   }
 
-  showFrames(frames, nextFrames, blend, span, moving, burstTime, dt) {
+  showFrames(frames, nextFrames, blend, span, moving, burstTime, dt, lead=0, correction=1) {
     this.dirty = true;
+    const phase = this.stage.dataset.phase;
+    const smooth = correction<1 && phase===this.lastFramePhase;
+    this.lastFramePhase = phase;
     this.beys.forEach((bey, i) => {
       const frame = frames[i], next = nextFrames?.[i];
       const effects = frame.w ? frame : next;
       this.aims[i].visible = false;
+      if (smooth) {
+        this.lastRenderPosition.copy(bey.holder.position);
+        this.lastRenderRotation.copy(bey.holder.quaternion);
+      }
       bey.holder.position.fromArray(frame.p);
       bey.holder.quaternion.fromArray(frame.q);
       if (next && blend > 0) {
@@ -906,6 +915,16 @@ export class ArenaView {
         } else {
           bey.holder.quaternion.slerp(this.nextRotation, blend);
         }
+      } else if (lead>0 && frame.v && frame.w && !frame.sleeping && !frame.burst) {
+        const drift = this.nextPosition.fromArray(frame.v).multiplyScalar(lead).clampLength(0,1.6);
+        bey.holder.position.add(drift);
+        this.spinAxis.fromArray(frame.w);
+        const speed = this.spinAxis.length();
+        if (speed>.0001) bey.holder.quaternion.premultiply(this.twistRotation.setFromAxisAngle(this.spinAxis.divideScalar(speed),speed*lead));
+      }
+      if (smooth) {
+        bey.holder.position.lerp(this.lastRenderPosition,1-correction);
+        if (phase==='qte') bey.holder.quaternion.slerp(this.lastRenderRotation,1-correction);
       }
       bey.rotor.rotation.y = 0;
       if (bey.freeRing && moving && effects.w) {

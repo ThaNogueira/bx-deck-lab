@@ -1,0 +1,248 @@
+:root {
+  --ink:#f4f6ff;
+  --muted:#adb9d1;
+  --lime:#78e6ff;
+  --line:#718ac75c;
+  --blue:#79dfff;
+  --orange:#ffac84;
+  --glass:#131a2bec;
+  --panel:#101525;
+  --panel-raised:#1d263e;
+  --panel-line:#414f71;
+  --violet:#c0a9ff;
+  --amber:#ffc48f;
+}
+
+body,.stage:fullscreen { background:#0a0d19 }
+
+.stage[data-lobby=true]::before {
+  content:'';position:absolute;z-index:1;inset:0;pointer-events:none;
+  background:radial-gradient(ellipse at 79% 35%,#517bfb1e,transparent 55%),
+    radial-gradient(ellipse at 95% 100%,#872dff22,transparent 49%),
+    linear-gradient(86deg,#090b1700 30%,#211a4615 100%);
+}
+
+.stage[data-phase=demo] .arena-fit { inset:12% 3% 11% min(40vw,510px) }
+.stage:has(.stadium-lobby[data-page=home]:not([hidden])) .brand { visibility:hidden }
+.brand { gap:9px;text-shadow:none }
+.brand h1 { color:#f4f7ff;letter-spacing:.075em }
+.brand img { width:34px;height:auto }
+.session-tools { gap:7px }
+.round-badge { border-radius:9px;background:#121a2bee }
+#stage-state { color:#bac9e5 }
+
+.icon-btn,.mode-pill,.secondary-btn,.mode-choice {
+  border-color:#53658d7d;background:#141e33;color:var(--ink);
+  transition:background-color .16s,border-color .16s,color .16s,box-shadow .16s;
+}
+.icon-btn:hover,.icon-btn[aria-pressed=true],.mode-pill:hover,.mode-choice[aria-pressed=true],
+.tool-menu[open]>summary,.camera-group .icon-btn[aria-pressed=true],.camera-group .icon-btn:hover {
+  color:var(--lime);border-color:#6ddaffaa;background:#223452;
+}
+.tool-menu .tool-popover { background:#11192a;box-shadow:0 16px 32px #040610b0 }
+.graphics-setting select { background:#0c1222 }
+
+.stadium-lobby {
+  width:min(416px,calc(100% - var(--left) - var(--right)));padding:clamp(13px,2.4vw,25px);
+  border:1px solid #61729e7a;border-block-start-color:#92ade48f;border-radius:14px;
+  background:linear-gradient(145deg,#1b2440f7,#101525f5 65%);
+  box-shadow:0 24px 70px #030513a0,inset 0 1px #c3d0ff1f;
+  scrollbar-width:thin;scrollbar-color:#526893 #101525;
+}
+.stadium-lobby.wide { width:min(820px,calc(100% - var(--left) - var(--right))) }
+.stadium-lobby[data-page=home] {
+  left:max(var(--left),min(4.6vw,76px));width:min(480px,calc(100% - var(--left) - var(--right)));
+  padding:clamp(17px,2.6vw,30px);border-color:#59729e86;
+  background:linear-gradient(140deg,#202b4df8 0%,#12182af8 53%,#181735f5 100%);
+}
+.stadium-lobby[data-page=home]::before {
+  content:'';position:absolute;inset:0 auto auto 20px;width:122px;height:2px;
+  background:linear-gradient(90deg,#91edff,#9478ff 78%,transparent);
+}
+.lobby-heading {
+  gap:12px;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid #53658d61;
+}
+.lobby-heading h2 { min-width:0;font:800 italic clamp(26px,4.5vw,37px)/.94 var(--heading);color:#f1f6ff }
+.lobby-heading h2:focus { outline:none }
+.lobby-heading [data-lobby=back] { display:grid;place-items:center;flex:none;text-align:center }
+.lobby-heading [data-lobby=back] i { transform:rotate(180deg) }
+.stadium-lobby[data-page=home] .lobby-heading { padding-bottom:15px;margin-bottom:16px }
+.lobby-wordmark { display:flex;align-items:center;gap:6px;min-width:0 }
+.lobby-wordmark img { width:clamp(43px,5.6vw,67px);height:auto;flex:none }
+.stadium-lobby[data-page=home] h2 {
+  color:#f4f8ff;white-space:nowrap;letter-spacing:.006em;font-size:clamp(38px,5.6vw,62px);
+}
+.lobby-body,.lobby-main-actions { gap:9px }
+.lobby-footer { margin-top:4px }
+.lobby-profile-button {
+  min-width:44px;width:44px;height:44px;flex:none;border-color:#7795d3;
+  background:#10192d;box-shadow:0 0 0 3px #809ff015;
+}
+.stadium-avatar { background:#263756;color:#c2eaff }
+.lobby-profile-button:hover { border-color:var(--lime);box-shadow:0 0 12px #62dfff59 }
+.lobby-profile-summary { padding:8px 0 }
+.lobby-profile-summary small { color:#adbeda }
+.lobby-account-form { gap:10px }
+.lobby-account-form button[type=submit] { text-align:center }
+.lobby-field { color:#c3cce1 }
+.lobby-field :is(input,select) { border-color:#6277a889;background:#0b1223;color:#f1f5ff }
+
+.lobby-button,.lobby-editor button {
+  border-color:#5c6d9987;background:#1c2841;color:var(--ink);
+  transition:background-color .15s,border-color .15s,box-shadow .15s;
+}
+.lobby-button[data-primary],.lobby-footer [data-lobby=save],
+.stadium-lineup-actions [data-confirm-order],.launch-button {
+  color:#081828;border-color:#8ce7fb;background:linear-gradient(115deg,#a6f4ff,#71ccff);
+}
+.lobby-tabs [aria-pressed=true],.lobby-editor [aria-pressed=true] {
+  color:#bbf0ff;border-color:#82dbffb0;background:#234461;
+}
+.lobby-button[data-lobby=settings] { display:flex;align-items:center;gap:7px;padding-inline:12px }
+.lobby-button[data-lobby=settings] i { color:#a9bdf7;width:16px;height:16px }
+.lobby-button.lobby-action {
+  --card-accent:#83e3ff;
+  position:relative;isolation:isolate;overflow:hidden;display:grid;
+  grid-template-columns:42px minmax(0,1fr) 19px;align-items:center;gap:11px;
+  min-height:58px;padding:7px 12px 7px 9px;border-radius:9px;
+  border-color:#6083b39e;background:linear-gradient(110deg,#263956,#1a253e 72%);color:var(--ink);
+}
+.lobby-button.lobby-action[data-tone=violet] {
+  --card-accent:#c0a9ff;border-color:#7b6cb69e;background:linear-gradient(110deg,#382e56,#22273f 72%);
+}
+.lobby-button.lobby-action[data-tone=amber] {
+  --card-accent:#ffc48f;border-color:#a4816f92;background:linear-gradient(110deg,#48354b,#29283c 72%);
+}
+.lobby-button.lobby-action[data-primary] {
+  --card-accent:#0c395a;border-color:#b0f4ff;background:linear-gradient(115deg,#a3f4ff,#70cfff 68%,#93b7ff);color:#0b1730;
+}
+.lobby-button.lobby-action::after {
+  content:'';position:absolute;z-index:-1;inset:0;pointer-events:none;opacity:0;
+  background:linear-gradient(112deg,transparent 26%,#c4f7ff42 48%,transparent 70%);transform:translateX(-100%);
+}
+.lobby-action-icon {
+  height:40px;display:grid;place-items:center;border-radius:7px;
+  border:1px solid #adc7ff38;background:#0a142a5c;color:var(--card-accent);
+}
+.lobby-action-icon i { width:22px;height:22px }
+.lobby-action[data-primary] .lobby-action-icon { border-color:#16466642;background:#17394c20 }
+.lobby-action-title { min-width:0;display:grid;gap:2px;line-height:1.13 }
+.lobby-action-title strong { font:800 clamp(17px,3vw,23px)/1 var(--heading) }
+.lobby-action-title small { margin:0;color:#c8d3ed;font-size:11px;opacity:1;line-height:1.25 }
+.lobby-action[data-primary] .lobby-action-title small { color:#183b57 }
+.lobby-action-arrow { color:var(--card-accent) }
+
+.lobby-decks article,.lobby-single,.lobby-preview { border-color:#5a70a071;background:#141f36 }
+.lobby-preview summary { color:#c4eaff }
+.lobby-preview-body canvas { border-color:#526b9c;background:#151b2e }
+.lobby-preview-body>div>small,.lobby-slot-number,.lobby-slots small { color:#b4c4df }
+.lobby-preview-stats small,.lobby-part-grid button small { color:#c4d1e7 }
+.lobby-thumb { background:#142037;border-color:#6d87ba71 }
+.lobby-part-group+.lobby-part-group { border-color:#6277a63f }
+.lobby-bit-type { color:#f1f4ff }
+.lobby-search { padding:16px 10px;border-radius:10px;border:1px solid #5979b866;background:#131d35 }
+.lobby-search [data-queue-time],.stadium-queue b { color:#a8ecff }
+.queue-spinner svg { fill:#1e365a }
+.stadium-queue button { background:#172644 }
+
+.stadium-preparation {
+  max-height:calc(100% - var(--top) - var(--bottom) - 22px);overflow:auto;
+  background:linear-gradient(150deg,#212d50fb,#111729f7 73%);border-color:#8495cb8c;box-shadow:0 26px 68px #030711cb;
+}
+.stadium-lineup-cards button { border-color:#6678a6a0;background:linear-gradient(145deg,#2b395e,#1e2942) }
+.stadium-lineup-cards button[aria-pressed=true] { border-color:#91e8ff;background:linear-gradient(145deg,#2d526e,#233653) }
+.stadium-lineup-cards button.dragging { box-shadow:0 12px 28px #030817d9 }
+.stadium-lineup-pieces { display:flex;justify-content:center;gap:clamp(3px,1.3vw,12px);width:100%;padding:4px 0 1px }
+.stadium-lineup-pieces>span { display:grid;justify-items:center;align-content:start;gap:3px;min-width:0 }
+.stadium-lineup-pieces .part-thumb { display:grid;width:34px;height:34px;border-radius:50%;border:1px solid #637baa;background-color:#13213a }
+.stadium-lineup-pieces .part-thumb img { width:92%;height:92%;border-radius:50% }
+.stadium-lineup-pieces small { color:#c7d7ef;font-size:10px;line-height:1.15 }
+.stadium-lineup-actions button,.stadium-dice-actions button { border-color:#7b99cb93;background:#293b5a }
+.stadium-lineup-status,.stadium-dice-result { color:#c2d4ef }
+.stadium-versus b { filter:drop-shadow(0 3px 9px #6c9fff5e) }
+.stadium-versus>div:first-child strong { color:#9be6ff }
+.stadium-versus>div:last-child strong { color:#ffc49f }
+.stadium-versus>div:last-child .stadium-avatar { border-color:#ffc49f }
+.stadium-die-face { border-color:#ddcfff;background:linear-gradient(145deg,#e3d7ff,#a18cfa);box-shadow:inset 0 0 13px #6953a569 }
+.stadium-die-face i { background:#211a43 }
+.stadium-arena-map { border-color:#a8c3f1;background:radial-gradient(ellipse,#dce8f6 0 48%,#83d7f2 49% 50%,#596ca1 51% 61%,#243454 62%) }
+.stadium-arena-map button { background:#234b6cef;border-color:#8fd4f0;color:#e7f9ff }
+.stadium-arena-map button:last-child { background:#5e3961ef;border-color:#f6b0a4 }
+.stadium-arena-map button:last-child b { color:#ffd0b7 }
+.stadium-arena-map button:enabled:hover { background:#356084 }
+
+dialog { background:#121b30;border-color:#6b83b6;box-shadow:0 20px 60px #030715cc }
+dialog::backdrop { background:#060c19d4 }
+.dialog-body :is(p,li),.field { color:#c2cee7 }
+.field :is(input,select,textarea) { background:#0c1428;border-color:#6275a38e }
+.work-preview canvas,.part-slot,.part-option { background:#17253e;border-color:#4e649b }
+.part-slot:hover:not(:disabled),.part-slot[aria-expanded=true],.part-option:hover,.part-option[aria-pressed=true] {
+  color:#a7eaff;border-color:#7dd9fa;background:#233f5b;
+}
+.player-panel,.stage:not([data-phase=setup]) .player-panel { background:#151f33ec;box-shadow:0 6px 20px #04081678 }
+.player-identity { display:flex;align-items:center;gap:5px;min-width:0 }
+.player-identity>span:last-child { overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
+.player-identity>span:first-child { flex:none;width:24px;height:24px }
+.player-identity .stadium-avatar { border:1px solid var(--player);font-size:12px }
+.bey-info .bey-combo { color:#c1cee7;line-height:1.25 }
+.bey-image { background:color-mix(in srgb,var(--player) 14%,#192339) }
+.stamina .bar,.stat-list .bar { background:#536484 }
+.launcher-controls,.launch-status,.winner-total { background:#141e31ed;border-color:#6d87bc8c }
+.battle-overlay strong { color:#eff6ff;text-shadow:0 3px 22px #0b132cce }
+.winner-score b { color:#91edff }
+.qte-panel { background:#11192bd9;border-color:#6482b69c }
+.combat-side button { background:linear-gradient(160deg,color-mix(in srgb,var(--player) 29%,#25334d),#131d32 83%) }
+.callout { color:#0b1930;background:#91e6ff }
+.launch-button:enabled:hover { background:linear-gradient(112deg,#c7f9ff,#95e0ff);box-shadow:0 0 19px #69d9ff53 }
+.loading { background:#0e1626 }
+
+@media (hover:hover) and (pointer:fine) {
+  .lobby-button.lobby-action:enabled:is(:hover,:focus-visible) {
+    border-color:var(--card-accent);box-shadow:0 4px 18px color-mix(in srgb,var(--card-accent) 27%,transparent);
+  }
+  .lobby-button.lobby-action[data-primary]:enabled:is(:hover,:focus-visible) { border-color:#cdfaff;box-shadow:0 4px 22px #64d9ff70 }
+  .lobby-button.lobby-action:enabled:hover::after { opacity:1;transform:translateX(100%);transition:transform .52s ease-out }
+}
+@media (prefers-reduced-motion:no-preference) {
+  .lobby-button.lobby-action { transition:transform .16s ease,border-color .14s,box-shadow .16s }
+  .lobby-action-arrow { transition:transform .16s ease }
+  .lobby-button.lobby-action:enabled:is(:hover,:focus-visible) .lobby-action-arrow { transform:translateX(2px) }
+  .lobby-button.lobby-action:enabled:active { transform:translateY(2px) }
+  .tool-menu[open] .tool-popover { animation:interface-pop-in .16s ease-out both }
+  .stadium-preparation[data-view=order],.stadium-preparation[data-view=sides] { animation:interface-panel-in .21s ease-out both }
+  @keyframes interface-pop-in { from { opacity:0;transform:translateY(-4px) } }
+  @keyframes interface-panel-in { from { opacity:.3;transform:translate(-50%,-48%) } }
+}
+@media (prefers-reduced-motion:reduce) {
+  .lobby-button.lobby-action::after { display:none }
+  .queue-spinner svg { animation:none }
+}
+
+@media (max-width:720px) {
+  .brand img { width:26px }
+  .session-tools { gap:4px }
+  .player-identity>span:first-child { width:20px;height:20px }
+  .stadium-lineup-pieces .part-thumb { width:28px;height:28px }
+  .stadium-lineup-pieces small { font-size:9px }
+}
+@media (max-width:650px) {
+  .stage[data-phase=demo] .arena-fit { inset:calc(var(--top) + 50px) 2px min(49%,370px) }
+  .stadium-lobby[data-page=home] { left:var(--left);padding:13px }
+  .stadium-lobby[data-page=home] h2 { font-size:clamp(31px,10vw,50px) }
+  .lobby-wordmark img { width:clamp(37px,12vw,61px) }
+  .lobby-heading,.stadium-lobby[data-page=home] .lobby-heading { padding-bottom:10px;margin-bottom:11px }
+  .lobby-action-icon { height:37px }
+  .lobby-button.lobby-action { min-height:53px;grid-template-columns:39px minmax(0,1fr) 17px;gap:8px }
+  .lobby-body,.lobby-main-actions { gap:6px }
+  .lobby-profile-button { min-width:44px;width:44px;height:44px }
+}
+@media (max-width:900px) and (max-height:500px) and (orientation:landscape) {
+  .stage[data-phase=demo] .arena-fit { inset:8% 2% 6% 46% }
+  .stadium-lobby,.stadium-lobby[data-page=home] { top:calc(var(--top) + var(--header) + 4px);bottom:auto;transform:none;padding:10px;width:min(46vw,420px) }
+  .stadium-lobby.wide { width:min(680px,calc(100% - var(--left) - var(--right))) }
+  .stadium-lobby[data-page=home] .lobby-heading { margin-bottom:6px;padding-bottom:6px }
+  .stadium-lobby[data-page=home] h2 { font-size:clamp(25px,5.5vw,43px) }
+  .lobby-wordmark img { width:39px }
+  .stadium-lobby[data-page=home] .lobby-action { min-height:43px;padding-block:4px }
+  .stadium-lobby[data-page=home] .lobby-action-icon { height:32px }
+}

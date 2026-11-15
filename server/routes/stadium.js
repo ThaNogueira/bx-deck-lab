@@ -1,6 +1,7 @@
-import { randomBytes, randomInt, randomUUID } from 'node:crypto';
+import { randomInt, randomUUID } from 'node:crypto';
 import { Router } from 'express';
-import { cookieOptions, createSession, requireUser } from '../auth.js';
+import { WebSocketServer, WebSocket } from 'ws';
+import { requireUser } from '../auth.js';
 import { prisma } from '../db.js';
 import { moderateFields } from '../settings.js';
 import { uploadTournamentImages, uploadedUrl } from '../uploads.js';
@@ -10,21 +11,21 @@ import { lineupKeys, validateLineup } from '../../public/x-stadium/deck.js';
 const router = Router();
 const players = new Map();
 const rooms = new Map();
-const googleTransfers = new Map();
 const formats = new Set(['single','trio']);
 const hostMessages = new Set(['parity','arena-side','lineup','setup','countdown','start','frames','effect','reaction-ack','resume','finish','reset']);
 const guestMessages = new Set(['parity','arena-side','lineup','setup','move','reaction']);
 const matchLife = 20 * 60_000;
 const waitLife = 20_000;
+const snapshotBacklog = 24_000;
 const ah = fn => (req,res,next)=>fn(req,res).catch(next);
 
 const profileOf = user => ({name:user.stadiumName ?? user.name,avatarUrl:user.stadiumAvatarUrl ?? user.avatarUrl});
 const deckOf = ({id,name,beysJson}) => ({id,name,beys:JSON.parse(beysJson)});
 
 function emit(player, channel, payload) {
-  if (!player.stream) return;
-  if (player.stream.writableLength > 128_000 && channel === 'play' && payload.type === 'frames') return;
-  player.stream.write(`event: ${channel}\ndata: ${JSON.stringify(payload)}\n\n`);
+  const stream = player.stream;
+  if (!stream || stream.backlog() > snapshotBacklog && channel==='play' && payload.type==='frames') return;
+  stream.send(channel,payload);
 }
 
 function waiting(format) {
@@ -116,10 +117,9 @@ function remove(player) {
 }
 
 setInterval(() => {
-  for (const [key,transfer] of googleTransfers) if (transfer.expires <= Date.now()) googleTransfers.delete(key);
   for (const player of players.values()) {
     if (player.expires <= Date.now()) remove(player);
-    else player.stream?.write(': ping\n\n');
+    else player.stream?.ping();
   }
 }, 8000).unref();
 
@@ -161,51 +161,6 @@ router.delete('/api/x-stadium/decks/:id', requireUser, ah(async (req,res)=>{
   res.sendStatus(204);
 }));
 
-router.post('/api/x-stadium/google/handoff', (_req,res)=>{
-  if (!isGoogleEnabled()) return res.sendStatus(404);
-  if (googleTransfers.size >= 1000) return res.status(503).json({error:'Tente novamente em instantes.'});
-  const request = randomUUID(), proof = randomBytes(24).toString('base64url');
-  googleTransfers.set(request,{proof,expires:Date.now()+10*60_000,attempts:0});
-  res.json({request,proof});
-});
-
-function activeTransfer(request) {
-  const transfer = googleTransfers.get(request);
-  return transfer?.expires > Date.now() ? transfer : null;
-}
-
-router.get('/api/x-stadium/google/external', (req,res)=>{
-  const {request} = req.query;
-  if (!activeTransfer(request)) return res.status(410).send('Este pedido expirou. Gere um novo link no X Stadium.');
-  const callback = '/x-stadium/?google-handoff='+request;
-  res.cookie('bx_after_login',callback,cookieOptions(new Date(Date.now()+10*60_000)));
-  res.redirect('/api/oauth/google');
-});
-
-router.post('/api/x-stadium/google/code', requireUser, (req,res)=>{
-  const transfer = activeTransfer(req.body?.request);
-  if (!transfer || transfer.userId && transfer.userId!==req.user.id) return res.sendStatus(410);
-  transfer.userId = req.user.id;
-  transfer.code ??= randomBytes(4).toString('hex').toUpperCase();
-  res.json({code:transfer.code});
-});
-
-router.post('/api/x-stadium/google/complete', ah(async (req,res)=>{
-  const {request,proof,code} = req.body ?? {};
-  const transfer = activeTransfer(request);
-  if (!transfer || transfer.proof !== proof) return res.status(410).json({error:'O link expirou. Gere um link novo.'});
-  if (++transfer.attempts > 8) {
-    googleTransfers.delete(request);
-    return res.status(410).json({error:'Gere um link novo para tentar novamente.'});
-  }
-  if (!transfer.code || transfer.code !== String(code).trim().toUpperCase()) return res.status(422).json({error:'Confira o código e tente novamente.'});
-  googleTransfers.delete(request);
-  const user = await prisma.user.findUnique({where:{id:transfer.userId},select:{status:true}});
-  if (user?.status !== 'ACTIVE') return res.status(403).json({error:'Conta indisponível.'});
-  await createSession(res,transfer.userId);
-  res.json({ok:true});
-}));
-
 router.post('/api/x-stadium/queue', (req,res) => {
   const {format,privateRoom,code,guestNumber} = req.body ?? {};
   if (!formats.has(format)) return res.status(400).json({error:'Formato inválido.'});
@@ -234,9 +189,18 @@ router.get('/api/x-stadium/queue/:token', (req,res) => {
   if (!player || player.stream) return res.sendStatus(404);
   res.set({'Content-Type':'text/event-stream','Cache-Control':'no-cache, no-transform','X-Accel-Buffering':'no'});
   res.flushHeaders();
-  player.stream = res;
-  player.expires = Infinity;
   res.on('close',()=>remove(player));
+  connect(player,{
+    send:(event,payload)=>res.write(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`),
+    backlog:()=>res.writableLength,
+    ping:()=>res.write(': ping\n\n'),
+    end:()=>res.end(),
+  });
+});
+
+function connect(player,stream) {
+  player.stream = stream;
+  player.expires = Infinity;
   if (player.host) {
     if (!players.has(player.host.token)) remove(player);
     else if (player.host.stream) startMatch(player.host,player);
@@ -245,42 +209,44 @@ router.get('/api/x-stadium/queue/:token', (req,res) => {
     const guest = players.get(player.guest);
     if (guest?.stream) startMatch(player,guest);
   }
-});
+}
 
-router.post('/api/x-stadium/queue/:token/play', (req,res) => {
-  const player = players.get(req.params.token);
-  if (!player?.peer || !players.has(player.peer.token)) return res.sendStatus(410);
-  const messages = req.body?.messages;
+function relay(player,messages) {
+  if (!player?.peer || !players.has(player.peer.token)) return 410;
   const allowed = player.side === 0 ? hostMessages : guestMessages;
   if (!Array.isArray(messages) || messages.length < 1 || messages.length > 24 ||
-    messages.some(message=>!allowed.has(message?.type)) || JSON.stringify(messages).length > 48_000) return res.sendStatus(400);
+    messages.some(message=>!allowed.has(message?.type)) || JSON.stringify(messages).length > 48_000) return 400;
   player.expires = player.peer.expires = Date.now()+matchLife;
   const {match} = player;
   for (const message of messages) {
     if (message.type==='parity' || message.type==='arena-side') {
       const accepted = message.type==='parity' ? chooseParity(player,message.parity) : chooseArenaSide(player,message.side);
-      if (!accepted) return res.sendStatus(400);
+      if (!accepted) return 400;
       continue;
     }
     if (message.type==='lineup') {
-      if (!submitLineup(player,message)) return res.sendStatus(400);
+      if (!submitLineup(player,message)) return 400;
       continue;
     }
-    if (!match.placement) return res.sendStatus(400);
+    if (!match.placement) return 400;
     if (message.type==='setup') {
-      if (message.round!==match.round || player.format==='trio' && (match.round-1)%3===0 && !match.submissions.every(Boolean)) return res.sendStatus(400);
+      if (message.round!==match.round || player.format==='trio' && (match.round-1)%3===0 && !match.submissions.every(Boolean)) return 400;
       match.ready[player.side] = message.ready===true;
     }
-    if (message.type==='countdown' && !match.ready.every(Boolean)) return res.sendStatus(400);
+    if (message.type==='countdown' && !match.ready.every(Boolean)) return 400;
     if (message.type==='reset') {
-      if (message.round!==match.round && message.round!==match.round+1) return res.sendStatus(400);
+      if (message.round!==match.round && message.round!==match.round+1) return 400;
       if (message.round!==match.round) match.submissions = [null,null];
       match.round = message.round;
       match.ready = [false,false];
     }
     emit(player.peer,'play',message);
   }
-  res.sendStatus(204);
+  return 204;
+}
+
+router.post('/api/x-stadium/queue/:token/play', (req,res) => {
+  res.sendStatus(relay(players.get(req.params.token),req.body?.messages));
 });
 
 router.delete('/api/x-stadium/queue/:token', (req,res) => {
@@ -290,3 +256,42 @@ router.delete('/api/x-stadium/queue/:token', (req,res) => {
 });
 
 export default router;
+
+export function attachStadiumSocket(server) {
+  const sockets = new WebSocketServer({noServer:true,maxPayload:50_000,perMessageDeflate:false});
+  server.on('upgrade',(req,connection,head)=>{
+    const token = /^\/api\/x-stadium\/queue\/([\da-f-]{36})\/socket$/.exec(req.url)?.[1];
+    const player = players.get(token);
+    const origin = req.headers.origin;
+    const sameOrigin = !origin || URL.canParse(origin) && new URL(origin).host===req.headers.host;
+    if (!player || player.stream || !sameOrigin) {
+      connection.end('HTTP/1.1 404 Not Found\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
+      return;
+    }
+    sockets.handleUpgrade(req,connection,head,socket=>{
+      let alive = true;
+      socket.on('pong',()=>{ alive = true; });
+      socket.on('close',()=>remove(player));
+      socket.on('error',()=>socket.terminate());
+      socket.on('message',(raw,binary)=>{
+        let status = 400;
+        if (!binary) {
+          try { status = relay(player,JSON.parse(raw.toString())?.messages); }
+          catch { /* Close an invalid or oversized message. */ }
+        }
+        if (status!==204) socket.close(1008);
+      });
+      connect(player,{
+        send:(event,payload)=>{
+          if (socket.readyState===WebSocket.OPEN) socket.send(JSON.stringify({event,payload}));
+        },
+        backlog:()=>socket.bufferedAmount,
+        ping:()=>{
+          if (!alive) socket.terminate();
+          else if (socket.readyState===WebSocket.OPEN) { alive = false; socket.ping(); }
+        },
+        end:()=>socket.close(1000),
+      });
+    });
+  });
+}

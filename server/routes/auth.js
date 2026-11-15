@@ -140,6 +140,7 @@ router.post('/api/auth/login', ah(async (req, res) => {
   if (!user || !user.passwordHash) {
     return res.status(401).json({
       error: user ? 'Esta conta entra com o botão do Google.' : 'E-mail ou senha incorretos.',
+      ...(user ? {code:'NO_PASSWORD'} : {}),
     });
   }
   if (!(await verifyPassword(password, user.passwordHash))) {

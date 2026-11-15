@@ -20,7 +20,7 @@ import adminRoutes from './routes/admin.js';
 import championRoutes from './routes/champion.js';
 import communityRoutes from './routes/community.js';
 import homeRoutes from './routes/home.js';
-import stadiumRoutes from './routes/stadium.js';
+import stadiumRoutes, { attachStadiumSocket } from './routes/stadium.js';
 import { scheduleMetaJobs } from './meta.js';
 import { warmModeration } from './moderation.js';
 import { sendSocial, socialMeta, socialRouter } from './social.js';
@@ -181,7 +181,8 @@ app.use((err, req, res, _next) => {
 });
 
 const port = parseInt(process.env.PORT, 10) || 3000;
-app.listen(port, isolatedTest ? '127.0.0.1' : undefined, () => console.log(`BX Deck Lab ouvindo em http://localhost:${port}`));
+const server = app.listen(port, isolatedTest ? '127.0.0.1' : undefined, () => console.log(`BX Deck Lab ouvindo em http://localhost:${port}`));
+attachStadiumSocket(server);
 
 // Catálogo de peças/produtos: sincroniza sozinho no boot (se estiver velho) e periodicamente
 if (!isolatedTest) scheduleAutoSync();

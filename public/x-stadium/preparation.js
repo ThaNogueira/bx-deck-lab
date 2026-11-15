@@ -1,4 +1,4 @@
-import { BLADES } from './rules.js';
+import { BLADES, BITS } from './rules.js';
 import { avatarMarkup, escapeText } from './account.js';
 
 const positions = ['1ª','2ª','3ª'];
@@ -107,9 +107,12 @@ export class StadiumPreparation {
   }
 
   drawOrder() {
-    this.root.querySelector('.stadium-lineup-cards').innerHTML = this.deck.map((bey,i)=>
-      '<button type="button" data-order-slot="'+i+'" data-blade="'+bey.blade+'"><span>'+positions[i]+'</span>'+
-      this.thumb('blade',bey.blade)+'<strong>'+escapeText(BLADES[bey.blade].name)+'</strong></button>').join('');
+    this.root.querySelector('.stadium-lineup-cards').innerHTML = this.deck.map((bey,i)=>{
+      const pieces = [['ratchet',bey.ratchet,bey.ratchet],['bit',bey.bit,BITS[bey.bit].name]].filter(([,code])=>code);
+      return '<button type="button" data-order-slot="'+i+'" data-blade="'+bey.blade+'"><span>'+positions[i]+'</span>'+
+        this.thumb('blade',bey.blade)+'<strong>'+escapeText(BLADES[bey.blade].name)+'</strong><span class="stadium-lineup-pieces">'+
+        pieces.map(([kind,code,name])=>'<span>'+this.thumb(kind,code)+'<small>'+escapeText(name)+'</small></span>').join('')+'</span></button>';
+    }).join('');
     this.updateOrder();
   }
 
@@ -141,7 +144,7 @@ export class StadiumPreparation {
     if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
       for (const card of this.root.querySelectorAll('[data-order-slot]')) {
         const offset = old.get(card.dataset.blade)-card.getBoundingClientRect().x;
-        if (offset) card.animate([{translate:offset+'px 0'},{translate:'0 0'}],{duration:180,easing:'ease-out'});
+        if (offset) card.animate?.([{translate:offset+'px 0'},{translate:'0 0'}],{duration:180,easing:'ease-out'});
       }
     }
   }

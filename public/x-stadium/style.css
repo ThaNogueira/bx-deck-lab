@@ -406,7 +406,6 @@ i[data-icon] svg { width:100%;height:100% }
 .lobby-profile-summary small { display:block;color:#acc4b6;margin-top:2px }
 .lobby-account-form { display:grid;gap:9px }
 .lobby-account-form input[type=file] { width:100% }
-.lobby-auth-code { letter-spacing:.2em;font:800 28px var(--heading);user-select:all }
 .stadium-preparation {
   position:absolute;z-index:5;left:50%;top:50%;transform:translate(-50%,-50%);width:min(740px,calc(100% - 22px));
   padding:clamp(12px,3vw,26px);border:1px solid #8ecb6b78;border-radius:15px;background:#12261ff5;

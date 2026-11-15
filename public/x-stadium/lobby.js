@@ -16,6 +16,11 @@ const defaults = [{...DEFAULTS[0]},{blade:'wizard',ratchet:'5-70',bit:'B'},{blad
 const normalize = value => String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
 const catalogCode = (kind,code) => kinds[kind][code]?.name ?? code;
 const button = (text,action,extra='') => '<button type="button" class="lobby-button" data-lobby="'+action+'" '+extra+'>'+text+'</button>';
+const tile = (label,action,{icon,tone='cyan',detail='',attributes=''}={}) =>
+  '<button type="button" class="lobby-button lobby-action" data-lobby="'+action+'" data-tone="'+tone+'" '+attributes+
+  ' aria-label="'+label+'"><span class="lobby-action-icon"><i data-icon="'+icon+'" aria-hidden="true"></i></span>'+
+  '<span class="lobby-action-title"><strong>'+label+'</strong>'+(detail?'<small>'+detail+'</small>':'')+'</span>'+
+  '<i class="lobby-action-arrow" data-icon="arrow" aria-hidden="true"></i></button>';
 const spinner = '<span class="queue-spinner" aria-hidden="true"><svg viewBox="0 0 40 40"><path d="M20 2 32 7 38 20 32 33 20 38 7 32 2 20 8 7Z M20 8l9 6 2 10-11 8-10-7 1-10Z"/><circle cx="20" cy="20" r="5"/></svg></span>';
 
 function readDecks() {
@@ -38,12 +43,16 @@ export class StadiumLobby {
     this.guest = {name:'Blader '+this.guestNumber,avatarUrl:null};
     this.profile = this.guest;
     this.authMode = 'login';
+    this.embedded = insideWebView();
     this.pictures = new Map();
     this.difficulty = 'normal';
     this.page = 'home';
     root.addEventListener('click',e=>{
       const target = e.target.closest('[data-lobby]');
-      if (target) this.click(target);
+      if (!target) return;
+      const previous = this.page;
+      this.click(target);
+      if (e.detail===0 && this.page!==previous && !root.hidden) root.querySelector('h2')?.focus({preventScroll:true});
     });
     badge.addEventListener('click',e=>{
       const target = e.target.closest('[data-lobby]');
@@ -53,6 +62,14 @@ export class StadiumLobby {
       if (e.target.id === 'lobby-deck-name') this.draft.name = e.target.value;
       if (e.target.id === 'lobby-room-code') this.roomCode = e.target.value;
       if (e.target.id === 'lobby-graphics') this.actions.graphics(e.target.value);
+    });
+    root.addEventListener('keydown',e=>{
+      const back = root.querySelector('[data-lobby="back"]');
+      if (e.key==='Escape' && back && !this.busy) {
+        e.preventDefault();
+        this.click(back);
+        root.querySelector('h2')?.focus({preventScroll:true});
+      }
     });
     root.addEventListener('error',e=>{
       const image = e.target;
@@ -76,16 +93,16 @@ export class StadiumLobby {
     },true);
     this.accountReady = this.loadAccount().catch(()=>{ this.accountUnavailable = true; });
     const query = new URLSearchParams(location.search);
-    if (query.has('perfil') || query.has('google-handoff')) {
+    if (query.has('perfil')) {
       this.accountReady.then(()=>{
         if (this.root.hidden || this.page!=='home') return;
         this.show('profile');
-        if (query.has('google-handoff')) this.showTransferCode(query.get('google-handoff'));
-        else {
-          this.error = query.get('erro') || '';
-          history.replaceState(null,'',location.pathname);
-          this.render();
-        }
+        this.error = query.get('erro') || '';
+        query.delete('perfil');
+        query.delete('erro');
+        const search = query.toString();
+        history.replaceState(null,'',location.pathname+(search?'?'+search:''));
+        this.render();
       });
     }
     this.loadPictures();
@@ -144,19 +161,10 @@ export class StadiumLobby {
     const profile = '<div class="lobby-profile-summary">'+avatarMarkup(this.profile)+'<div><strong>'+escape(this.profile.name)+'</strong>'+
       '<small>'+(this.member?'Conta BX Lab':'Convidado')+'</small></div></div>';
     const save = '<button class="lobby-button" data-primary type="submit">'+(this.busy?'Aguarde…':'Salvar perfil')+'</button>';
-    if (this.transferCode) return profile+'<p>Cole este código no seu X Stadium.</p><output class="lobby-auth-code">'+escape(this.transferCode)+'</output>';
     if (this.member) return profile+'<form class="lobby-account-form" data-account-form="profile">'+
       '<label class="lobby-field">Nome no X Stadium<input name="name" required maxlength="40" value="'+escape(this.profile.name)+'"></label>'+
       '<label class="lobby-field">Foto no X Stadium<input name="file" type="file" accept="image/png,image/jpeg,image/webp"></label>'+
       '<label><input type="checkbox" name="useAccountPhoto" value="1"> Usar a foto da conta BX Lab</label>'+save+'</form>';
-    if (this.googleTransfer) {
-      const url = location.origin+'/api/x-stadium/google/external?request='+encodeURIComponent(this.googleTransfer.request);
-      return profile+'<p>Abra o link no navegador do celular e entre com Google. Depois, cole aqui o código de retorno.</p>'+
-        '<label class="lobby-field">Link para abrir no navegador<input id="stadium-google-link" readonly value="'+escape(url)+'"></label>'+
-        button('Copiar link','copy-google')+'<form class="lobby-account-form" data-account-form="google">'+
-        '<label class="lobby-field">Código de retorno<input name="code" required maxlength="8" autocapitalize="characters"></label>'+
-        '<button class="lobby-button" data-primary type="submit">Confirmar código</button></form>'+button('Voltar ao login','stop-google');
-    }
     const create = this.authMode==='register';
     return profile+(this.accountUnavailable?'<p>Não foi possível consultar sua sessão.</p>':'')+
       '<div class="lobby-tabs">'+button('Entrar','auth-mode','data-value="login" aria-pressed="'+!create+'"')+
@@ -167,7 +175,7 @@ export class StadiumLobby {
       '<label class="lobby-field">Senha<input type="password" name="password" required '+(create?'minlength="8"':'')+
       ' autocomplete="'+(create?'new-password':'current-password')+'"></label>'+
       '<button class="lobby-button" data-primary type="submit">'+(this.busy?'Aguarde…':create?'Criar conta BX Lab':'Entrar na conta')+'</button></form>'+
-      (this.googleEnabled?button('Entrar com Google','google'): '');
+      (this.googleEnabled && !this.embedded ? button('Entrar com Google','google') : '');
   }
 
   async submitAccount(form) {
@@ -183,42 +191,26 @@ export class StadiumLobby {
         this.profile = profile;
         this.show('home');
       } else {
-        if (form.dataset.accountForm==='google') {
-          await stadiumRequest('/api/x-stadium/google/complete','POST',{...this.googleTransfer,code:data.get('code')});
-          this.googleTransfer = null;
-        } else {
-          this.authEmail = String(data.get('email') ?? '');
-          await stadiumRequest('/api/auth/'+this.authMode,'POST',Object.fromEntries(data));
-        }
+        this.authEmail = String(data.get('email') ?? '');
+        await stadiumRequest('/api/auth/'+this.authMode,'POST',Object.fromEntries(data));
         this.accountUnavailable = false;
         await this.loadAccount();
         this.show('profile');
       }
     } catch (error) {
-      this.error = error.message;
+      this.error = this.embedded && error.code==='NO_PASSWORD' ? 'Esta conta ainda não tem senha cadastrada.' : error.message;
     } finally {
       this.busy = false;
       this.render();
     }
   }
 
-  async googleLogin(external = insideWebView()) {
+  async googleLogin() {
+    if (this.embedded || !this.googleEnabled) return;
     try {
-      if (external) this.googleTransfer = await stadiumRequest('/api/x-stadium/google/handoff','POST');
-      else {
-        await stadiumRequest('/api/auth/after-login','POST',{to:'/x-stadium/?perfil=1'});
-        location.assign('/api/oauth/google');
-      }
+      await stadiumRequest('/api/auth/after-login','POST',{to:'/x-stadium/?perfil=1'});
+      location.assign('/api/oauth/google');
     } catch (error) { this.error = error.message; }
-    this.render();
-  }
-
-  async showTransferCode(request) {
-    try {
-      const {code} = await stadiumRequest('/api/x-stadium/google/code','POST',{request});
-      this.transferCode = code;
-      history.replaceState(null,'',location.pathname);
-    } catch { this.error = 'O código expirou. Gere um link novo no X Stadium.'; }
     this.render();
   }
 
@@ -323,6 +315,7 @@ export class StadiumLobby {
 
   render(keepScroll = true) {
     const wide = this.page === 'editor';
+    const transitioning = this.root.dataset.page !== this.page;
     const previousCanvas = this.root.querySelector('#lobby-preview-model');
     const scroll = keepScroll && wide && this.root.dataset.page === 'editor' ? this.root.querySelector('.lobby-part-grid')?.scrollTop : 0;
     this.root.dataset.page = this.page;
@@ -331,25 +324,30 @@ export class StadiumLobby {
     switch (this.page) {
       case 'home':
         title = 'X Stadium';
-        body = '<div class="lobby-main-actions">'+button('Jogar online','online','data-primary')+
-          button('Jogar contra IA','cpu')+button('Decks','decks')+'</div><div class="lobby-footer">'+button('Opções','settings')+'</div>';
+        body = '<div class="lobby-main-actions">'+tile('Jogar online','online',{icon:'bolt',detail:'Buscar partida ou criar sala',attributes:'data-primary'})+
+          tile('Jogar contra IA','cpu',{icon:'cpu',tone:'violet',detail:'Single ou 3×3'})+
+          tile('Decks','decks',{icon:'parts',tone:'amber',detail:'Montar e editar Beys'})+
+          '</div><div class="lobby-footer">'+button('<i data-icon="menu" aria-hidden="true"></i>Opções','settings')+'</div>';
         break;
       case 'online':
         title = 'Jogar online';
-        body = button('Buscar partida online','search','data-primary')+button('Criar sala','private')+button('Entrar por código','join');
+        body = tile('Buscar partida online','search',{icon:'target',attributes:'data-primary'})+
+          tile('Criar sala','private',{icon:'lock',tone:'violet'})+tile('Entrar por código','join',{icon:'users',tone:'amber'});
         break;
       case 'format':
         title = 'Escolha o formato';
-        body = button('3×3 <small>Três Beys por jogador</small>','format','data-format="trio"')+
-          button('Single <small>Uma Bey · até 4 pontos</small>','format','data-format="single"');
+        body = tile('3×3','format',{icon:'parts',tone:'violet',detail:'Três Beys por jogador',attributes:'data-format="trio"'})+
+          tile('Single','format',{icon:'target',detail:'Uma Bey por jogador',attributes:'data-format="single"'});
         break;
       case 'difficulty':
         title = 'Dificuldade';
-        body = Object.entries(difficulties).map(([value,label])=>button(label,'difficulty','data-value="'+value+'"')).join('');
+        body = Object.entries(difficulties).map(([value,label],i)=>tile(label,'difficulty',{
+          icon:['guard','activity','strike'][i],tone:['cyan','violet','amber'][i],attributes:'data-value="'+value+'"',
+        })).join('');
         break;
       case 'decks':
         title = 'Meus decks';
-        body = button('Criar deck','new','data-primary')+this.deckRows(false)+
+        body = tile('Criar deck','new',{icon:'plus',attributes:'data-primary'})+this.deckRows(false)+
           (this.member && this.importableDecks().length?button('Importar decks deste navegador','import-decks'):'');
         break;
       case 'profile':
@@ -378,17 +376,27 @@ export class StadiumLobby {
         break;
       case 'settings':
         title = 'Opções';
-        body = button(this.actions.soundEnabled()?'Silenciar som':'Ativar som','sound')+
+        body = tile(this.actions.soundEnabled()?'Silenciar som':'Ativar som','sound',{icon:this.actions.soundEnabled()?'sound':'muted'})+
           '<label class="lobby-field">Gráficos<select id="lobby-graphics">'+
           [['auto','Automático'],['fps30','Meta 30 FPS'],['fps60','Meta 60 FPS'],['fps120','Meta 120 FPS'],['low','Leve'],['medium','Equilibrado'],['high','Alto']]
             .map(([key,label])=>'<option value="'+key+'" '+(key===this.actions.graphicsValue()?'selected':'')+'>'+label+'</option>').join('')+
-          '</select></label>'+button('Duelo local','local')+button('Como jogar','help');
+          '</select></label>'+tile('Duelo local','local',{icon:'users',tone:'violet'})+tile('Como jogar','help',{icon:'help',tone:'amber'});
         break;
     }
     const profileButton = this.page==='home' ? '<button type="button" class="lobby-profile-button" data-lobby="profile" aria-label="Meu perfil" title="'+escape(this.profile.name)+'">'+avatarMarkup(this.profile)+'</button>' : '';
-    this.root.innerHTML = '<div class="lobby-heading">'+(this.page==='home'?'':button('‹','back','aria-label="Voltar"'))+
-      '<h2>'+title+'</h2>'+profileButton+'</div><div class="lobby-body">'+body+
+    const heading = this.page==='home' ? '<div class="lobby-wordmark"><img src="./assets/stadium-mark.svg" alt="" width="76" height="64">'+
+      '<h2 tabindex="-1">'+title+'</h2></div>' : button('<i data-icon="arrow" aria-hidden="true"></i>','back','aria-label="Voltar"')+
+      '<h2 tabindex="-1">'+title+'</h2>';
+    this.root.innerHTML = '<div class="lobby-heading">'+heading+profileButton+'</div><div class="lobby-body">'+body+
       (this.error?'<p class="lobby-error" role="alert">'+escape(this.error)+'</p>':'')+'</div>';
+    this.actions.icons?.(this.root);
+    if (transitioning) {
+      this.root.scrollTop = 0;
+      if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        this.root.querySelector('.lobby-body').animate?.([{opacity:.45,transform:'translateY(7px)'},{opacity:1,transform:'translateY(0)'}],
+          {duration:215,easing:'cubic-bezier(.2,.75,.3,1)'});
+      }
+    }
     if (scroll) this.root.querySelector('.lobby-part-grid').scrollTop = scroll;
     if (wide && previousCanvas) {
       const nextCanvas = this.root.querySelector('#lobby-preview-model');
@@ -540,13 +548,6 @@ export class StadiumLobby {
       case 'online': case 'decks': case 'settings': case 'profile': this.show(action); break;
       case 'auth-mode': this.authMode=value; this.show('profile'); break;
       case 'google': this.googleLogin(); break;
-      case 'stop-google': this.googleTransfer=null; this.show('profile'); break;
-      case 'copy-google': {
-        const field = this.root.querySelector('#stadium-google-link');
-        field.select();
-        navigator.clipboard?.writeText(field.value).then(()=>{target.textContent='Copiado';}).catch(()=>{});
-        break;
-      }
       case 'import-decks': if (this.member) this.importDecks(); break;
       case 'preview-angle': this.actions.inspectAngle?.(value); break;
       case 'cpu': case 'search': case 'private': case 'join':
