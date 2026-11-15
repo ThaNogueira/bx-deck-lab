@@ -1,6 +1,6 @@
 const effects = {
-  hit: { modes:[730,1240,2030,3480,5720], decay:.19, noise:3400, snap:.034, level:.23 },
-  smash: { modes:[430,1080,1840,3030,4930], decay:.29, noise:2800, snap:.047, level:.32 },
+  hit: { modes:[1094,1886,2962,4328,6577], decay:.23, noise:5100, snap:.015, level:.27, metal:true },
+  smash: { modes:[668,1237,2141,3529,5611,7492], decay:.34, noise:4520, snap:.028, level:.35, metal:true },
   scrape: { modes:[1050,2180,3610], decay:.075, noise:2600, snap:.075, level:.12 },
   dash: { modes:[690,1050,2320], decay:.16, noise:1750, snap:.21, level:.17 },
   launch: { modes:[440,1010,1840], decay:.10, noise:1490, snap:.19, level:.17 },
@@ -28,6 +28,11 @@ export class ArenaAudio {
 
   async unlock() {
     if (!this.context || this.context.state === 'running') return;
+    const wake = this.context.createBufferSource();
+    wake.buffer = this.context.createBuffer(1,1,this.context.sampleRate);
+    wake.connect(this.context.destination);
+    wake.start();
+    wake.onended = () => wake.disconnect();
     await this.context.resume();
   }
 
@@ -90,10 +95,10 @@ export class ArenaAudio {
     const grit = ctx.createBufferSource(), filter = ctx.createBiquadFilter(), env = ctx.createGain();
     grit.buffer = this.noise;
     filter.type = 'bandpass';
-    filter.Q.value = .64;
+    filter.Q.value = cue.metal ? 1.1 : .64;
     filter.frequency.setValueAtTime(cue.noise*.68,now);
     filter.frequency.exponentialRampToValueAtTime(cue.noise*(name === 'dash' ? 1.85 : .8),now+cue.snap);
-    env.gain.setValueAtTime(level,now);
+    env.gain.setValueAtTime(level*(cue.metal ? 1.22 : 1),now);
     env.gain.exponentialRampToValueAtTime(.0001,now+cue.snap);
     grit.connect(filter).connect(env).connect(output);
     grit.start(now,Math.random()*.8);
@@ -101,8 +106,8 @@ export class ArenaAudio {
     cue.modes.forEach((hz,i) => {
       const tone = ctx.createOscillator(), gain = ctx.createGain();
       const end = now+cue.decay/(1+i*.27);
-      tone.frequency.value = hz*variation;
-      gain.gain.setValueAtTime(level/(2.3+i*1.13),now);
+      tone.frequency.value = hz*variation*(.98+Math.random()*.04);
+      gain.gain.setValueAtTime(level/(cue.metal ? 2.5+Math.abs(i-2)*1.1 : 2.3+i*1.13),now);
       gain.gain.exponentialRampToValueAtTime(.0001,end);
       tone.connect(gain).connect(output);
       tone.start(now); tone.stop(end);

@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="./style.css">
 </head>
 <body>
-<main class="stage" id="stage" data-phase="setup" aria-label="X Stadium · Arena BX-10">
+<main class="stage" id="stage" data-phase="setup" data-lobby="true" aria-label="X Stadium · Arena BX-10">
   <div id="world"></div>
   <div class="arena-fit" aria-hidden="true"></div>
   <header class="top-bar">
@@ -37,8 +37,9 @@
       <details class="tool-menu">
         <summary class="icon-btn" aria-label="Configurações" title="Configurações"><i data-icon="menu"></i></summary>
         <div class="tool-popover settings-menu">
+          <button class="mode-pill" data-action="stadium-home"><i data-icon="arena"></i><span>Menu inicial</span></button>
           <button class="mode-pill" data-action="multiplayer" aria-label="Modo de jogo e multijogador" title="Modo de jogo e multijogador"><i data-icon="cpu"></i><span id="mode-name">TREINO COM IA</span></button>
-          <label class="graphics-setting" for="graphics">Gráficos<select id="graphics"><option value="auto">Automático</option><option value="low">Leve</option><option value="medium">Equilibrado</option><option value="high">Alto</option></select></label>
+          <label class="graphics-setting" for="graphics">Gráficos<select id="graphics"><option value="auto">Automático</option><option value="fps30">Meta 30 FPS</option><option value="fps60">Meta 60 FPS</option><option value="fps120">Meta 120 FPS</option><option value="low">Leve</option><option value="medium">Equilibrado</option><option value="high">Alto</option></select></label>
           <button class="mode-pill" data-action="sound" aria-pressed="false"><i data-icon="muted"></i><span>Ativar som</span></button>
           <button class="mode-pill" id="fullscreen" data-action="fullscreen" aria-pressed="false" hidden><i data-icon="expand"></i><span>Tela cheia</span></button>
           <button class="mode-pill" data-action="help"><i data-icon="help"></i><span>Como jogar</span></button>
@@ -81,6 +82,9 @@
   <button type="button" class="launcher-grip launcher-position-grip" id="launcher-position-grip" data-launch-grip="position" aria-label="Arrastar o lançador" title="Arraste para mover o lançador" hidden><i data-icon="move"></i><span>Arraste</span></button>
   <button type="button" class="launcher-grip launcher-aim-grip" id="launcher-aim-grip" data-launch-grip="heading" aria-label="Mover a direção da seta" title="Arraste para mudar a direção" hidden><i data-icon="target"></i><span>Mover</span></button>
   <p class="launch-status" id="launch-status" hidden></p>
+  <button class="deck-cycle" type="button" id="deck-cycle" data-action="cycle-order" hidden>Trocar ordem do deck</button>
+  <section id="stadium-lobby" class="stadium-lobby" aria-label="Menu do X Stadium" inert></section>
+  <div id="stadium-queue" class="stadium-queue" hidden></div>
 
   <div id="combat-controls" class="combat-controls" role="group" aria-label="Comandos de batalha" hidden></div>
   <p class="sr-only" id="last-event" role="status">Arena pronta para o lançamento.</p>

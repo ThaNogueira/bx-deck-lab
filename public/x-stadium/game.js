@@ -1,9 +1,11 @@
 import { ArenaView } from './scene.js';
-import { Battle, initPhysics } from './physics.js';
+import { Battle, DT, initPhysics } from './physics.js';
 import { ATTACK, BIT_TYPES, BITS, BLADE_TOP, BLADES, DEFAULTS, GRAMS_PER_MASS_UNIT, MAX_LAUNCH_ANGLE, MOVE_USES, RATCHETS, STAMINA, getParts, railRating, sanitizeConfig, specialMove } from './rules.js';
 import { clamp } from './stadium.js';
 import { Link, roomCode } from './online.js';
 import { ArenaAudio } from './audio.js';
+import { StadiumLobby } from './lobby.js';
+import { Matchmaking } from './matchmaking.js';
 
 const $ = id => document.getElementById(id);
 const icons = {
@@ -53,10 +55,25 @@ const state = {
   configs: DEFAULTS.map(sanitizeConfig), ready: [false, false], frames: null, physics: null,
   result: null, qte: null, reflex: true, trial: null, sound: false, camera: 'orbit', cameraDrag: false, connected: false, roomStatus: '',
 };
+const stage = $('stage');
+let inLobby = true, demo = null, demoTime = 0, demoNext = 0;
+let roster = null, difficulty = 'normal', publicMatch = false;
+const cpuDeck = [{blade:'aero',ratchet:'3-70',bit:'A'},{blade:'silver',ratchet:'3-80',bit:'FB'},{blade:'knight',ratchet:'4-60',bit:'H'}];
+const cpuReflex = {
+  easy: {miss:.32,error:.58,min:315,spread:140},
+  normal: {miss:.12,error:.28,min:280,spread:155},
+  hard: {miss:.025,error:.10,min:190,spread:130},
+};
+const escapeAttribute = value => value.replace(/[&"<>]/g,char=>({'&':'&amp;','"':'&quot;','<':'&lt;','>':'&gt;'})[char]);
+function safeImage(kind,code,fallback='') {
+  return escapeAttribute(lobby.picture(kind,code) || fallback);
+}
 let view, available = false, workPlayer = 0, accumulator = 0, flashTimer, lastTime = performance.now(), lastSent = 0, lastHud = 0;
 let timingPlayer = null, meterStart = 0, meterPower = 45;
 let workPart = null;
 const audio = new ArenaAudio();
+let wantsSound = true;
+try { wantsSound = localStorage.getItem('x-stadium-sound') !== 'muted'; } catch { /* Session preference. */ }
 const graphics = $('graphics');
 try {
   const saved = localStorage.getItem('x-stadium-graphics');
@@ -78,7 +95,8 @@ const METER_PEAK_MS = 150;
 
 const isHost = () => state.mode !== 'online' || state.localPlayer === 0;
 const activePlayer = () => state.mode === 'local' ? state.turn : state.localPlayer;
-const canEdit = i => state.phase === 'setup' && !state.ready[i] && (state.mode !== 'online' || i === state.localPlayer);
+const canEdit = i => !inLobby && state.phase === 'setup' && !state.ready[i] && (state.mode !== 'online' || i === state.localPlayer);
+const canEditParts = i => canEdit(i) && !roster;
 const launchButton = $('launch'), launcherControls = $('launcher-controls'), aimGrip = $('launcher-aim-grip');
 const positionGrip = $('launcher-position-grip'), angleDial = $('launch-angle');
 const meterTrack = $('launch-power-track'), powerValue = $('power-value');
@@ -141,7 +159,7 @@ function requestMove(player, kind) {
     if (!state.physics.tryMove(player,kind)) return;
     state.frames = state.physics.frames();
   } else {
-    link.send({type:'move',kind,round:state.round});
+    sendOnline({type:'move',kind,round:state.round});
     const data = state.frames[player].moves;
     data.ready = data.ready.filter(move => move !== kind);
   }
@@ -161,7 +179,7 @@ function updateCards() {
   state.configs.forEach((config, i) => {
     const b = BLADES[config.blade];
     $('bey' + (i + 1)).innerHTML =
-      '<div class="bey-image"><img src="' + b.image + '" alt=""></div><div class="bey-info"><h3>' + b.name + '</h3><p>' + [config.ratchet,config.bit].filter(Boolean).join(' ') + '</p></div>' +
+      '<div class="bey-image"><img src="' + safeImage('blade',config.blade,b.image) + '" alt=""></div><div class="bey-info"><h3>' + b.name + '</h3><p>' + [config.ratchet,config.bit].filter(Boolean).join(' ') + '</p></div>' +
       '<button class="icon-btn bey-edit" data-action="edit" data-player="' + i + '" aria-label="Editar ' + b.name + '" title="Trocar peças"><i data-icon="edit"></i></button>' +
       '<div class="stamina"><span>GIRO</span><span class="bar"><span class="fill" id="spin-fill' + i + '"></span></span><output id="spin' + i + '">100%</output></div>';
   });
@@ -197,6 +215,7 @@ function updateControls() {
   const local = activePlayer(), config = state.configs[local];
   const editing = canEdit(local);
   const settingUp = state.phase === 'setup';
+  $('deck-cycle').hidden = !(editing && roster?.[local]?.length === 3 && state.round > 1 && (state.round-1)%3 === 0);
   const angle = Math.round(config.angle);
   $('angle-value').textContent = angle + '°';
   angleDial.setAttribute('aria-valuenow',angle);
@@ -216,26 +235,26 @@ function updateControls() {
     element.hidden = !gripsVisible;
   }
   const status = $('launch-status');
-  status.hidden = !available || !settingUp || (!state.cameraDrag && launchReady);
+  status.hidden = inLobby || !available || !settingUp || (!state.cameraDrag && launchReady);
   status.textContent = !editing ? 'Aguardando o adversário' :
     state.cameraDrag ? 'Ajustando a câmera' : 'Aguardando sala';
   $('camera-drag').hidden = !settingUp;
   $('camera-drag').setAttribute('aria-pressed',state.cameraDrag);
   const trainingLabel = {stamina:'TESTE DE RESISTÊNCIA',attack:'TESTE DE ATAQUE'}[state.trial] || 'TREINO COM IA';
   $('mode-name').textContent = {cpu:trainingLabel,local:'DUELO LOCAL',online:state.connected?'DUELO ONLINE':'SALA ONLINE'}[state.mode];
-  const modeIcon = document.querySelector('.mode-pill i');
+  const modeIcon = $('mode-name').previousElementSibling;
   const nextIcon = state.mode === 'cpu' ? 'cpu' : 'users';
   if (modeIcon.dataset.icon !== nextIcon) {
     modeIcon.dataset.icon = nextIcon;
     drawIcons(modeIcon.parentElement);
   }
   $('stage-state').textContent = phases[state.phase];
-  $('stage').dataset.phase = state.phase;
+  stage.dataset.phase = inLobby ? 'demo' : state.phase;
   $('stage').dataset.gesture = editing && !state.cameraDrag ? 'launch' : 'camera';
   launchButton.disabled = !launchReady || state.cameraDrag;
   if (gripsVisible) view?.positionLauncherControls();
   document.querySelectorAll('.bey-edit').forEach((el, i) => {
-    el.hidden = !canEdit(i);
+    el.hidden = !canEditParts(i);
     $('player' + (i + 1) + '-panel').dataset.active = editing && i === local;
   });
   updateCombatControls();
@@ -264,6 +283,12 @@ function resetRound(newMatch = false) {
   state.turn = 0;
   accumulator = 0;
   if (newMatch) { state.round = 1; state.scores = [0, 0]; }
+  if (roster) {
+    for (const [i,deck] of roster.entries()) {
+      if (deck) state.configs[i] = sanitizeConfig({...DEFAULTS[i], ...deck[(state.round-1)%deck.length], point:DEFAULTS[i].point},i);
+    }
+    view?.setLoadouts(state.configs);
+  }
   $('callout').hidden = true;
   overlay.hidden = true;
   overlay.setAttribute('aria-live','polite');
@@ -286,7 +311,7 @@ function configure(partial, broadcast = true) {
 
 function sendSetup() {
   if (state.mode === 'online' && state.connected) {
-    link.send({ type: 'setup', config: state.configs[state.localPlayer], ready: state.ready[state.localPlayer] });
+    sendOnline({ type: 'setup', config: state.configs[state.localPlayer], ready: state.ready[state.localPlayer], round:state.round });
   }
 }
 
@@ -326,7 +351,7 @@ function countdown(remote = false) {
   state.countShown = null;
   updateControls();
   overlay.hidden = false;
-  if (!remote && state.mode === 'online') link.send({ type: 'countdown', configs: state.configs });
+  if (!remote && state.mode === 'online') sendOnline({ type: 'countdown', configs: state.configs });
   view.ready(state.configs, activePlayer(),false);
 }
 
@@ -335,7 +360,7 @@ function startFight(remote = false) {
   if (!remote) {
     state.physics = new Battle(state.configs, handleBattleEvent, { reflex: state.reflex });
     previousFrames = state.frames = state.physics.frames();
-    if (state.mode === 'online') link.send({ type: 'start', frames: state.frames, time: state.physics.time });
+    if (state.mode === 'online') sendOnline({ type: 'start', frames: state.frames, time: state.physics.time });
   }
   accumulator = 0;
   lastSent = 0;
@@ -363,12 +388,13 @@ function showQte(event) {
   state.qte = { ...event, start, cues, close: start+cues.at(-1).at+qteWindow,
     reactions: cues.map(() => [null,null]), shown: null, feedbackUntil:start };
   if (state.mode === 'cpu') {
+    const level = cpuReflex[difficulty];
     state.qte.cpu = cues.map(({target}) => {
       const accuracy = Math.random();
-      if (accuracy < .12) return null;
+      if (accuracy < level.miss) return null;
       return {
-        index: accuracy < .28 ? (target+(Math.random() < .5 ? 1 : 2))%3 : target,
-        delay: 280+Math.random()*155,
+        index: accuracy < level.error ? (target+(Math.random() < .5 ? 1 : 2))%3 : target,
+        delay: level.min+Math.random()*level.spread,
       };
     });
   }
@@ -433,7 +459,7 @@ function react(player,index) {
   if (stage < 0) return;
   const delay = now-q.start-q.cues[stage].at;
   if (recordReaction(q,player,stage,index,delay) && state.mode === 'online') {
-    link.send({type:isHost() ? 'reaction-ack' : 'reaction',id:q.id,stage,index,delay});
+    sendOnline({type:isHost() ? 'reaction-ack' : 'reaction',id:q.id,stage,index,delay});
   }
   drawQte(now);
 }
@@ -496,7 +522,7 @@ function resolveQte() {
   previousFrames = state.frames = state.physics.frames();
   if (outcome) showReflexOutcome(winner,outcome,q.at);
   else flash('REFLEXOS EMPATADOS');
-  if (state.mode === 'online') link.send({type:'resume',winner,outcome,at:q.at,frames:state.frames,time:state.physics.time});
+  if (state.mode === 'online') sendOnline({type:'resume',winner,outcome,at:q.at,frames:state.frames,time:state.physics.time});
 }
 
 function showReflexOutcome(winner,outcome,at) {
@@ -517,7 +543,7 @@ function handleBattleEvent(event) {
     state.result = event;
     if (event.winner !== null) state.scores[event.winner] += event.points;
     showResult();
-    if (state.mode === 'online') link.send({ type: 'finish', result: event, scores: state.scores, frames: state.frames, time: state.physics.time });
+    if (state.mode === 'online') sendOnline({ type: 'finish', result: event, scores: state.scores, frames: state.frames, time: state.physics.time });
     return;
   }
   if (event.qte) {
@@ -529,12 +555,15 @@ function handleBattleEvent(event) {
   }
   visualizeEvent(event);
   if (state.mode === 'online') {
-    link.send({ type: 'effect', event, frames: event.qte ? state.physics.frames() : undefined, time: state.physics.time });
+    sendOnline({ type: 'effect', event, frames: event.qte ? state.physics.frames() : undefined, time: state.physics.time });
   }
 }
 
+const finiteVector = (values,length) => Array.isArray(values) && values.length === length && values.every(Number.isFinite);
+
 function receiveFrames(frames, time, exact = false) {
-  if (!Array.isArray(frames) || frames.length !== 2) return;
+  if (!Array.isArray(frames) || frames.length !== 2 || !frames.every(frame=>frame &&
+    finiteVector(frame.p,3) && finiteVector(frame.q,4) && finiteVector(frame.w,3) && finiteVector(frame.v,3))) return false;
   const now = performance.now() / 1000;
   const snapshot = { frames, time: Number.isFinite(time) ? time : now, arrival: now };
   state.frames = frames;
@@ -543,6 +572,7 @@ function receiveFrames(frames, time, exact = false) {
   snapshots.push(snapshot);
   if (snapshots.length > 8) snapshots.shift();
   newestSnapshot = snapshot;
+  return true;
 }
 
 function visualizeEvent(event) {
@@ -584,20 +614,21 @@ function showResult() {
   state.qte = null;
   overlay.setAttribute('aria-live','polite');
   const r = state.result;
+  const finishTitle = escapeAttribute(r.title);
   const winner = r.winner === null ? null : state.mode === 'cpu' && r.winner === 1 ? 'CPU' : 'Jogador ' + (r.winner + 1);
   const match = state.scores.some(s => s >= 4);
   const bey = winner ? BLADES[state.configs[r.winner].blade].name : '';
   const points = '+' + r.points + (r.points === 1 ? ' ponto' : ' pontos');
   const label = winner ? winner + ' · ' + bey + ' · ' + points : 'A rodada será repetida.';
-  const next = '<button class="launch-button" data-action="next"' + (isHost() ? '' : ' disabled') + '>' +
-    (isHost() ? match ? 'NOVA PARTIDA' : 'PRÓXIMA RODADA' : 'AGUARDANDO ANFITRIÃO') + '</button>';
+  const next = '<button class="launch-button" data-action="next"' + (isHost() || match && publicMatch ? '' : ' disabled') + '>' +
+    (match && publicMatch ? 'VOLTAR AO MENU' : isHost() ? match ? 'NOVA PARTIDA' : 'PRÓXIMA RODADA' : 'AGUARDANDO ANFITRIÃO') + '</button>';
   view.setResultWinner(r.winner);
   overlay.classList.toggle('winner-result', Boolean(winner));
   overlay.innerHTML = winner ?
-    '<div class="winner-banner"><span class="overlay-label">' + winner + ' · ' + r.title + '</span><strong>Vitória' +
+    '<div class="winner-banner"><span class="overlay-label">' + winner + ' · ' + finishTitle + '</span><strong>Vitória' +
       (match ? ' na partida' : '') + '</strong><div class="winner-score"><span>' + bey + '</span><b>' + points + '</b></div></div>' +
       '<div class="winner-actions"><span class="winner-total" aria-label="Placar da partida">' + state.scores.join(' – ') + '</span>' + next + '</div>' :
-    '<span class="overlay-label">FIM DA RODADA</span><strong>' + r.title.toUpperCase() + '</strong><p>' + label + '</p>' + next;
+    '<span class="overlay-label">FIM DA RODADA</span><strong>' + escapeAttribute(r.title.toUpperCase()) + '</strong><p>' + label + '</p>' + next;
   overlay.hidden = false;
   updateScore(); updateControls(); updateStamina();
   audio.play('finish');
@@ -605,11 +636,21 @@ function showResult() {
 }
 
 function nextRound() {
-  if (state.phase !== 'result' || !isHost()) return;
+  if (state.phase !== 'result') return;
   const newMatch = state.scores.some(s => s >= 4);
+  if (newMatch && publicMatch) { openLobby(); return; }
+  if (!isHost()) return;
   if (!newMatch && state.result.winner !== null) state.round++;
+  if (!newMatch && roster?.[1]?.length === 3 && state.mode === 'cpu' && (state.round-1)%3 === 0 && state.result.winner !== null) {
+    const deck = [...roster[1]];
+    const offset = 1+Math.floor(Math.random()*2);
+    roster[1] = [...deck.slice(offset),...deck.slice(0,offset)];
+  }
   resetRound(newMatch);
-  if (state.mode === 'online') link.send({ type: 'reset', round: state.round, scores: state.scores });
+  if (state.mode === 'online') {
+    sendOnline({ type: 'reset', round: state.round, scores: state.scores });
+    sendSetup();
+  }
 }
 
 const link = new Link((message, status) => {
@@ -627,12 +668,14 @@ const link = new Link((message, status) => {
     if (!dialog.open || content.dataset.panel === 'multiplayer') multiplayer();
   }
   if ($('room-status')) $('room-status').textContent = message;
-}, data => {
+}, receiveOnline);
+
+function receiveOnline(data) {
   if (state.mode !== 'online') return;
   const remote = 1 - state.localPlayer;
   switch (data.type) {
     case 'setup':
-      if (state.phase !== 'setup') break;
+      if (state.phase !== 'setup' || data.round !== undefined && data.round !== state.round) break;
       state.configs[remote] = sanitizeConfig(data.config, remote);
       state.ready[remote] = !!data.ready;
       view.setLoadouts(state.configs);
@@ -649,7 +692,7 @@ const link = new Link((message, status) => {
       break;
     case 'start':
       if (isHost() || state.phase !== 'countdown') break;
-      receiveFrames(data.frames, data.time, true);
+      if (!receiveFrames(data.frames,data.time,true)) break;
       startFight(true);
       break;
     case 'frames':
@@ -659,9 +702,16 @@ const link = new Link((message, status) => {
       if (isHost() && state.phase === 'fight' && state.round === data.round) state.physics.tryMove(remote,data.kind);
       break;
     case 'effect':
-      if (!isHost() && state.phase === 'fight') {
-        if (data.frames) receiveFrames(data.frames, data.time, true);
-        visualizeEvent(data.event);
+      if (!isHost() && state.phase === 'fight' && data.event) {
+        const event = data.event;
+        if (['dash','move','reverse'].includes(event.type) && ![0,1].includes(event.player)) break;
+        if (event.type === 'move' && !Object.hasOwn(moves,event.kind)) break;
+        if (['dash','spin-reward','rail-exit','scrape','hit'].includes(event.type) && !finiteVector(event.at,3)) break;
+        if (['scrape','hit'].includes(event.type) && (!Number.isFinite(event.strength) || event.strength < 0)) break;
+        if (event.qte && (!Array.isArray(event.cues) || !event.cues.length || event.cues.length > 3 ||
+          !event.cues.every(cue=>cue && Number.isFinite(cue.at) && cue.at >= 0 && cue.at < 3000 && [0,1,2].includes(cue.target)))) break;
+        if (data.frames && !receiveFrames(data.frames,data.time,true)) break;
+        visualizeEvent(event);
       }
       break;
     case 'reaction':
@@ -678,40 +728,184 @@ const link = new Link((message, status) => {
       break;
     case 'resume':
       if (isHost() || state.phase !== 'qte') break;
+      if (!receiveFrames(data.frames,data.time,true)) break;
       state.qte = null;
       state.phase = 'fight';
-      snapshots.length = 0;
-      receiveFrames(data.frames,data.time,true);
       overlay.hidden = true;
       overlay.setAttribute('aria-live','polite');
       updateControls();
-      if (data.winner !== null && data.outcome) showReflexOutcome(data.winner,data.outcome,data.at);
+      if ([0,1].includes(data.winner) && data.outcome && finiteVector(data.at,3)) {
+        showReflexOutcome(data.winner,data.outcome,data.at);
+      }
       else flash('REFLEXOS EMPATADOS');
       break;
     case 'finish':
-      if (isHost()) break;
-      receiveFrames(data.frames, data.time, true);
+      if (isHost() || !data.result || ![null,0,1].includes(data.result.winner) ||
+        ![0,1,2,3].includes(data.result.points) || typeof data.result.title !== 'string' ||
+        !Array.isArray(data.scores) || data.scores.length !== 2 || !data.scores.every(Number.isFinite) ||
+        !receiveFrames(data.frames,data.time,true)) break;
       state.result = data.result;
       state.scores = data.scores;
       showResult();
       break;
     case 'reset':
-      if (isHost()) break;
+      if (isHost() || !Number.isInteger(data.round) || data.round < 1 ||
+        !Array.isArray(data.scores) || data.scores.length !== 2 || !data.scores.every(Number.isFinite)) break;
       state.round = data.round;
       state.scores = data.scores;
       resetRound();
+      sendSetup();
       break;
   }
-});
+}
+
+function sendOnline(message) {
+  if (publicMatch) matchmaking.send(message);
+  else link.send(message);
+}
 
 function setMode(mode, player = 0) {
   link.close();
+  roster = null;
+  publicMatch = false;
   state.trial = null;
   state.mode = mode;
   state.connected = false;
   state.localPlayer = player;
   state.roomStatus = '';
   resetRound(true);
+}
+
+function leaveDemo() {
+  inLobby = false;
+  stage.dataset.lobby = 'false';
+  demo?.dispose();
+  demo = null;
+}
+
+function openLobby() {
+  dialog.close();
+  matchmaking.close();
+  link.close();
+  lobby.queue = null;
+  publicMatch = false;
+  roster = null;
+  inLobby = true;
+  stage.dataset.lobby = 'true';
+  state.configs = DEFAULTS.map(sanitizeConfig);
+  setMode('cpu');
+  audio.update(null,1);
+  lobby.show('home');
+  demoNext = 0;
+}
+
+function startLobbyMatch(mode,format,beys,level='normal',side=0) {
+  leaveDemo();
+  closeToolMenus();
+  if (dialog.open) dialog.close();
+  link.close();
+  state.mode = mode;
+  state.localPlayer = side;
+  state.connected = mode === 'online';
+  state.trial = null;
+  state.reflex = true;
+  difficulty = level;
+  publicMatch = mode === 'online';
+  roster = [null,null];
+  roster[side] = beys;
+  if (mode === 'cpu') roster[1] = format === 'trio' ? cpuDeck : [cpuDeck[Math.floor(Math.random()*cpuDeck.length)]];
+  state.configs = DEFAULTS.map(sanitizeConfig);
+  stage.dataset.format = format;
+  resetRound(true);
+  sendSetup();
+}
+
+const lobby = new StadiumLobby($('stadium-lobby'),$('stadium-queue'),{
+  play: (format,beys,level) => startLobbyMatch('cpu',format,beys,level),
+  join: (format,options) => matchmaking.join(format,options),
+  cancel: () => matchmaking.close(),
+  soundEnabled: () => state.sound,
+  toggleSound,
+  graphicsValue: () => graphics.value,
+  graphics: value => { graphics.value = value; graphics.dispatchEvent(new Event('change')); },
+  local: () => { leaveDemo(); setMode('local'); view.setLoadouts(state.configs); view.ready(state.configs,0); },
+  help,
+});
+const matchmaking = new Matchmaking({
+  queue: data => lobby.queueChanged(data),
+  room: code => lobby.roomReady(code),
+  play: receiveOnline,
+  match: ({side}) => {
+    const pending = lobby.matched();
+    if (pending) startLobbyMatch('online',pending.format,pending.beys,'normal',side);
+  },
+  error: (message,matched) => {
+    if (matched && state.phase === 'result' && state.scores.some(score=>score>=4)) {
+      state.connected = false;
+      return;
+    }
+    if (matched) openLobby();
+    lobby.fail(message);
+    announce(message);
+  },
+});
+document.addEventListener('stadium-catalog-ready',updateCards);
+window.addEventListener('pagehide',()=>matchmaking.close());
+
+function playDemo(dt,now) {
+  if (!demo || demo.finished || demo.time > 14) {
+    if (demo && now < demoNext) return;
+    demo?.dispose();
+    const blades = Object.keys(BLADES);
+    const first = Math.floor(Math.random()*blades.length);
+    const configs = [first,(first+1+Math.floor(Math.random()*(blades.length-1)))%blades.length].map((index,i)=>
+      sanitizeConfig({...DEFAULTS[i],blade:blades[index],ratchet:BLADES[blades[index]].stock?.[0],
+        bit:BLADES[blades[index]].stock?.[1],heading:DEFAULTS[i].heading+Math.random()*24-12},i));
+    demo = new Battle(configs,event=>{
+      if (event.type === 'finish') demoNext = performance.now()+300;
+      if (event.type === 'hit' && event.strength > .5) view.spark(event.at,event.strength);
+    });
+    view.setLoadouts(configs);
+    view.ready(configs,0,false);
+    view.launchAnimation();
+    demoTime = 0;
+  }
+  demoTime += dt;
+  const until = performance.now()+4;
+  let step = demo.stepSize();
+  while (!demo.finished && demoTime >= step && performance.now() < until) {
+    demo.step(false,step);
+    demoTime -= step;
+    step = demo.stepSize();
+  }
+  demoTime = Math.min(demoTime,DT*2);
+  for (const top of demo.tops) {
+    if (demo.time >= (top.demoMoveAt ?? 2)) {
+      top.demoMoveAt = demo.time+1.5;
+      demo.tryMove(top.player,top.charges.dash ? 'dash' : specialMove(top.bit));
+    }
+  }
+  view.showFrames(demo.frames(),null,0,0,true,0,dt);
+}
+
+async function toggleSound(enabled = !state.sound, save = true) {
+  const btn = stage.querySelector('[data-action="sound"]');
+  if (btn.disabled) return;
+  btn.disabled = true;
+  try { state.sound = await audio.toggle(enabled); }
+  catch { state.sound = false; announce('Áudio indisponível neste navegador.'); }
+  finally { btn.disabled = false; }
+  btn.setAttribute('aria-pressed',state.sound);
+  btn.title = state.sound ? 'Silenciar som' : 'Ativar som';
+  btn.setAttribute('aria-label',btn.title);
+  btn.querySelector('span').textContent = btn.title;
+  btn.querySelector('i').dataset.icon = state.sound ? 'sound' : 'muted';
+  drawIcons(btn);
+  if (save) {
+    wantsSound = enabled;
+    try { localStorage.setItem('x-stadium-sound',enabled?'on':'muted'); } catch { /* Session preference. */ }
+  }
+  if (state.sound) audio.play('launch');
 }
 
 function openDialog(panel, title, body) {
@@ -739,7 +933,7 @@ const partDetail = (kind,code) => {
   return code ? RATCHETS[code].mm + ' mm' : 'UX Expand';
 };
 const partThumb = (kind,code) => {
-  if (kind === 'blade') return '<span class="part-thumb"><img src="' + BLADES[code].image + '" alt=""></span>';
+  if (code && lobby.picture(kind,code)) return '<span class="part-thumb"><img src="' + safeImage(kind,code) + '" alt=""></span>';
   if (!code) return '<span class="part-thumb integrated-thumb"><i data-icon="parts"></i></span>';
   const index = Object.keys(partCatalog[kind]).indexOf(code) + (kind === 'bit' ? Object.keys(RATCHETS).length : 0);
   return '<span class="part-thumb part-render" aria-hidden="true" style="--col:' + index%8 + ';--row:' + Math.floor(index/8) + '"></span>';
@@ -767,7 +961,7 @@ function partPicker(config,locked) {
 }
 
 function selectPart(code) {
-  if (!workPart || !canEdit(workPlayer) || !Object.hasOwn(partCatalog[workPart],code)) return;
+  if (!workPart || !canEditParts(workPlayer) || !Object.hasOwn(partCatalog[workPart],code)) return;
   const part = workPart;
   const stock = part === 'blade' ? BLADES[code].stock : null;
   const change = stock ? {blade:code,ratchet:stock[0],bit:stock[1]} : {[part]:code};
@@ -783,7 +977,7 @@ function workshop(i = activePlayer()) {
   workPlayer = state.mode === 'online' ? state.localPlayer : i;
   const config = state.configs[workPlayer];
   const { blade, ratchet, bit, standing, balance, mass } = getParts(config);
-  const locked = !canEdit(workPlayer);
+  const locked = !canEditParts(workPlayer);
   if (locked || workPart === 'ratchet' && blade.integrated) workPart = null;
   const sameWorkshop = dialog.open && content.dataset.panel === 'workshop';
   const pageScroll = sameWorkshop ? dialog.scrollTop : 0;
@@ -854,7 +1048,19 @@ document.addEventListener('click', async e => {
   const btn = e.target.closest('[data-action]');
   if (!btn) return;
   const action = btn.dataset.action;
-  if (action === 'close') dialog.close();
+  if (action === 'cycle-order') {
+    const i = activePlayer(), deck = roster?.[i];
+    if ($('deck-cycle').hidden || !canEdit(i) || !deck) return;
+    roster[i] = [...deck.slice(1),deck[0]];
+    state.configs[i] = sanitizeConfig({...state.configs[i],...roster[i][0],point:DEFAULTS[i].point},i);
+    view.setLoadouts(state.configs);
+    view.ready(state.configs,i);
+    updateCards();
+    updateControls();
+    sendSetup();
+  }
+  else if (action === 'stadium-home') { closeToolMenus(); openLobby(); }
+  else if (action === 'close') dialog.close();
   else if (action === 'edit' || action === 'work-player') {
     workPart = null;
     workshop(Number(btn.dataset.player));
@@ -867,7 +1073,10 @@ document.addEventListener('click', async e => {
   else if (action === 'inspect-top' || action === 'inspect-side') view?.inspectAngle(action === 'inspect-top');
   else if (action === 'multiplayer' || action === 'help') {
     closeToolMenus();
-    if (action === 'multiplayer') multiplayer();
+    if (action === 'multiplayer') {
+      if (roster || inLobby) openLobby();
+      else multiplayer();
+    }
     else help();
   }
   else if (['stamina-trial','attack-trial','normal-trial'].includes(action)) {
@@ -899,19 +1108,8 @@ document.addEventListener('click', async e => {
   } else if (action === 'reaction') react(Number(btn.dataset.player),Number(btn.dataset.symbol));
   else if (action === 'combat') requestMove(Number(btn.dataset.player),btn.dataset.move);
   else if (action === 'next') nextRound();
-  else if (action === 'sound') {
-    btn.disabled = true;
-    try { state.sound = await audio.toggle(!state.sound); }
-    catch { state.sound = false; announce('Áudio indisponível neste navegador.'); }
-    finally { btn.disabled = false; }
-    btn.setAttribute('aria-pressed', state.sound);
-    btn.title = state.sound ? 'Silenciar som' : 'Ativar som';
-    btn.setAttribute('aria-label', btn.title);
-    btn.querySelector('span').textContent = btn.title;
-    btn.querySelector('i').dataset.icon = state.sound ? 'sound' : 'muted';
-    drawIcons(btn);
-    if (state.sound) audio.play('launch');
-  } else if (['orbit', 'top', 'follow'].includes(action) && view) {
+  else if (action === 'sound') toggleSound();
+  else if (['orbit', 'top', 'follow'].includes(action) && view) {
     view.setCameraLocked(false);
     $('camera-lock').setAttribute('aria-pressed',false);
     state.camera = action; view.setCamera(action);
@@ -962,6 +1160,13 @@ document.addEventListener('keydown', e => {
 document.addEventListener('pointerdown', e => {
   if (state.sound && !e.target.closest('[data-action="sound"]')) audio.unlock().catch(() => {});
 }, { passive:true });
+document.addEventListener('touchend', () => {
+  if (state.sound) audio.unlock().catch(()=>{});
+}, {passive:true});
+document.addEventListener('click',e=>{
+  if (!available || !wantsSound || state.sound || e.target.closest('[data-action="sound"],[data-lobby="sound"],[data-lobby="settings"]')) return;
+  if (e.target.closest('[data-lobby="online"],[data-lobby="cpu"],#launch')) toggleSound(true,false);
+},{capture:true});
 
 dialog.addEventListener('click', e => { if (e.target === dialog) dialog.close(); });
 document.addEventListener('change', e => {
@@ -1046,6 +1251,13 @@ document.addEventListener('keydown', e => {
 function frame(now) {
   const dt = clamp((now - lastTime) / 1000, .001, .05);
   lastTime = now;
+  lobby.tick();
+  if (inLobby) {
+    playDemo(dt,now);
+    view.draw(dt,1);
+    requestAnimationFrame(frame);
+    return;
+  }
   updateLaunchMeter(now);
   if (state.phase === 'countdown') {
     const n = Math.max(1, Math.ceil((state.deadline - now) / 510));
@@ -1094,7 +1306,7 @@ function frame(now) {
     }
     if (state.mode === 'online' && (settled || now - lastSent > 40)) {
       lastSent = now;
-      link.send({ type: 'frames', phase:state.phase, frames: state.frames, time: state.physics.time });
+      sendOnline({ type: 'frames', phase:state.phase, frames: state.frames, time: state.physics.time });
     }
   }
   if (state.phase === 'qte') {
@@ -1152,12 +1364,12 @@ try {
     panel: launcherControls,
     positionGrip,
     aimGrip,
-    power: () => meterPower,
   });
   view.setGraphics(graphics.value);
   view.setLoadouts(state.configs);
   view.ready(state.configs, 0);
   available = true;
+  lobby.root.inert = false;
   updateControls();
   requestAnimationFrame(frame);
 } catch (error) {

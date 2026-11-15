@@ -473,8 +473,9 @@ export class ArenaView {
   resize() {
     const { clientWidth: w, clientHeight: h } = this.container;
     if (!w || !h) return;
-    const ratio = this.graphics === 'auto' ? (this.mobile ? Math.min(devicePixelRatio, 1, Math.sqrt(520_000 / (w * h))) * this.renderScale : Math.min(devicePixelRatio, 1.35)) :
-      Math.min(devicePixelRatio, {low:.7,medium:1,high:1.5}[this.graphics]);
+    const ratio = this.fpsTarget ? Math.min(devicePixelRatio,1.5,Math.sqrt(1_100_000/(w*h)))*this.renderScale :
+      this.graphics === 'auto' ? (this.mobile ? Math.min(devicePixelRatio, 1, Math.sqrt(520_000 / (w * h))) * this.renderScale : Math.min(devicePixelRatio, 1.35)) :
+        Math.min(devicePixelRatio, {low:.7,medium:1,high:1.5}[this.graphics]);
     if (w !== this.width || h !== this.height || ratio !== this.renderer.getPixelRatio()) {
       this.renderer.setDrawingBufferSize(w, h, ratio);
       this.width = w;
@@ -489,8 +490,12 @@ export class ArenaView {
 
   setGraphics(quality) {
     this.graphics = quality;
-    this.renderScale = 1;
+    this.fpsTarget = Number(quality.replace(/^fps/,'')) || 0;
+    this.renderScale = {30:1,60:.82,120:.70}[this.fpsTarget] ?? 1;
     this.slowFrames = 0;
+    this.fastFrames = 0;
+    this.refreshInterval = Infinity;
+    this.lastDraw = 0;
     this.renderer.shadowMap.enabled = quality !== 'low';
     this.renderer.shadowMap.needsUpdate = true;
     this.resize();
@@ -980,6 +985,20 @@ export class ArenaView {
     if (!this.width || !this.height) return;
     const phase = this.stage.dataset.phase;
     const moving = phase !== 'setup';
+    const now = performance.now();
+    if (this.fpsTarget && moving && !settled) {
+      this.refreshInterval = Math.min(this.refreshInterval,dt);
+      const budget = Math.max(1/this.fpsTarget,this.refreshInterval);
+      this.slowFrames = dt > budget*1.20 ? this.slowFrames+1 : Math.max(0,this.slowFrames-2);
+      this.fastFrames = dt < budget*1.07 ? this.fastFrames+1 : 0;
+      const scale = this.slowFrames >= 20 ? Math.max(.50,this.renderScale-.12) :
+        this.fastFrames >= 180 ? Math.min(1,this.renderScale+.06) : this.renderScale;
+      if (scale !== this.renderScale) {
+        this.renderScale = scale;
+        this.slowFrames = this.fastFrames = 0;
+        this.resize();
+      }
+    }
     if (this.graphics === 'auto' && this.mobile && (phase === 'fight' || phase === 'result' && !settled)) {
       this.slowFrames = dt > .027 ? this.slowFrames + 1 : Math.max(0, this.slowFrames - 2);
       if (this.slowFrames >= 24 && this.renderScale > .7) {
@@ -987,7 +1006,7 @@ export class ArenaView {
         this.slowFrames = 0;
         this.resize();
       }
-    } else this.slowFrames = 0;
+    } else if (!this.fpsTarget) this.slowFrames = 0;
     if (this.launchStarted) {
       const t = clamp((performance.now()-this.launchStarted)/460,0,1);
       for (const [i,launcher] of this.launchers.entries()) {
@@ -1069,6 +1088,13 @@ export class ArenaView {
         this.sparks.splice(i, 1);
       }
     }
+    const targetFps = phase === 'demo' ? 30 : this.fpsTarget;
+    const interval = targetFps ? 1000/targetFps : 0;
+    if (interval && !previewDrawn && now+1.5 < this.lastDraw+interval) {
+      this.dirty = true;
+      return;
+    }
+    this.lastDraw = interval ? Math.max(now-interval,this.lastDraw+interval) : now;
     this.renderer.render(this.scene, this.camera);
     this.dirty = false;
   }
