@@ -23,6 +23,8 @@ model User {
   passwordHash   String? // null = conta só-Google
   avatarUrl      String?
   bannerUrl      String?
+  stadiumName    String?
+  stadiumAvatarUrl String?
   bio            String?
   whatsapp       String? // só dígitos com DDI, ex.: 5511999998888
   role           String    @default("USER") // USER | ORGANIZER | MOD | ADMIN
@@ -39,6 +41,7 @@ model User {
 
   sessions       AuthSession[]
   decks          CommunityDeck[]
+  stadiumDecks   StadiumDeck[]
   collection     CollectionItem[]
   combos         Combo[]
   tournaments    Tournament[]      @relation("organizer")
@@ -54,6 +57,17 @@ model User {
   deckCopies     DeckCopy[]
   championArtworks ChampionArtwork[] @relation("artworkCreator")
   championPortraits ChampionArtwork[] @relation("artworkChampion")
+}
+
+model StadiumDeck {
+  id        String
+  userId    String
+  name      String
+  beysJson  String
+  updatedAt DateTime @updatedAt
+  user      User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, id])
 }
 
 model AuthSession {

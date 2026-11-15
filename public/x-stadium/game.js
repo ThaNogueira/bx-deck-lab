@@ -6,6 +6,8 @@ import { Link, roomCode } from './online.js';
 import { ArenaAudio } from './audio.js';
 import { StadiumLobby } from './lobby.js';
 import { Matchmaking } from './matchmaking.js';
+import { StadiumPreparation } from './preparation.js';
+import { loadoutStats, validateLineup } from './deck.js';
 
 const $ = id => document.getElementById(id);
 const icons = {
@@ -58,6 +60,8 @@ const state = {
 const stage = $('stage');
 let inLobby = true, demo = null, demoTime = 0, demoNext = 0;
 let roster = null, difficulty = 'normal', publicMatch = false;
+let opponentProfiles = null, prepTimer, opponentOrdered = false;
+let seat = 0, parityChooser = 0, diceOutcome = null, arenaChosen = false;
 const cpuDeck = [{blade:'aero',ratchet:'3-70',bit:'A'},{blade:'silver',ratchet:'3-80',bit:'FB'},{blade:'knight',ratchet:'4-60',bit:'H'}];
 const cpuReflex = {
   easy: {miss:.32,error:.58,min:315,spread:140},
@@ -87,14 +91,16 @@ let previousFrames = null, previousStep = 0, settledFrames = null, newestSnapsho
 const snapshots = [];
 let onlineDraft = '';
 const dialog = $('dialog'), content = $('dialog-content'), overlay = $('battle-overlay');
-const phases = { setup: 'PREPARAÇÃO', countdown: 'LANÇAMENTO', fight: 'EM BATALHA', qte: 'IMPACTO', result: 'RESULTADO' };
+const phases = { intro:'DUELO ONLINE', dice:'PAR OU ÍMPAR', side:'LADO DA ARENA', order:'ORDEM DO DECK', reveal:'CONFRONTO', setup: 'PREPARAÇÃO', countdown: 'LANÇAMENTO', fight: 'EM BATALHA', qte: 'IMPACTO', result: 'RESULTADO' };
 const QTE_SPEED = .012;
 const PHYSICS_FRAME_BUDGET = 8;
 const METER_RISE_MS = 1700;
 const METER_PEAK_MS = 150;
 
-const isHost = () => state.mode !== 'online' || state.localPlayer === 0;
+const isHost = () => state.mode !== 'online' || (publicMatch ? seat : state.localPlayer) === 0;
 const activePlayer = () => state.mode === 'local' ? state.turn : state.localPlayer;
+const cpuPlayer = () => 1-state.localPlayer;
+const playerName = i => state.mode==='cpu' && i===cpuPlayer() ? 'CPU' : opponentProfiles?.[i]?.name || 'Jogador '+(i+1);
 const canEdit = i => !inLobby && state.phase === 'setup' && !state.ready[i] && (state.mode !== 'online' || i === state.localPlayer);
 const canEditParts = i => canEdit(i) && !roster;
 const launchButton = $('launch'), launcherControls = $('launcher-controls'), aimGrip = $('launcher-aim-grip');
@@ -172,7 +178,8 @@ function updateScore() {
     $('pips' + (i + 1)).innerHTML = Array.from({ length: 4 }, (_, p) => '<span' + (p < score ? ' class="won"' : '') + '></span>').join('');
   });
   $('round-label').textContent = 'RODADA ' + state.round;
-  $('player2-label').textContent = state.mode === 'cpu' ? 'CPU' : 'JOGADOR 2';
+  $('player1-label').textContent = playerName(0);
+  $('player2-label').textContent = playerName(1);
 }
 
 function updateCards() {
@@ -215,7 +222,6 @@ function updateControls() {
   const local = activePlayer(), config = state.configs[local];
   const editing = canEdit(local);
   const settingUp = state.phase === 'setup';
-  $('deck-cycle').hidden = !(editing && roster?.[local]?.length === 3 && state.round > 1 && (state.round-1)%3 === 0);
   const angle = Math.round(config.angle);
   $('angle-value').textContent = angle + '°';
   angleDial.setAttribute('aria-valuenow',angle);
@@ -252,6 +258,7 @@ function updateControls() {
   stage.dataset.phase = inLobby ? 'demo' : state.phase;
   $('stage').dataset.gesture = editing && !state.cameraDrag ? 'launch' : 'camera';
   launchButton.disabled = !launchReady || state.cameraDrag;
+  $('launch-label').textContent = state.mode==='online' ? 'Ready Up' : 'Let it rip';
   if (gripsVisible) view?.positionLauncherControls();
   document.querySelectorAll('.bey-edit').forEach((el, i) => {
     el.hidden = !canEditParts(i);
@@ -270,6 +277,9 @@ function flash(text) {
 }
 
 function resetRound(newMatch = false) {
+  clearTimeout(prepTimer);
+  preparation.clear();
+  opponentOrdered = false;
   state.physics?.dispose();
   state.physics = null;
   state.phase = 'setup';
@@ -300,6 +310,104 @@ function resetRound(newMatch = false) {
   announce('Arena pronta para o lançamento.');
 }
 
+function enterLaunchSetup() {
+  preparation.clear();
+  state.phase = 'setup';
+  updateControls();
+  view.ready(state.configs,activePlayer(),canEdit(activePlayer()));
+  sendSetup();
+  if (state.mode==='online' && isHost() && state.ready.every(Boolean)) countdown();
+}
+
+function showFaceoff() {
+  state.phase = 'reveal';
+  updateControls();
+  preparation.reveal(state.configs);
+  prepTimer = setTimeout(enterLaunchSetup,950);
+}
+
+function drawParity() {
+  state.phase = 'dice';
+  updateControls();
+  const names = opponentProfiles ?? [{name:lobby.profile.name},{name:'CPU'}];
+  if (diceOutcome) { showDiceRoll(); return; }
+  preparation.parity(names[parityChooser].name,parityChooser===seat ? chooseParity : null);
+  if (!publicMatch && parityChooser!==seat) prepTimer = setTimeout(()=>chooseParity(Math.random()<.5?'even':'odd'),800);
+}
+
+function chooseParity(parity) {
+  if (publicMatch) sendOnline({type:'parity',parity});
+  else {
+    const value = 1+Math.floor(Math.random()*6);
+    const winner = (value%2===0)===(parity==='even') ? parityChooser : 1-parityChooser;
+    diceOutcome = {value,parity,winner};
+    showDiceRoll();
+  }
+}
+
+function showDiceRoll() {
+  const {value,parity,winner} = diceOutcome;
+  const names = opponentProfiles ?? [{name:lobby.profile.name},{name:'CPU'}];
+  preparation.roll(value,parity,names[parityChooser].name,names[winner].name);
+  prepTimer = setTimeout(()=>{
+    state.phase = 'side';
+    updateControls();
+    view.setCamera('top');
+    preparation.sides(names[winner].name,winner===seat ? pickArenaSide : null);
+    if (!publicMatch && winner!==seat) prepTimer = setTimeout(()=>pickArenaSide(Math.random()<.5?'B':'X'),720);
+  },1050);
+}
+
+function pickArenaSide(side) {
+  if (publicMatch) sendOnline({type:'arena-side',side});
+  else {
+    const left = side==='B' ? diceOutcome.winner : 1-diceOutcome.winner;
+    applyArenaSides([left,1-left]);
+  }
+}
+
+function applyArenaSides(placement) {
+  if (arenaChosen) return;
+  arenaChosen = true;
+  roster = placement.map(player=>roster[player]);
+  if (opponentProfiles) opponentProfiles = placement.map(player=>opponentProfiles[player]);
+  state.localPlayer = placement.indexOf(seat);
+  view.setCamera(state.camera);
+  resetRound();
+  const trio = roster[state.localPlayer].length===3;
+  if (trio) chooseLineup(false);
+  else if (publicMatch) {
+    state.phase = 'side';
+    updateControls();
+    preparation.sides(playerName(state.localPlayer),null,true);
+    sendSetup();
+  } else enterLaunchSetup();
+}
+
+function chooseLineup(reorder) {
+  state.phase = 'order';
+  updateControls();
+  const local = state.localPlayer;
+  preparation.order(roster[local],reorder,publicMatch,beys=>{
+    if (publicMatch) sendOnline({type:'lineup',round:state.round,beys});
+    else {
+      roster[local] = beys;
+      const cpu = cpuPlayer();
+      const offset = 1+Math.floor(Math.random()*2);
+      roster[cpu] = [...roster[cpu].slice(offset),...roster[cpu].slice(0,offset)];
+      resetRound();
+      enterLaunchSetup();
+    }
+  });
+  if (opponentOrdered) preparation.readyOpponent();
+}
+
+function nextPreparation(chooseOrder) {
+  if (chooseOrder) chooseLineup(state.round>1);
+  else if (publicMatch && roster[0] && roster[1]) showFaceoff();
+  else enterLaunchSetup();
+}
+
 function configure(partial, broadcast = true) {
   const i = activePlayer();
   if (!canEdit(i)) return;
@@ -328,14 +436,15 @@ function launch() {
     return;
   }
   if (state.mode === 'cpu') {
+    const cpu = cpuPlayer();
     const options = state.round === 1 || state.trial ? {} : {
       angle: Math.round(Math.random() * 35 - 17),
       heading: Math.round(Math.random() * 155 - 78),
-      point: [2.4 + Math.random() * 1.4, Math.random() * 3 - 1.5],
+      point: [(cpu===0?-1:1)*(2.4+Math.random()*1.4), Math.random() * 3 - 1.5],
       power: Math.round(81 + Math.random() * 16),
     };
-    state.configs[1] = sanitizeConfig({ ...state.configs[1], ...options }, 1);
-    state.ready[1] = true;
+    state.configs[cpu] = sanitizeConfig({ ...state.configs[cpu], ...options }, cpu);
+    state.ready[cpu] = true;
   }
   view.ready(state.configs, i, false);
   view.setCord(i,state.configs[i].power);
@@ -401,7 +510,7 @@ function showQte(event) {
   overlay.setAttribute('aria-live','off');
   const threatLabel = {pocket:'Risco de cair no bolso',wall:'Risco de bater na parede',knockback:'Recuo forte'}[event.threat];
   overlay.innerHTML = '<div class="qte-panel"><h2>Disputa de reflexo</h2><p>' + (threatLabel ? threatLabel + ' · ' : '') + 'Aperte o botão aceso.</p>' +
-    '<div class="qte-duel" aria-label="Pontuação da disputa"><span>J1 <b>0</b></span><span><b>0</b> ' + (state.mode === 'cpu' ? 'CPU' : 'J2') + '</span></div>' +
+    '<div class="qte-duel" aria-label="Pontuação da disputa"><span>'+(state.mode==='cpu' && cpuPlayer()===0?'CPU':'J1')+' <b>0</b></span><span><b>0</b> ' + (state.mode==='cpu' && cpuPlayer()===1?'CPU':'J2') + '</span></div>' +
     '<div class="qte-actions">' + players.map(i => {
       const keyRow = state.mode === 'local' ? i : 0;
       const role = i === event.defender ? 'Defesa' : 'Ataque';
@@ -530,7 +639,7 @@ function showReflexOutcome(winner,outcome,at) {
   const label = action + ' J' + (winner+1);
   const special = state.frames?.[winner]?.moves;
   const boosted = special?.reflexBoost === 'ready' && special[specialFor(winner)] > 0;
-  const name = state.mode === 'cpu' && winner === 1 ? 'CPU' : 'J'+(winner+1);
+  const name = state.mode === 'cpu' && winner === cpuPlayer() ? 'CPU' : 'J'+(winner+1);
   flash(name + ' VENCEU' + (boosted ? ' · ESPECIAL +' : ''));
   const duration = outcome.boostDuration ?? (outcome.defended ? 1.5 : 2.5);
   announce(boosted ? label + '. Use a habilidade reforçada em até ' + duration.toLocaleString('pt-BR') + ' segundos.' : label + '!');
@@ -615,17 +724,18 @@ function showResult() {
   overlay.setAttribute('aria-live','polite');
   const r = state.result;
   const finishTitle = escapeAttribute(r.title);
-  const winner = r.winner === null ? null : state.mode === 'cpu' && r.winner === 1 ? 'CPU' : 'Jogador ' + (r.winner + 1);
+  const winner = r.winner === null ? null : playerName(r.winner);
   const match = state.scores.some(s => s >= 4);
   const bey = winner ? BLADES[state.configs[r.winner].blade].name : '';
   const points = '+' + r.points + (r.points === 1 ? ' ponto' : ' pontos');
   const label = winner ? winner + ' · ' + bey + ' · ' + points : 'A rodada será repetida.';
   const next = '<button class="launch-button" data-action="next"' + (isHost() || match && publicMatch ? '' : ' disabled') + '>' +
-    (match && publicMatch ? 'VOLTAR AO MENU' : isHost() ? match ? 'NOVA PARTIDA' : 'PRÓXIMA RODADA' : 'AGUARDANDO ANFITRIÃO') + '</button>';
+    (match && publicMatch ? 'VOLTAR AO MENU' : isHost() ? match ? 'NOVA PARTIDA' :
+      r.winner!==null && roster?.[state.localPlayer]?.length===3 && state.round%3===0 ? 'ESCOLHER NOVA ORDEM' : 'PRÓXIMA RODADA' : 'AGUARDANDO ANFITRIÃO') + '</button>';
   view.setResultWinner(r.winner);
   overlay.classList.toggle('winner-result', Boolean(winner));
   overlay.innerHTML = winner ?
-    '<div class="winner-banner"><span class="overlay-label">' + winner + ' · ' + finishTitle + '</span><strong>Vitória' +
+    '<div class="winner-banner"><span class="overlay-label">' + escapeAttribute(winner) + ' · ' + finishTitle + '</span><strong>Vitória' +
       (match ? ' na partida' : '') + '</strong><div class="winner-score"><span>' + bey + '</span><b>' + points + '</b></div></div>' +
       '<div class="winner-actions"><span class="winner-total" aria-label="Placar da partida">' + state.scores.join(' – ') + '</span>' + next + '</div>' :
     '<span class="overlay-label">FIM DA RODADA</span><strong>' + escapeAttribute(r.title.toUpperCase()) + '</strong><p>' + label + '</p>' + next;
@@ -640,17 +750,18 @@ function nextRound() {
   const newMatch = state.scores.some(s => s >= 4);
   if (newMatch && publicMatch) { openLobby(); return; }
   if (!isHost()) return;
-  if (!newMatch && state.result.winner !== null) state.round++;
-  if (!newMatch && roster?.[1]?.length === 3 && state.mode === 'cpu' && (state.round-1)%3 === 0 && state.result.winner !== null) {
-    const deck = [...roster[1]];
-    const offset = 1+Math.floor(Math.random()*2);
-    roster[1] = [...deck.slice(offset),...deck.slice(0,offset)];
+  if (newMatch && roster && state.mode==='cpu') {
+    startLobbyMatch('cpu',roster[state.localPlayer].length===3?'trio':'single',roster[state.localPlayer],difficulty);
+    return;
   }
+  const advances = !newMatch && state.result.winner !== null;
+  if (advances) state.round++;
   resetRound(newMatch);
   if (state.mode === 'online') {
     sendOnline({ type: 'reset', round: state.round, scores: state.scores });
-    sendSetup();
   }
+  const chooseOrder = roster?.[state.localPlayer]?.length===3 && (newMatch || advances && (state.round-1)%3===0);
+  nextPreparation(chooseOrder);
 }
 
 const link = new Link((message, status) => {
@@ -674,14 +785,44 @@ function receiveOnline(data) {
   if (state.mode !== 'online') return;
   const remote = 1 - state.localPlayer;
   switch (data.type) {
+    case 'dice-roll':
+      if (!publicMatch || diceOutcome || ![0,1].includes(data.winner) || !['even','odd'].includes(data.parity) ||
+        !Number.isInteger(data.value) || data.value<1 || data.value>6) break;
+      diceOutcome = data;
+      if (state.phase==='dice') showDiceRoll();
+      break;
+    case 'arena-side':
+      if (publicMatch && Array.isArray(data.placement) && data.placement.length===2 &&
+        data.placement.includes(0) && data.placement.includes(1)) applyArenaSides(data.placement);
+      break;
+    case 'lineup-ready':
+      if (publicMatch && data.round===state.round) {
+        opponentOrdered = true;
+        preparation.readyOpponent();
+      }
+      break;
+    case 'lineup': {
+      if (!publicMatch || state.phase!=='order' || data.round!==state.round || !Array.isArray(data.lineups) || data.lineups.length!==2) break;
+      const lineups = data.lineups.map(validateLineup);
+      if (!lineups.every(Boolean)) break;
+      roster = lineups;
+      resetRound();
+      showFaceoff();
+      break;
+    }
     case 'setup':
-      if (state.phase !== 'setup' || data.round !== undefined && data.round !== state.round) break;
-      state.configs[remote] = sanitizeConfig(data.config, remote);
+      if (!['setup','side','reveal'].includes(state.phase) || data.round !== undefined && data.round !== state.round) break;
+      const expected = roster?.[remote]?.length===3 ? roster[remote][(state.round-1)%3] : null;
+      state.configs[remote] = sanitizeConfig(expected ? {...data.config,blade:expected.blade,ratchet:expected.ratchet,bit:expected.bit} : data.config, remote);
       state.ready[remote] = !!data.ready;
+      if (state.phase==='side' && arenaChosen && roster?.[state.localPlayer]?.length===1) {
+        roster[remote] = [state.configs[remote]];
+        showFaceoff();
+      }
       view.setLoadouts(state.configs);
       view.ready(state.configs,activePlayer(),canEdit(activePlayer()));
       updateCards(); updateControls();
-      if (isHost() && state.ready.every(Boolean)) countdown();
+      if (state.phase==='setup' && isHost() && state.ready.every(Boolean)) countdown();
       break;
     case 'countdown':
       if (isHost() || state.phase !== 'setup') break;
@@ -751,10 +892,11 @@ function receiveOnline(data) {
     case 'reset':
       if (isHost() || !Number.isInteger(data.round) || data.round < 1 ||
         !Array.isArray(data.scores) || data.scores.length !== 2 || !data.scores.every(Number.isFinite)) break;
+      const advances = state.round!==data.round;
       state.round = data.round;
       state.scores = data.scores;
       resetRound();
-      sendSetup();
+      nextPreparation(publicMatch && roster?.[state.localPlayer]?.length===3 && advances && (state.round-1)%3===0);
       break;
   }
 }
@@ -768,6 +910,9 @@ function setMode(mode, player = 0) {
   link.close();
   roster = null;
   publicMatch = false;
+  opponentProfiles = null;
+  arenaChosen = false;
+  if (view) view.setCamera(state.camera);
   state.trial = null;
   state.mode = mode;
   state.connected = false;
@@ -799,7 +944,7 @@ function openLobby() {
   demoNext = 0;
 }
 
-function startLobbyMatch(mode,format,beys,level='normal',side=0) {
+function startLobbyMatch(mode,format,beys,level='normal',side=0,profiles=null,chooser=0) {
   leaveDemo();
   closeToolMenus();
   if (dialog.open) dialog.close();
@@ -811,13 +956,22 @@ function startLobbyMatch(mode,format,beys,level='normal',side=0) {
   state.reflex = true;
   difficulty = level;
   publicMatch = mode === 'online';
+  opponentProfiles = profiles;
+  seat = side;
+  parityChooser = publicMatch ? chooser : Math.floor(Math.random()*2);
+  diceOutcome = null;
+  arenaChosen = false;
   roster = [null,null];
   roster[side] = beys;
   if (mode === 'cpu') roster[1] = format === 'trio' ? cpuDeck : [cpuDeck[Math.floor(Math.random()*cpuDeck.length)]];
   state.configs = DEFAULTS.map(sanitizeConfig);
   stage.dataset.format = format;
   resetRound(true);
-  sendSetup();
+  if (!publicMatch) { drawParity(); return; }
+  state.phase = 'intro';
+  updateControls();
+  preparation.intro(profiles ?? [{name:'Jogador 1'},{name:'Jogador 2'}]);
+  prepTimer = setTimeout(drawParity,1450);
 }
 
 const lobby = new StadiumLobby($('stadium-lobby'),$('stadium-queue'),{
@@ -828,16 +982,19 @@ const lobby = new StadiumLobby($('stadium-lobby'),$('stadium-queue'),{
   toggleSound,
   graphicsValue: () => graphics.value,
   graphics: value => { graphics.value = value; graphics.dispatchEvent(new Event('change')); },
+  inspect: (canvas,config) => canvas ? view?.inspectLoadout(canvas,config) : view?.closeInspection(),
+  inspectAngle: angle => view?.inspectAngle(angle),
   local: () => { leaveDemo(); setMode('local'); view.setLoadouts(state.configs); view.ready(state.configs,0); },
   help,
 });
+const preparation = new StadiumPreparation($('stadium-preparation'),(kind,code)=>lobby.thumb(kind,code));
 const matchmaking = new Matchmaking({
   queue: data => lobby.queueChanged(data),
   room: code => lobby.roomReady(code),
   play: receiveOnline,
-  match: ({side}) => {
+  match: ({side,profiles,chooser}) => {
     const pending = lobby.matched();
-    if (pending) startLobbyMatch('online',pending.format,pending.beys,'normal',side);
+    if (pending) startLobbyMatch('online',pending.format,pending.beys,'normal',side,profiles,chooser);
   },
   error: (message,matched) => {
     if (matched && state.phase === 'result' && state.scores.some(score=>score>=4)) {
@@ -976,14 +1133,14 @@ function selectPart(code) {
 function workshop(i = activePlayer()) {
   workPlayer = state.mode === 'online' ? state.localPlayer : i;
   const config = state.configs[workPlayer];
-  const { blade, ratchet, bit, standing, balance, mass } = getParts(config);
+  const { blade, ratchet, bit, standing, mass } = getParts(config);
   const locked = !canEditParts(workPlayer);
   if (locked || workPart === 'ratchet' && blade.integrated) workPart = null;
   const sameWorkshop = dialog.open && content.dataset.panel === 'workshop';
   const pageScroll = sameWorkshop ? dialog.scrollTop : 0;
   const pickerScroll = sameWorkshop ? content.querySelector('#part-picker')?.scrollTop : 0;
   const player = n => '<button class="mode-choice" data-action="work-player" data-player="' + n + '" aria-pressed="' + (n === workPlayer) + '">Jogador ' + (n + 1) + '</button>';
-  const stat = (label, value) => '<div><small>' + label + '</small><span class="bar"><b style="width:' + clamp(value,0,100) + '%"></b></span></div>';
+  const stats = loadoutStats(config).map(([label,value])=>'<div><small>'+label+'</small><span class="bar"><b style="width:'+value+'%"></b></span></div>').join('');
   const height = (30 * (standing + BLADE_TOP)).toLocaleString('pt-BR', { maximumFractionDigits: 1 });
   const weight = (mass*GRAMS_PER_MASS_UNIT).toLocaleString('pt-BR',{maximumFractionDigits:1});
   openDialog('workshop', 'OFICINA', '<div class="player-switch">' + (state.mode === 'online' ? player(state.localPlayer) : player(0) + player(1)) +
@@ -994,8 +1151,7 @@ function workshop(i = activePlayer()) {
     '</dd><dt>Altura total</dt><dd>' + height + ' mm</dd><dt>Massa estimada</dt><dd>' + weight + ' g</dd></dl>' +
     '<div class="work-views"><button class="secondary-btn" data-action="inspect-top">Cima</button>' +
     '<button class="secondary-btn" data-action="inspect-side">Lado</button></div></div></div>' + partPicker(config,locked) +
-    '<div class="stat-list">' + stat('Impacto', blade.hit * bit.attack * 62) + stat('Giro', 42 * Math.sqrt(blade.stamina / bit.drain)) +
-    stat('Estabilidade', (balance - .50) * 93) + stat('Trilho ' + railRating(bit), railRating(bit)) + '</div>' +
+    '<div class="stat-list">' + stats + '</div>' +
     (blade.trait ? '<p class="blade-trait">' + blade.trait + '</p>' : '') + '<p>' +
     (locked ? 'As peças podem ser trocadas antes de confirmar o próximo lançamento.' : 'Arraste o modelo para inspecionar as peças.') +
     '</p><div class="dialog-actions"><button class="launch-button" data-action="close">VOLTAR À ARENA</button></div>');
@@ -1048,18 +1204,7 @@ document.addEventListener('click', async e => {
   const btn = e.target.closest('[data-action]');
   if (!btn) return;
   const action = btn.dataset.action;
-  if (action === 'cycle-order') {
-    const i = activePlayer(), deck = roster?.[i];
-    if ($('deck-cycle').hidden || !canEdit(i) || !deck) return;
-    roster[i] = [...deck.slice(1),deck[0]];
-    state.configs[i] = sanitizeConfig({...state.configs[i],...roster[i][0],point:DEFAULTS[i].point},i);
-    view.setLoadouts(state.configs);
-    view.ready(state.configs,i);
-    updateCards();
-    updateControls();
-    sendSetup();
-  }
-  else if (action === 'stadium-home') { closeToolMenus(); openLobby(); }
+  if (action === 'stadium-home') { closeToolMenus(); openLobby(); }
   else if (action === 'close') dialog.close();
   else if (action === 'edit' || action === 'work-player') {
     workPart = null;
@@ -1070,7 +1215,7 @@ document.addEventListener('click', async e => {
     content.querySelector('[data-kind="' + btn.dataset.kind + '"]').focus({preventScroll:true});
     if (workPart) $('part-picker').scrollIntoView({block:'nearest'});
   } else if (action === 'part-choice') selectPart(btn.dataset.code);
-  else if (action === 'inspect-top' || action === 'inspect-side') view?.inspectAngle(action === 'inspect-top');
+  else if (action === 'inspect-top' || action === 'inspect-side') view?.inspectAngle(action === 'inspect-top'?'top':'side');
   else if (action === 'multiplayer' || action === 'help') {
     closeToolMenus();
     if (action === 'multiplayer') {
@@ -1090,6 +1235,10 @@ document.addEventListener('click', async e => {
     view.ready(state.configs, 0);
     updateControls();
     dialog.close();
+  }
+  else if (action === 'mode' && btn.dataset.mode==='online') {
+    openLobby();
+    lobby.show('online');
   }
   else if (action === 'mode') {
     if (state.mode !== btn.dataset.mode) setMode(btn.dataset.mode);
@@ -1291,16 +1440,17 @@ function frame(now) {
     }
     state.frames = state.physics.frames();
     settled = state.phase === 'result' && state.frames.every(top => top.sleeping);
-    if (state.phase === 'fight' && state.mode === 'cpu' && !state.trial && (state.physics.time >= state.cpuMoveAt || state.frames[1].moves.reflexBoost === 'ready')) {
-      const [rival,cpu] = state.frames;
+    const cpuSeat = cpuPlayer();
+    if (state.phase === 'fight' && state.mode === 'cpu' && !state.trial && (state.physics.time >= state.cpuMoveAt || state.frames[cpuSeat].moves.reflexBoost === 'ready')) {
+      const rival = state.frames[state.localPlayer], cpu = state.frames[cpuSeat];
       const radius = Math.hypot(cpu.p[0],cpu.p[2]);
       const gap = Math.hypot(cpu.p[0]-rival.p[0],cpu.p[2]-rival.p[2]);
-      const special = specialFor(1);
+      const special = specialFor(cpuSeat);
       const wantsSpecial = special === 'attack' ? radius > 2.8 && gap > 2.3 && gap < 5.3 : radius > 1.25 || gap < 4;
       const readyBoost = cpu.moves.reflexBoost === 'ready';
       const kind = (wantsSpecial || readyBoost) && cpu.moves.ready.includes(special) ? special : 'dash';
       if (!readyBoost || kind === special) {
-        const used = state.physics.tryMove(1,kind);
+        const used = state.physics.tryMove(cpuSeat,kind);
         state.cpuMoveAt = state.physics.time+(used ? 5.5 : .65);
       }
     }
@@ -1316,7 +1466,7 @@ function frame(now) {
       const stage = qteCue(q,now);
       const response = q.cpu?.[stage];
       if (response && now >= q.start+q.cues[stage].at+response.delay) {
-        recordReaction(q,1,stage,response.index,response.delay);
+        recordReaction(q,cpuPlayer(),stage,response.index,response.delay);
       }
       const grace = state.mode === 'online' ? 420 : 0;
       if (now >= q.feedbackUntil && (now >= q.close+grace || q.reactions.every(row => row.every(hit => hit !== null)))) resolveQte();

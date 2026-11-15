@@ -717,9 +717,12 @@ export class ArenaView {
       key.position.set(-2,4,3);
       scene.add(key);
       this.inspection = { scene, camera: new T.PerspectiveCamera(34, 1, .1, 20),
-        azimuth: -.26, elevation: .38, dirty: false };
+        azimuth: -.26, elevation: .38, dirty: false, boundCanvases:new WeakSet() };
     }
     const preview = this.inspection;
+    const key = [config.blade,config.ratchet,config.bit].join('/');
+    if (preview.canvas===canvas && preview.key===key) return;
+    preview.key = key;
     preview.observer?.disconnect();
     if (preview.bey) {
       preview.scene.remove(preview.bey.holder);
@@ -732,6 +735,8 @@ export class ArenaView {
     preview.observer = new ResizeObserver(() => { preview.dirty = true; });
     preview.observer.observe(canvas);
     preview.dirty = true;
+    if (preview.boundCanvases.has(canvas)) return;
+    preview.boundCanvases.add(canvas);
     let lastPointer;
     canvas.addEventListener('pointerdown', e => {
       if (e.button !== 0) return;
@@ -741,16 +746,16 @@ export class ArenaView {
     canvas.addEventListener('pointermove', e => {
       if (lastPointer?.id !== e.pointerId) return;
       preview.azimuth -= (e.clientX-lastPointer.x) * .012;
-      preview.elevation = clamp(preview.elevation + (e.clientY-lastPointer.y) * .012, -.63, 1.56);
+      preview.elevation = clamp(preview.elevation + (e.clientY-lastPointer.y) * .012, -1.55, 1.56);
       Object.assign(lastPointer, { x: e.clientX, y: e.clientY });
       preview.dirty = true;
     });
     canvas.addEventListener('lostpointercapture', () => { lastPointer = null; });
   }
 
-  inspectAngle(fromAbove) {
+  inspectAngle(angle) {
     if (!this.inspection) return;
-    this.inspection.elevation = fromAbove ? 1.56 : .12;
+    this.inspection.elevation = {top:1.56,side:.12,bottom:-1.53}[angle] ?? .12;
     this.inspection.dirty = true;
   }
 

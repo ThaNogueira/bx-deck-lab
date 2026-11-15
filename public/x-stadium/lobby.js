@@ -1,15 +1,9 @@
-import { BLADES, RATCHETS, BITS, BIT_TYPES, DEFAULTS, sanitizeConfig } from './rules.js';
+import { BLADES, RATCHETS, BITS, BIT_TYPES, DEFAULTS, GRAMS_PER_MASS_UNIT, getParts, sanitizeConfig } from './rules.js';
+import { partKinds as kinds, hasRepeatedParts, loadoutStats } from './deck.js';
+import { avatarMarkup, escapeText as escape, insideWebView, stadiumRequest } from './account.js';
 
 const storageKey = 'x-stadium-decks-v1';
-const kinds = {blade:BLADES,ratchet:RATCHETS,bit:BITS};
 const labels = {blade:'Blades',ratchet:'Ratchets',bit:'Bits'};
-// File names of the original BX-01, BX-04, UX-03 and BX-34 catalog renders.
-const originalBladeArt = {
-  dran:'Dran-Sword-Blade-Beyblade-X.webp',
-  knight:'Blade-Knight-Shield-BX-04.webp',
-  wizard:'Wizard-Rod-UX-03.webp',
-  cobalt:'Blade-Cobalt-Dragoon_90d95848-2b49-4342-93e7-f2d11f08e219.webp',
-};
 const bitGroups = Object.keys(BIT_TYPES).map(type=>({
   type,codes:Object.keys(BITS).filter(code=>BITS[code].type===type),
 }));
@@ -19,18 +13,10 @@ const ratchetGroups = [...new Set(Object.values(RATCHETS).map(ratchet=>ratchet.t
 const titles = {single:'Single',trio:'3×3'};
 const difficulties = {easy:'Fácil',normal:'Normal',hard:'Difícil'};
 const defaults = [{...DEFAULTS[0]},{blade:'wizard',ratchet:'5-70',bit:'B'},{blade:'knight',ratchet:'4-60',bit:'N'}];
-const escape = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[char]);
 const normalize = value => String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,'');
 const catalogCode = (kind,code) => kinds[kind][code]?.name ?? code;
 const button = (text,action,extra='') => '<button type="button" class="lobby-button" data-lobby="'+action+'" '+extra+'>'+text+'</button>';
 const spinner = '<span class="queue-spinner" aria-hidden="true"><svg viewBox="0 0 40 40"><path d="M20 2 32 7 38 20 32 33 20 38 7 32 2 20 8 7Z M20 8l9 6 2 10-11 8-10-7 1-10Z"/><circle cx="20" cy="20" r="5"/></svg></span>';
-
-function hasRepeatedParts(beys) {
-  return Object.keys(kinds).some(kind=>{
-    const parts = beys.map(bey=>bey[kind]).filter(Boolean);
-    return new Set(parts).size !== parts.length;
-  });
-}
 
 function readDecks() {
   try {
@@ -47,6 +33,11 @@ export class StadiumLobby {
     this.badge = badge;
     this.actions = actions;
     this.decks = readDecks();
+    this.browserDecks = this.decks;
+    this.guestNumber = 1000+Math.floor(Math.random()*9000);
+    this.guest = {name:'Blader '+this.guestNumber,avatarUrl:null};
+    this.profile = this.guest;
+    this.authMode = 'login';
     this.pictures = new Map();
     this.difficulty = 'normal';
     this.page = 'home';
@@ -65,12 +56,38 @@ export class StadiumLobby {
     });
     root.addEventListener('error',e=>{
       const image = e.target;
+      if (image.matches('.stadium-avatar img')) image.hidden = true;
       if (!image.matches('img[data-part-image]')) return;
       const [kind,code] = image.dataset.partImage.split(':');
       const fallback = kind === 'blade' && BLADES[code]?.image;
       if (fallback && image.getAttribute('src') !== fallback) image.src = fallback;
       else image.hidden = true;
     },true);
+    root.addEventListener('submit',e=>{
+      if (e.target.matches('[data-account-form]')) {
+        e.preventDefault();
+        this.submitAccount(e.target);
+      }
+    });
+    root.addEventListener('toggle',e=>{
+      if (!e.target.matches('.lobby-preview') || !e.target.isConnected) return;
+      this.previewOpen = e.target.open;
+      this.updatePreview();
+    },true);
+    this.accountReady = this.loadAccount().catch(()=>{ this.accountUnavailable = true; });
+    const query = new URLSearchParams(location.search);
+    if (query.has('perfil') || query.has('google-handoff')) {
+      this.accountReady.then(()=>{
+        if (this.root.hidden || this.page!=='home') return;
+        this.show('profile');
+        if (query.has('google-handoff')) this.showTransferCode(query.get('google-handoff'));
+        else {
+          this.error = query.get('erro') || '';
+          history.replaceState(null,'',location.pathname);
+          this.render();
+        }
+      });
+    }
     this.loadPictures();
     this.render();
   }
@@ -80,16 +97,11 @@ export class StadiumLobby {
       const response = await fetch('/api/parts-index');
       if (!response.ok) return;
       const {parts} = await response.json();
-      for (const [kind,entries] of Object.entries(kinds)) {
-        for (const code of Object.keys(entries)) {
-          const target = normalize(catalogCode(kind,code));
-          const aliases = new Set([target]);
-          if (kind !== 'blade') aliases.add(normalize(code));
-          if (kind === 'blade' && code === 'glory') aliases.add('gloriousvalkyrie');
-          const original = kind === 'blade' && originalBladeArt[code];
-          const found = parts.find(part=>part.kind === kind.toUpperCase() && part.img && (original ?
-            part.img.split('?')[0].endsWith('/'+original) : !part.parentId &&
-            [part.name,part.display,part.slug,part.abbrev,...(part.aliases ?? [])].some(value=>aliases.has(normalize(value)))));
+      for (const kind of ['ratchet','bit']) {
+        for (const code of Object.keys(kinds[kind])) {
+          const aliases = new Set([normalize(catalogCode(kind,code)),normalize(code)]);
+          const found = parts.find(part=>part.kind === kind.toUpperCase() && part.img && !part.parentId &&
+            [part.name,part.display,part.slug,part.abbrev,...(part.aliases ?? [])].some(value=>aliases.has(normalize(value))));
           if (found) {
             const url = new URL(found.img,location.origin);
             if (['https:','http:'].includes(url.protocol)) this.pictures.set(kind+':'+code,url.href);
@@ -105,13 +117,109 @@ export class StadiumLobby {
   }
 
   picture(kind,code) {
-    return this.pictures.get(kind+':'+code) || (kind === 'blade' && code ? BLADES[code].image : '');
+    // Local cutouts of the catalog's original releases, including BX-01, BX-04, UX-03 and BX-34.
+    if (kind==='blade' && Object.hasOwn(BLADES,code)) return './assets/stock/'+code+'.webp';
+    return this.pictures.get(kind+':'+code) || '';
   }
 
   thumb(kind,code) {
     const src = this.picture(kind,code);
     return '<span class="lobby-thumb"><img alt="" draggable="false" referrerpolicy="no-referrer" data-part-image="'+escape(kind+':'+code)+'"'+
       (src ? ' src="'+escape(src)+'"' : ' hidden')+'></span>';
+  }
+
+  async loadAccount() {
+    const data = await stadiumRequest('/api/x-stadium/profile');
+    this.member = Boolean(data.profile);
+    this.profile = data.profile || this.guest;
+    this.googleEnabled = data.google;
+    if (this.member) {
+      this.browserDecks = this.decks;
+      this.decks = data.decks;
+    }
+    if (['home','profile','decks','loadout'].includes(this.page)) this.render();
+  }
+
+  accountPanel() {
+    const profile = '<div class="lobby-profile-summary">'+avatarMarkup(this.profile)+'<div><strong>'+escape(this.profile.name)+'</strong>'+
+      '<small>'+(this.member?'Conta BX Lab':'Convidado')+'</small></div></div>';
+    const save = '<button class="lobby-button" data-primary type="submit">'+(this.busy?'Aguarde…':'Salvar perfil')+'</button>';
+    if (this.transferCode) return profile+'<p>Cole este código no seu X Stadium.</p><output class="lobby-auth-code">'+escape(this.transferCode)+'</output>';
+    if (this.member) return profile+'<form class="lobby-account-form" data-account-form="profile">'+
+      '<label class="lobby-field">Nome no X Stadium<input name="name" required maxlength="40" value="'+escape(this.profile.name)+'"></label>'+
+      '<label class="lobby-field">Foto no X Stadium<input name="file" type="file" accept="image/png,image/jpeg,image/webp"></label>'+
+      '<label><input type="checkbox" name="useAccountPhoto" value="1"> Usar a foto da conta BX Lab</label>'+save+'</form>';
+    if (this.googleTransfer) {
+      const url = location.origin+'/api/x-stadium/google/external?request='+encodeURIComponent(this.googleTransfer.request);
+      return profile+'<p>Abra o link no navegador do celular e entre com Google. Depois, cole aqui o código de retorno.</p>'+
+        '<label class="lobby-field">Link para abrir no navegador<input id="stadium-google-link" readonly value="'+escape(url)+'"></label>'+
+        button('Copiar link','copy-google')+'<form class="lobby-account-form" data-account-form="google">'+
+        '<label class="lobby-field">Código de retorno<input name="code" required maxlength="8" autocapitalize="characters"></label>'+
+        '<button class="lobby-button" data-primary type="submit">Confirmar código</button></form>'+button('Voltar ao login','stop-google');
+    }
+    const create = this.authMode==='register';
+    return profile+(this.accountUnavailable?'<p>Não foi possível consultar sua sessão.</p>':'')+
+      '<div class="lobby-tabs">'+button('Entrar','auth-mode','data-value="login" aria-pressed="'+!create+'"')+
+      button('Criar conta','auth-mode','data-value="register" aria-pressed="'+create+'"')+'</div>'+
+      '<form class="lobby-account-form" data-account-form="auth">'+
+      (create?'<label class="lobby-field">Nome<input name="name" maxLength="40" required autocomplete="nickname"></label>':'')+
+      '<label class="lobby-field">E-mail<input type="email" name="email" required autocomplete="email" value="'+escape(this.authEmail ?? '')+'"></label>'+
+      '<label class="lobby-field">Senha<input type="password" name="password" required '+(create?'minlength="8"':'')+
+      ' autocomplete="'+(create?'new-password':'current-password')+'"></label>'+
+      '<button class="lobby-button" data-primary type="submit">'+(this.busy?'Aguarde…':create?'Criar conta BX Lab':'Entrar na conta')+'</button></form>'+
+      (this.googleEnabled?button('Entrar com Google','google'): '');
+  }
+
+  async submitAccount(form) {
+    if (this.busy) return;
+    const data = new FormData(form);
+    this.busy = true;
+    this.error = '';
+    form.setAttribute('aria-busy','true');
+    try {
+      if (form.dataset.accountForm==='profile') {
+        if (!data.get('file')?.size) data.delete('file');
+        const {profile} = await stadiumRequest('/api/x-stadium/profile','PATCH',data);
+        this.profile = profile;
+        this.show('home');
+      } else {
+        if (form.dataset.accountForm==='google') {
+          await stadiumRequest('/api/x-stadium/google/complete','POST',{...this.googleTransfer,code:data.get('code')});
+          this.googleTransfer = null;
+        } else {
+          this.authEmail = String(data.get('email') ?? '');
+          await stadiumRequest('/api/auth/'+this.authMode,'POST',Object.fromEntries(data));
+        }
+        this.accountUnavailable = false;
+        await this.loadAccount();
+        this.show('profile');
+      }
+    } catch (error) {
+      this.error = error.message;
+    } finally {
+      this.busy = false;
+      this.render();
+    }
+  }
+
+  async googleLogin(external = insideWebView()) {
+    try {
+      if (external) this.googleTransfer = await stadiumRequest('/api/x-stadium/google/handoff','POST');
+      else {
+        await stadiumRequest('/api/auth/after-login','POST',{to:'/x-stadium/?perfil=1'});
+        location.assign('/api/oauth/google');
+      }
+    } catch (error) { this.error = error.message; }
+    this.render();
+  }
+
+  async showTransferCode(request) {
+    try {
+      const {code} = await stadiumRequest('/api/x-stadium/google/code','POST',{request});
+      this.transferCode = code;
+      history.replaceState(null,'',location.pathname);
+    } catch { this.error = 'O código expirou. Gere um link novo no X Stadium.'; }
+    this.render();
   }
 
   show(page) {
@@ -123,6 +231,7 @@ export class StadiumLobby {
 
   hide() {
     this.root.hidden = true;
+    if (this.page==='editor') this.actions.inspect?.(null);
     this.updateBadge();
   }
 
@@ -169,6 +278,22 @@ export class StadiumLobby {
     }).join('');
   }
 
+  preview(bey) {
+    const {blade,bit,mass,ratchet} = getParts(bey);
+    const stats = loadoutStats(bey).map(([label,value])=>'<div><small>'+label+'</small><meter min="0" max="100" value="'+value+'" aria-label="'+label+'">'+value+'</meter></div>').join('');
+    return '<details class="lobby-preview"'+((this.previewOpen ?? matchMedia('(min-width:651px)').matches)?' open':'')+'><summary>Prévia 3D</summary>'+
+      '<div class="lobby-preview-body"><canvas id="lobby-preview-model" aria-label="Modelo 3D de '+escape(blade.name)+'"></canvas><div>'+
+      '<strong>'+escape(blade.name)+'</strong><small>'+escape([blade.integrated?'Base integrada':bey.ratchet+' · '+ratchet.mm+' mm',bit.name,
+        (mass*GRAMS_PER_MASS_UNIT).toLocaleString('pt-BR',{maximumFractionDigits:1})+' g'].join(' · '))+'</small>'+
+      '<div class="lobby-preview-views">'+['Cima','Lado','Baixo'].map((label,i)=>button(label,'preview-angle','data-value="'+['top','side','bottom'][i]+'"')).join('')+'</div>'+
+      '<div class="lobby-preview-stats">'+stats+'</div></div></div></details>';
+  }
+
+  updatePreview() {
+    const canvas = !this.root.hidden && this.root.querySelector('.lobby-preview[open] canvas');
+    this.actions.inspect?.(canvas || null,canvas ? this.draft.beys[this.slot] : null);
+  }
+
   editor() {
     const bey = this.draft.beys[this.slot];
     const stock = BLADES[bey.blade].integrated;
@@ -181,7 +306,7 @@ export class StadiumLobby {
         '<strong>'+escape(BLADES[entry.blade].name)+'</strong><small>'+[entry.ratchet,entry.bit].filter(Boolean).join(' · ')+'</small></button>').join('')+
       '</div><div class="lobby-picker"><div class="lobby-tabs">'+Object.keys(kinds).map(kind=>button(labels[kind],'kind',
         'data-kind="'+kind+'" aria-pressed="'+(part===kind)+'" '+(kind==='ratchet'&&stock?'disabled':'') )).join('')+
-      '</div><div class="lobby-part-grid" data-part="'+part+'">'+this.partOptions()+'</div></div></div>'+
+      '</div><div class="lobby-part-grid" data-part="'+part+'">'+this.partOptions()+'</div></div></div>'+this.preview(bey)+
       '<div class="lobby-footer">'+(!this.single && this.draft.id?button('Excluir deck','delete'):'')+
       button(this.single?'Escolher Bey':'Salvar deck','save')+'</div>';
   }
@@ -198,6 +323,7 @@ export class StadiumLobby {
 
   render(keepScroll = true) {
     const wide = this.page === 'editor';
+    const previousCanvas = this.root.querySelector('#lobby-preview-model');
     const scroll = keepScroll && wide && this.root.dataset.page === 'editor' ? this.root.querySelector('.lobby-part-grid')?.scrollTop : 0;
     this.root.dataset.page = this.page;
     this.root.classList.toggle('wide',wide);
@@ -223,7 +349,12 @@ export class StadiumLobby {
         break;
       case 'decks':
         title = 'Meus decks';
-        body = button('Criar deck','new','data-primary')+this.deckRows(false);
+        body = button('Criar deck','new','data-primary')+this.deckRows(false)+
+          (this.member && this.importableDecks().length?button('Importar decks deste navegador','import-decks'):'');
+        break;
+      case 'profile':
+        title = 'Meu perfil';
+        body = this.accountPanel();
         break;
       case 'loadout':
         title = this.format === 'trio' ? 'Escolha seu deck' : 'Escolha sua Bey';
@@ -254,10 +385,17 @@ export class StadiumLobby {
           '</select></label>'+button('Duelo local','local')+button('Como jogar','help');
         break;
     }
+    const profileButton = this.page==='home' ? '<button type="button" class="lobby-profile-button" data-lobby="profile" aria-label="Meu perfil" title="'+escape(this.profile.name)+'">'+avatarMarkup(this.profile)+'</button>' : '';
     this.root.innerHTML = '<div class="lobby-heading">'+(this.page==='home'?'':button('‹','back','aria-label="Voltar"'))+
-      '<h2>'+title+'</h2></div><div class="lobby-body">'+body+
+      '<h2>'+title+'</h2>'+profileButton+'</div><div class="lobby-body">'+body+
       (this.error?'<p class="lobby-error" role="alert">'+escape(this.error)+'</p>':'')+'</div>';
     if (scroll) this.root.querySelector('.lobby-part-grid').scrollTop = scroll;
+    if (wide && previousCanvas) {
+      const nextCanvas = this.root.querySelector('#lobby-preview-model');
+      previousCanvas.setAttribute('aria-label',nextCanvas.getAttribute('aria-label'));
+      nextCanvas.replaceWith(previousCanvas);
+    }
+    if (wide || previousCanvas) this.updatePreview();
     this.updateBadge();
     this.tick();
   }
@@ -326,7 +464,7 @@ export class StadiumLobby {
     } else {
       this.queue = {format:this.format,beys,start:performance.now(),count:null};
       this.show('queue');
-      this.actions.join(this.format,{privateRoom:this.flow==='private',code});
+      this.actions.join(this.format,{privateRoom:this.flow==='private',code,guestNumber:this.guestNumber});
     }
   }
 
@@ -337,7 +475,7 @@ export class StadiumLobby {
     return pending;
   }
 
-  save() {
+  async save() {
     if (this.single) {
       this.singleBey = this.draft.beys[0];
       return this.show('loadout');
@@ -349,21 +487,68 @@ export class StadiumLobby {
       return;
     }
     const deck = { id:this.draft.id ?? crypto.randomUUID(), name, beys:this.draft.beys };
-    this.decks = [deck,...this.decks.filter(entry=>entry.id!==deck.id)];
-    this.writeDecks();
-    this.show(this.returnPage);
+    this.busy = true;
+    try {
+      await this.accountReady;
+      await this.storeDeck(deck);
+      this.show(this.returnPage);
+    } catch (error) { this.error = error.message; this.render(); }
+    finally { this.busy = false; }
   }
 
-  writeDecks() {
-    try { localStorage.setItem(storageKey,JSON.stringify(this.decks)); } catch { /* Browser storage may be blocked. */ }
+  async storeDeck(deck) {
+    if (this.member) {
+      const result = await stadiumRequest('/api/x-stadium/decks/'+encodeURIComponent(deck.id),'PUT',deck);
+      deck = result.deck;
+    }
+    this.decks = [deck,...this.decks.filter(entry=>entry.id!==deck.id)];
+  }
+
+  importableDecks() {
+    return this.browserDecks.filter(deck=>!hasRepeatedParts(deck.beys) && !this.decks.some(saved=>saved.id===deck.id));
+  }
+
+  async importDecks() {
+    this.busy = true;
+    try {
+      for (const deck of this.importableDecks().reverse()) await this.storeDeck(deck);
+      this.show('decks');
+    } catch (error) { this.error = error.message; this.render(); }
+    finally { this.busy = false; }
+  }
+
+  async removeDeck() {
+    const id = this.draft.id;
+    if (!id || !confirm('Excluir este deck?')) return;
+    this.busy = true;
+    try {
+      await this.accountReady;
+      if (this.member) await stadiumRequest('/api/x-stadium/decks/'+encodeURIComponent(id),'DELETE');
+      this.decks = this.decks.filter(entry=>entry.id!==id);
+      this.browserDecks = this.browserDecks.filter(entry=>entry.id!==id);
+      this.show(this.returnPage);
+    } catch (error) { this.error = error.message; this.render(); }
+    finally { this.busy = false; }
   }
 
   click(target) {
+    if (this.busy) return;
     const {lobby:action,id,format,kind,code,slot,value} = target.dataset;
     const deck = this.decks.find(entry=>entry.id===id);
     switch (action) {
       case 'home': this.show('home'); break;
-      case 'online': case 'decks': case 'settings': this.show(action); break;
+      case 'online': case 'decks': case 'settings': case 'profile': this.show(action); break;
+      case 'auth-mode': this.authMode=value; this.show('profile'); break;
+      case 'google': this.googleLogin(); break;
+      case 'stop-google': this.googleTransfer=null; this.show('profile'); break;
+      case 'copy-google': {
+        const field = this.root.querySelector('#stadium-google-link');
+        field.select();
+        navigator.clipboard?.writeText(field.value).then(()=>{target.textContent='Copiado';}).catch(()=>{});
+        break;
+      }
+      case 'import-decks': if (this.member) this.importDecks(); break;
+      case 'preview-angle': this.actions.inspectAngle?.(value); break;
       case 'cpu': case 'search': case 'private': case 'join':
         this.flow = action; this.show('format'); break;
       case 'format': this.format = format; this.show(this.flow==='cpu'?'difficulty':'loadout'); break;
@@ -395,9 +580,7 @@ export class StadiumLobby {
         break;
       }
       case 'save': this.save(); break;
-      case 'delete':
-        if (!this.draft.id || !confirm('Excluir este deck?')) break;
-        this.decks=this.decks.filter(entry=>entry.id!==this.draft.id); this.writeDecks(); this.show(this.returnPage); break;
+      case 'delete': this.removeDeck(); break;
       case 'wait':
         this.queue.training = true; this.hide(); this.actions.play(this.queue.format,this.queue.beys,this.difficulty); break;
       case 'return-training': this.hide(); break;

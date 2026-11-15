@@ -50,7 +50,7 @@
 
   <div class="player-hud" aria-label="Placar e piões">
     <section class="player-panel p1" id="player1-panel">
-      <div class="player-score"><div><span>JOGADOR 1</span><div class="score-pips" id="pips1" aria-hidden="true"></div></div><strong id="score1">0</strong></div>
+      <div class="player-score"><div><span id="player1-label">JOGADOR 1</span><div class="score-pips" id="pips1" aria-hidden="true"></div></div><strong id="score1">0</strong></div>
       <div id="bey1" class="bey-card"></div>
     </section>
     <section class="player-panel p2" id="player2-panel">
@@ -77,13 +77,13 @@
       <div class="launch-power-track" id="launch-power-track" role="meter" aria-labelledby="power-label" aria-valuemin="45" aria-valuemax="100" aria-valuenow="45"><b></b></div>
       <span id="power-value" aria-hidden="true">45%</span>
     </div>
-    <button class="launch-button" id="launch" type="button" disabled><i data-icon="bolt"></i>Let it rip</button>
+    <button class="launch-button" id="launch" type="button" disabled><i data-icon="bolt"></i><span id="launch-label">Let it rip</span></button>
   </section>
   <button type="button" class="launcher-grip launcher-position-grip" id="launcher-position-grip" data-launch-grip="position" aria-label="Arrastar o lançador" title="Arraste para mover o lançador" hidden><i data-icon="move"></i><span>Arraste</span></button>
   <button type="button" class="launcher-grip launcher-aim-grip" id="launcher-aim-grip" data-launch-grip="heading" aria-label="Mover a direção da seta" title="Arraste para mudar a direção" hidden><i data-icon="target"></i><span>Mover</span></button>
   <p class="launch-status" id="launch-status" hidden></p>
-  <button class="deck-cycle" type="button" id="deck-cycle" data-action="cycle-order" hidden>Trocar ordem do deck</button>
   <section id="stadium-lobby" class="stadium-lobby" aria-label="Menu do X Stadium" inert></section>
+  <section id="stadium-preparation" class="stadium-preparation" aria-label="Preparação da partida" hidden></section>
   <div id="stadium-queue" class="stadium-queue" hidden></div>
 
   <div id="combat-controls" class="combat-controls" role="group" aria-label="Comandos de batalha" hidden></div>

@@ -30,7 +30,14 @@ router.get('/api/oauth/google', (req, res) => {
 });
 
 router.get('/api/oauth/google/callback', ah(async (req, res) => {
-  const fail = (msg) => res.redirect('/entrar?erro=' + encodeURIComponent(msg));
+  const fail = (msg) => {
+    const path = safeReturnPath(req.cookies?.bx_after_login);
+    if (path?.startsWith('/x-stadium/')) {
+      res.clearCookie('bx_after_login', { path: '/' });
+      return res.redirect('/x-stadium/?perfil=1&erro=' + encodeURIComponent(msg));
+    }
+    return res.redirect('/entrar?erro=' + encodeURIComponent(msg));
+  };
   const { code, state } = req.query;
   const cookieState = req.cookies?.[STATE_COOKIE];
   if (!code || !state || !cookieState || state !== cookieState) {
