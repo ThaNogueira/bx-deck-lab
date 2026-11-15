@@ -1,8 +1,21 @@
-import { BLADES, RATCHETS, BITS, DEFAULTS, sanitizeConfig } from './rules.js';
+import { BLADES, RATCHETS, BITS, BIT_TYPES, DEFAULTS, sanitizeConfig } from './rules.js';
 
 const storageKey = 'x-stadium-decks-v1';
 const kinds = {blade:BLADES,ratchet:RATCHETS,bit:BITS};
 const labels = {blade:'Blades',ratchet:'Ratchets',bit:'Bits'};
+// File names of the original BX-01, BX-04, UX-03 and BX-34 catalog renders.
+const originalBladeArt = {
+  dran:'Dran-Sword-Blade-Beyblade-X.webp',
+  knight:'Blade-Knight-Shield-BX-04.webp',
+  wizard:'Wizard-Rod-UX-03.webp',
+  cobalt:'Blade-Cobalt-Dragoon_90d95848-2b49-4342-93e7-f2d11f08e219.webp',
+};
+const bitGroups = Object.keys(BIT_TYPES).map(type=>({
+  type,codes:Object.keys(BITS).filter(code=>BITS[code].type===type),
+}));
+const ratchetGroups = [...new Set(Object.values(RATCHETS).map(ratchet=>ratchet.teeth))].sort((a,b)=>a-b)
+  .map(teeth=>({teeth,codes:Object.keys(RATCHETS).filter(code=>RATCHETS[code].teeth===teeth)
+    .sort((a,b)=>RATCHETS[a].mm-RATCHETS[b].mm)}));
 const titles = {single:'Single',trio:'3×3'};
 const difficulties = {easy:'Fácil',normal:'Normal',hard:'Difícil'};
 const defaults = [{...DEFAULTS[0]},{blade:'wizard',ratchet:'5-70',bit:'B'},{blade:'knight',ratchet:'4-60',bit:'N'}];
@@ -11,6 +24,13 @@ const normalize = value => String(value ?? '').normalize('NFD').replace(/[\u0300
 const catalogCode = (kind,code) => kinds[kind][code]?.name ?? code;
 const button = (text,action,extra='') => '<button type="button" class="lobby-button" data-lobby="'+action+'" '+extra+'>'+text+'</button>';
 const spinner = '<span class="queue-spinner" aria-hidden="true"><svg viewBox="0 0 40 40"><path d="M20 2 32 7 38 20 32 33 20 38 7 32 2 20 8 7Z M20 8l9 6 2 10-11 8-10-7 1-10Z"/><circle cx="20" cy="20" r="5"/></svg></span>';
+
+function hasRepeatedParts(beys) {
+  return Object.keys(kinds).some(kind=>{
+    const parts = beys.map(bey=>bey[kind]).filter(Boolean);
+    return new Set(parts).size !== parts.length;
+  });
+}
 
 function readDecks() {
   try {
@@ -66,8 +86,10 @@ export class StadiumLobby {
           const aliases = new Set([target]);
           if (kind !== 'blade') aliases.add(normalize(code));
           if (kind === 'blade' && code === 'glory') aliases.add('gloriousvalkyrie');
-          const found = parts.find(part=>part.kind === kind.toUpperCase() && part.img && !part.parentId &&
-            [part.name,part.display,part.slug,part.abbrev,...(part.aliases ?? [])].some(value=>aliases.has(normalize(value))));
+          const original = kind === 'blade' && originalBladeArt[code];
+          const found = parts.find(part=>part.kind === kind.toUpperCase() && part.img && (original ?
+            part.img.split('?')[0].endsWith('/'+original) : !part.parentId &&
+            [part.name,part.display,part.slug,part.abbrev,...(part.aliases ?? [])].some(value=>aliases.has(normalize(value)))));
           if (found) {
             const url = new URL(found.img,location.origin);
             if (['https:','http:'].includes(url.protocol)) this.pictures.set(kind+':'+code,url.href);
@@ -106,11 +128,13 @@ export class StadiumLobby {
 
   deckRows(selecting) {
     if (!this.decks.length) return '<p class="lobby-empty">Nenhum deck salvo.</p>';
-    return '<div class="lobby-decks">'+this.decks.map(deck=>
-      '<article><div class="lobby-deck-line">'+deck.beys.map(bey=>this.thumb('blade',bey.blade)).join('')+
+    return '<div class="lobby-decks">'+this.decks.map(deck=>{
+      const repeated = hasRepeatedParts(deck.beys);
+      return '<article><div class="lobby-deck-line">'+deck.beys.map(bey=>this.thumb('blade',bey.blade)).join('')+
       '<strong>'+escape(deck.name)+'</strong></div><div class="lobby-row-actions">'+(selecting ?
-        button('Usar deck','use','data-id="'+escape(deck.id)+'"') : '')+
-      button('Editar','edit','data-id="'+escape(deck.id)+'"')+'</div></article>').join('')+'</div>';
+        button('Usar deck','use','data-id="'+escape(deck.id)+'"'+(repeated?' disabled':'')) : '')+
+      button(repeated?'Corrigir peças repetidas':'Editar','edit','data-id="'+escape(deck.id)+'"')+'</div></article>';
+    }).join('')+'</div>';
   }
 
   edit(deck, single=false) {
@@ -123,13 +147,32 @@ export class StadiumLobby {
     this.show('editor');
   }
 
+  partOwner(kind,code) {
+    return code ? this.draft.beys.findIndex((bey,i)=>i!==this.slot && bey[kind]===code) : -1;
+  }
+
+  partOptions() {
+    const kind = this.part;
+    const selected = this.draft.beys[this.slot][kind];
+    const groups = kind==='bit' ? bitGroups : kind==='ratchet' ? ratchetGroups : [{codes:Object.keys(BLADES)}];
+    return groups.map(({codes,type,teeth})=>{
+      const title = type ? '<h3 class="lobby-bit-type" data-bit-type="'+type+'"><span aria-hidden="true"></span>'+BIT_TYPES[type]+'</h3>' : '';
+      const groupLabel = type ? BIT_TYPES[type] : kind==='ratchet' ? 'Ratchets '+teeth : labels[kind];
+      const cards = codes.map(code=>{
+        const owner = this.partOwner(kind,code);
+        return '<button type="button" data-lobby="part" data-code="'+escape(code)+'" aria-pressed="'+(selected===code)+'"'+
+          (owner>=0?' disabled':'')+'>'+this.thumb(kind,code)+'<span>'+escape(catalogCode(kind,code))+'</span>'+
+          (owner>=0?'<small>Em uso na Bey '+(owner+1)+'</small>':'')+'</button>';
+      }).join('');
+      return '<section class="lobby-part-group" aria-label="'+groupLabel+'">'+title+
+        '<div class="lobby-part-cards">'+cards+'</div></section>';
+    }).join('');
+  }
+
   editor() {
     const bey = this.draft.beys[this.slot];
     const stock = BLADES[bey.blade].integrated;
     const part = this.part;
-    const options = Object.keys(kinds[part]).map(code=>
-      '<button type="button" data-lobby="part" data-code="'+escape(code)+'" aria-pressed="'+(bey[part]===code)+'">'+
-      this.thumb(part,code)+'<span>'+escape(catalogCode(part,code))+'</span></button>').join('');
     return (this.single ? '' : '<label class="lobby-field">Nome do deck<input id="lobby-deck-name" maxlength="42" value="'+escape(this.draft.name)+'"></label>')+
       '<div class="lobby-editor"><div class="lobby-slots">'+this.draft.beys.map((entry,i)=>
         '<button type="button" data-lobby="slot" data-slot="'+i+'" aria-pressed="'+(this.slot===i)+'">'+
@@ -138,7 +181,7 @@ export class StadiumLobby {
         '<strong>'+escape(BLADES[entry.blade].name)+'</strong><small>'+[entry.ratchet,entry.bit].filter(Boolean).join(' · ')+'</small></button>').join('')+
       '</div><div class="lobby-picker"><div class="lobby-tabs">'+Object.keys(kinds).map(kind=>button(labels[kind],'kind',
         'data-kind="'+kind+'" aria-pressed="'+(part===kind)+'" '+(kind==='ratchet'&&stock?'disabled':'') )).join('')+
-      '</div><div class="lobby-part-grid">'+options+'</div></div></div>'+
+      '</div><div class="lobby-part-grid" data-part="'+part+'">'+this.partOptions()+'</div></div></div>'+
       '<div class="lobby-footer">'+(!this.single && this.draft.id?button('Excluir deck','delete'):'')+
       button(this.single?'Escolher Bey':'Salvar deck','save')+'</div>';
   }
@@ -153,9 +196,9 @@ export class StadiumLobby {
     return this.queue.room ? 'Sala '+this.queue.room : this.queueLabel();
   }
 
-  render() {
+  render(keepScroll = true) {
     const wide = this.page === 'editor';
-    const scroll = wide && this.root.dataset.page === 'editor' ? this.root.querySelector('.lobby-part-grid')?.scrollTop : 0;
+    const scroll = keepScroll && wide && this.root.dataset.page === 'editor' ? this.root.querySelector('.lobby-part-grid')?.scrollTop : 0;
     this.root.dataset.page = this.page;
     this.root.classList.toggle('wide',wide);
     let title, body;
@@ -270,6 +313,11 @@ export class StadiumLobby {
   }
 
   choose(beys) {
+    if (this.format==='trio' && hasRepeatedParts(beys)) {
+      this.error = 'Use peças diferentes entre as três Beys.';
+      this.render();
+      return;
+    }
     const code = this.flow === 'join' ? this.validateRoomCode() : null;
     if (this.flow === 'join' && !code) return;
     if (this.flow === 'cpu') {
@@ -295,11 +343,7 @@ export class StadiumLobby {
       return this.show('loadout');
     }
     const name = this.draft.name.trim();
-    const duplicate = Object.keys(kinds).some(kind=>{
-      const parts = this.draft.beys.map(bey=>bey[kind]).filter(Boolean);
-      return new Set(parts).size !== parts.length;
-    });
-    if (!name || duplicate) {
+    if (!name || hasRepeatedParts(this.draft.beys)) {
       this.error = name?'Use peças diferentes entre as três Beys.':'Dê um nome ao deck.';
       this.render();
       return;
@@ -329,13 +373,24 @@ export class StadiumLobby {
       case 'single-edit': this.edit({beys:[this.singleBey??defaults[0]]},true); break;
       case 'use': if (deck) this.choose(deck.beys); break;
       case 'single-use': this.choose([this.singleBey??defaults[0]]); break;
-      case 'slot': this.slot=Number(slot); this.part='blade'; this.render(); break;
-      case 'kind': this.part=kind; this.render(); break;
+      case 'slot': this.slot=Number(slot); this.part='blade'; this.render(false); break;
+      case 'kind': this.part=kind; this.render(false); break;
       case 'part': {
+        if (!Object.hasOwn(kinds[this.part],code) || this.partOwner(this.part,code)>=0) break;
         const bey = this.draft.beys[this.slot];
         const stock = this.part==='blade' ? BLADES[code].stock : null;
         const change = stock ? {blade:code,ratchet:stock[0],bit:stock[1]} : {[this.part]:code};
-        this.draft.beys[this.slot] = sanitizeConfig({...bey,...change},0);
+        const next = sanitizeConfig({...bey,...change},0);
+        if (this.part==='blade' && !this.single) {
+          for (const kind of ['ratchet','bit']) {
+            if (this.partOwner(kind,next[kind])>=0) {
+              // Prefer the slot's previous part when the stock part is taken.
+              next[kind] = [bey[kind],...Object.keys(kinds[kind])].find(entry=>entry && this.partOwner(kind,entry)<0);
+            }
+          }
+        }
+        this.draft.beys[this.slot] = next;
+        this.error = '';
         this.render();
         break;
       }
