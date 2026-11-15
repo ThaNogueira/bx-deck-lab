@@ -9,6 +9,7 @@ import { TAU, RIDGE, RAIL, SHELL, SHOOT_HEIGHT, coverAngles, coverPoint, coverGe
 const mat = (color, roughness = .6, metalness = 0, extra = {}) => new T.MeshStandardMaterial({ color, roughness, metalness, ...extra });
 const yAxis = new T.Vector3(0, 1, 0);
 const plane = (w, h) => new T.PlaneGeometry(w, h).rotateX(-Math.PI / 2);
+const MAX_SPARKS = 96;
 
 function mesh(parent, geometry, material, x = 0, y = 0, z = 0) {
   const result = new T.Mesh(geometry, material);
@@ -380,8 +381,13 @@ export class ArenaView {
     this.raycaster = new T.Raycaster();
     this.sparks = [];
     this.sparkGeometry = new T.BoxGeometry(.065,.065,.19);
-    this.sparkMaterial = new T.MeshBasicMaterial({ color: 0xffffb1 });
-    this.railMaterial = new T.MeshBasicMaterial({ color: 0xceff4b });
+    this.sparkBatch = new T.InstancedMesh(this.sparkGeometry,new T.MeshBasicMaterial(),MAX_SPARKS);
+    this.sparkBatch.instanceMatrix.setUsage(T.DynamicDrawUsage);
+    this.sparkBatch.frustumCulled = false;
+    this.sparkBatch.visible = false;
+    this.sparkTransform = new T.Object3D();
+    this.sparkColors = [new T.Color(0xffffb1),new T.Color(0xceff4b)];
+    this.scene.add(this.sparkBatch);
     this.impactRings = Array.from({length:4},()=> {
       const ring = mesh(this.scene,new T.RingGeometry(.78,1,36).rotateX(-Math.PI/2),
         new T.MeshBasicMaterial({color:0xffd499,transparent:true,depthWrite:false,blending:T.AdditiveBlending,side:T.DoubleSide}),0,0,0);
@@ -962,7 +968,8 @@ export class ArenaView {
   spark(at, strength, isRail = false, impactAxis) {
     const strong = impactAxis && strength >= .78;
     const count = isRail ? 12 : Math.ceil(7 + strength*(strong ? 13 : 7));
-    const n = this.mobile || this.graphics === 'low' ? Math.max(0, Math.min(32 - this.sparks.length, Math.ceil(count / 2))) : count;
+    const light = this.mobile || this.graphics === 'low';
+    const n = Math.min((light ? 32 : MAX_SPARKS)-this.sparks.length,light ? Math.ceil(count/2) : count);
     if (strong) {
       const impact = this.impactRings.reduce((first,current)=>current.life < first.life ? current : first);
       impact.life = .17;
@@ -975,8 +982,8 @@ export class ArenaView {
     for (let i = 0; i < n; i++) {
       const a = strong ? Math.atan2(impactAxis[1],impactAxis[0])+Math.PI*(i%2)+(.5-Math.random())*1.46 : Math.random()*TAU;
       const force = 2 + Math.random()*(3+strength*(strong ? 4.8 : 3));
-      const node = mesh(this.scene, this.sparkGeometry, isRail ? this.railMaterial : this.sparkMaterial, ...at);
-      this.sparks.push({ node, velocity: new T.Vector3(Math.cos(a)*force, 1+Math.random()*(strong ? 4 : 3), Math.sin(a)*force),
+      this.sparks.push({ position:new T.Vector3(...at), color:this.sparkColors[Number(isRail)],
+        velocity: new T.Vector3(Math.cos(a)*force, 1+Math.random()*(strong ? 4 : 3), Math.sin(a)*force),
         life: .21+Math.random()*.22, length: strong ? 1.85 : 1 });
     }
   }
@@ -1075,18 +1082,28 @@ export class ArenaView {
       impact.ring.scale.setScalar(.22+t*(.72+impact.strength*.56));
       impact.ring.visible = impact.life > 0;
     }
-    for (let i = this.sparks.length - 1; i >= 0; i--) {
-      const p = this.sparks[i];
+    let activeSparks = 0;
+    const transform = this.sparkTransform;
+    const batch = this.sparkBatch;
+    for (const p of this.sparks) {
       p.life -= effectTime;
+      if (p.life <= 0) continue;
       p.velocity.y -= effectTime * 8;
-      p.node.position.addScaledVector(p.velocity, effectTime);
-      p.node.quaternion.setFromUnitVectors(this.endAxis.set(0,0,1),this.spinAxis.copy(p.velocity).normalize());
+      transform.position.copy(p.position.addScaledVector(p.velocity,effectTime));
+      transform.quaternion.setFromUnitVectors(this.endAxis.set(0,0,1),this.spinAxis.copy(p.velocity).normalize());
       const fade = Math.min(1,p.life*6);
-      p.node.scale.set(fade,fade,fade*p.length);
-      if (p.life <= 0) {
-        this.scene.remove(p.node);
-        this.sparks.splice(i, 1);
-      }
+      transform.scale.set(fade,fade,fade*p.length);
+      transform.updateMatrix();
+      batch.setMatrixAt(activeSparks,transform.matrix);
+      batch.setColorAt(activeSparks,p.color);
+      this.sparks[activeSparks++] = p;
+    }
+    this.sparks.length = activeSparks;
+    batch.count = activeSparks;
+    batch.visible = activeSparks > 0;
+    if (activeSparks) {
+      batch.instanceMatrix.needsUpdate = true;
+      batch.instanceColor.needsUpdate = true;
     }
     const targetFps = phase === 'demo' ? 30 : this.fpsTarget;
     const interval = targetFps ? 1000/targetFps : 0;

@@ -41,6 +41,7 @@ export const pocketBackHeight = pocket => pocket.bottom + .39;
 export function height(r, angle = 0) {
   const rise = r - RIDGE;
   const bowl = .034 * r ** 2;
+  if (rise <= -.25) return bowl;
   const bank = .034 * RIDGE ** 2 + .153 * rise + .085 * (1 - Math.exp(-rise));
   const transition = smooth(-.15,.15,rise);
   return bowl+(bank-bowl)*transition - .065 * Math.exp(-((rise - .35) ** 2) / .16) * smooth(-.25,.22,rise)
@@ -139,7 +140,7 @@ export function coverSideGeometry() {
   ];
 }
 
-export function floorGeometry({angularStep = .032, bowlBands = 54} = {}) {
+export function floorGeometry({angularStep = .032, bowlBands = 54, simplifyCenter = false} = {}) {
   const vertices = [0, 0, 0], faces = [];
   const angles = sectors.flatMap(({angles: sector}) => {
     const start = sector[0], end = sector.at(-1);
@@ -148,23 +149,45 @@ export function floorGeometry({angularStep = .032, bowlBands = 54} = {}) {
   });
   const sides = angles.length;
   const lipBands = 6;
-  for (let row=1;row<=bowlBands;row++) {
-    for (const angle of angles) vertices.push(...polarPoint(rimStart(angle)*row/bowlBands,angle));
-  }
-  for (let row=1;row<=lipBands;row++) {
-    for (const angle of angles) {
-      const start = rimStart(angle), mouth = mouthRadius(angle);
-      const radius = start+(mouth-start)*row/lipBands;
-      vertices.push(...polarPoint(radius,angle,lipRamp(radius,angle,start,mouth)));
+  let inner;
+  for (let row=1;row<=bowlBands+lipBands;row++) {
+    // Close to the center, using every angle creates thin triangles under a
+    // single tilted blade. Keep the outer bowl and lip at their full detail.
+    const stride = simplifyCenter ? (row <= 2 ? 8 : row <= 4 ? 4 : row <= 8 ? 2 : 1) : 1;
+    const outer = {start:vertices.length/3,stride,count:Math.ceil(sides/stride)};
+    for (let j=0;j<sides;j+=stride) {
+      const angle = angles[j], start = rimStart(angle);
+      if (row <= bowlBands) vertices.push(...polarPoint(start*row/bowlBands,angle));
+      else {
+        const mouth = mouthRadius(angle), radius = start+(mouth-start)*(row-bowlBands)/lipBands;
+        vertices.push(...polarPoint(radius,angle,lipRamp(radius,angle,start,mouth)));
+      }
     }
+    if (!simplifyCenter) continue;
+    if (!inner) {
+      for (let j=0;j<outer.count;j++) faces.push(0,outer.start+(j+1)%outer.count,outer.start+j);
+    } else {
+      let i=0, j=0;
+      while (j < outer.count) {
+        const a = inner.start+i%inner.count, c = outer.start+j;
+        const d = outer.start+(j+1)%outer.count;
+        if (Math.min((i+1)*inner.stride,sides) <= Math.min((j+1)*outer.stride,sides)) {
+          const b = inner.start+(++i)%inner.count;
+          faces.push(a,b,c,b,d,c);
+        } else faces.push(a,d,c);
+        j++;
+      }
+    }
+    inner = outer;
   }
-  for (let j = 0; j < sides; j++) {
-    const next = (j + 1) % sides;
-    faces.push(0, 1 + next, 1 + j);
-    for (let i = 1; i < bowlBands+lipBands; i++) {
-      const a = 1 + (i - 1) * sides + j, b = 1 + (i - 1) * sides + next;
-      const c = a + sides, d = b + sides;
-      faces.push(a, b, c, b, d, c);
+  if (!simplifyCenter) {
+    for (let j=0;j<sides;j++) {
+      const next = (j+1)%sides;
+      faces.push(0,1+next,1+j);
+      for (let row=1;row<bowlBands+lipBands;row++) {
+        const a = 1+(row-1)*sides+j, b = 1+(row-1)*sides+next;
+        faces.push(a,b,a+sides,b,b+sides,a+sides);
+      }
     }
   }
   return { vertices, faces };

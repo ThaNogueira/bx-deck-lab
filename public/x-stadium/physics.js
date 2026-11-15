@@ -7,6 +7,8 @@ import { POCKETS, RAIL, SHELL, TAU, coverGeometry, coverCollarGeometry, coverSid
 
 export const DT = 1 / 300;
 const REST_DT = 1 / 150;
+const BOWL_REST_DT = 1 / 120;
+const SCRAPE_DT = 1 / 175;
 const GRAVITY = 9.81 / .03;
 const MAX_TRANSLATION = 46;
 const MAX_DASH_TRANSLATION = 54;
@@ -160,6 +162,7 @@ export class Battle {
   constructor(configs, onEvent, { reflex = false } = {}) {
     this.world = new RAPIER.World({ x: 0, y: -GRAVITY, z: 0 });
     this.world.timestep = DT;
+    this.solverStep = DT;
     this.world.lengthUnit = 1;
     this.world.numSolverIterations = 6;
     this.world.maxCcdSubsteps = 1;
@@ -183,7 +186,7 @@ export class Battle {
     const bowl = addMesh(floorGeometry(),.014,.018);
     bowl.setCollisionGroups(BOWL_MEMBERSHIP<<16 | 0x0006);
     bowl.setSolverGroups(BOWL_MEMBERSHIP<<16 | 0x0006);
-    const slowBowl = addMesh(floorGeometry({angularStep:.105,bowlBands:18}),.014,.018);
+    const slowBowl = addMesh(floorGeometry({angularStep:.105,bowlBands:18,simplifyCenter:true}),.014,.018);
     slowBowl.setCollisionGroups(SLOW_BOWL_MEMBERSHIP<<16 | 0x0006);
     slowBowl.setSolverGroups(SLOW_BOWL_MEMBERSHIP<<16 | 0x0006);
     this.floorHandles.add(bowl.handle);
@@ -564,15 +567,15 @@ export class Battle {
     if (dot(torque,torque) > .0001) body.applyTorqueImpulse(scale(torque,inertia.transverse*dt),false);
     if (top.spin <= REST_SPIN) return;
     if (top.launch.settle > .14 && recovering < .84 && top.landed && this.time >= top.impactUntil) {
-      const damping = -22*DT*inertia.mass;
+      const damping = -22*dt*inertia.mass;
       body.applyImpulse({x:v.x*damping,y:0,z:v.z*damping},true);
       return;
     }
     if (this.followRail(top,p,v,axis,spin)) return;
-    this.driveOnFloor(top,p,v,speed,axis,spin,nearFloor);
+    this.driveOnFloor(top,p,v,speed,axis,spin,nearFloor,dt);
   }
 
-  driveOnFloor(top,p,v,speed,axis,spin,nearFloor) {
+  driveOnFloor(top,p,v,speed,axis,spin,nearFloor,dt) {
     const {body,bit,inertia} = top;
     if (!top.landed || top.escape?.zone || nearFloor < .46 || axis.y < .58 || v.y > 4 || this.time < top.impactUntil ||
       this.time < top.liftUntil || this.time < top.driveResumeAt) return;
@@ -591,9 +594,9 @@ export class Battle {
       this.pickRun(top,p,v,this.tops[1-top.player]);
       const moveForce = this.moveForce(top,p,v,spin);
       if (moveForce) {
-        body.applyImpulse(scale(moveForce,inertia.mass*DT),true);
+        body.applyImpulse(scale(moveForce,inertia.mass*dt),true);
         const movementCost = top.move.kind === 'defense' ? 1.2 : top.move.kind === 'circle' ? 2.2 : 0;
-        this.spendSpin(top,(horizontalSpeed(moveForce)*bit.drain*.060+movementCost)*DT,axis);
+        this.spendSpin(top,(horizontalSpeed(moveForce)*bit.drain*.060+movementCost)*dt,axis);
         return;
       }
       if (speed < .40 || spin < 24) return;
@@ -614,9 +617,9 @@ export class Battle {
         y:0,
         z:v.z/speed*(drive-decel)+turn.z*lateral+p.z/radius*seekRim,
       };
-      this.spendSpin(top,(drive+lateral)*bit.drain*.048*DT,axis);
+      this.spendSpin(top,(drive+lateral)*bit.drain*.048*dt,axis);
     }
-    body.applyImpulse(scale(force,inertia.mass*DT),true);
+    body.applyImpulse(scale(force,inertia.mass*dt),true);
   }
 
   followRail(top,p,v,axis,spin) {
@@ -839,7 +842,7 @@ export class Battle {
     if (v.y > alongFloor+.86) body.setLinvel({...v,y:Math.max(-.6,alongFloor+.86)},true);
   }
 
-  steadyTip(top) {
+  steadyTip(top, dt) {
     const {body} = top;
     const p = body.translation(), velocity = body.linvel();
     const afterRail = this.time < top.railSupportUntil;
@@ -857,7 +860,7 @@ export class Battle {
     const limit = afterRail ? Math.min(freeLimit,.088) : freeLimit+(inContact ? 0 : .022);
     const control = (1-late)**2;
     const response = (afterRail ? 250 : inContact ? 240 : 200)*control;
-    const correction = Math.max(Math.max(0,tilt-limit)*(1-Math.exp(-DT*response)),(tilt-limit-.047)*control);
+    const correction = Math.max(Math.max(0,tilt-limit)*(1-Math.exp(-dt*response)),(tilt-limit-.047)*control);
     if (correction <= .00001) return;
 
     // Retain axial speed while damping the sideways rocking from contact.
@@ -867,7 +870,7 @@ export class Battle {
     body.setRotation(turnRotation(rotation,normal,correction),true);
     const omega = body.angvel(), axial = dot(omega,axis);
     const nextAxis = axisOf(body.rotation());
-    body.setAngvel(add(scale(nextAxis,axial),scale(sub(omega,scale(axis,axial)),Math.exp(-DT*46*control))),true);
+    body.setAngvel(add(scale(nextAxis,axial),scale(sub(omega,scale(axis,axial)),Math.exp(-dt*46*control))),true);
   }
 
   trackSpinFinish(top) {
@@ -944,14 +947,29 @@ export class Battle {
   }
 
   stepSize() {
-    // High-speed hits, the rail, pocket jumps and launches keep their finer step.
+    // Only relax the step while both tops are moving slowly across the bowl.
+    // Return to the finer step ahead of a hit, a special move or the lip.
+    let resting = true, scraping = false, gentleContact = true;
     for (const top of this.tops) {
-      if (top.rail || !top.landed || top.spin > REST_SPIN || this.time < top.impactUntil ||
+      if (top.rail || top.move || top.escape || !top.landed || this.time < top.impactUntil ||
         this.time < Math.max(top.liftUntil,top.rimLiftUntil,top.rimStrikeUntil)) return DT;
       const v = top.body.linvel();
-      if (dot(v,v) > 2.5**2) return DT;
+      const speedSquared = dot(v,v);
+      if (speedSquared > 4**2) return DT;
+      const reducedHull = top.bladeColliders === top.lowSpeedMetal;
+      resting &&= top.spin <= REST_SPIN && speedSquared <= 2.5**2;
+      scraping ||= reducedHull && top.scrape > .18;
+      gentleContact &&= reducedHull && speedSquared <= 2.5**2;
     }
-    return REST_DT;
+    if (!resting && !scraping) return DT;
+    const [a,b] = this.tops;
+    const p = a.body.translation(), q = b.body.translation();
+    const insideBowl = p.x*p.x+p.z*p.z < 3.35**2 && q.x*q.x+q.z*q.z < 3.35**2;
+    if (resting) return insideBowl ? BOWL_REST_DT : REST_DT;
+    if (!insideBowl) return DT;
+    const clearance = a.blade.radius+b.blade.radius+.30;
+    const apart = (q.x-p.x)**2+(q.z-p.z)**2 > clearance**2;
+    return gentleContact || apart ? SCRAPE_DT : DT;
   }
 
   get sleeping() {
@@ -966,10 +984,10 @@ export class Battle {
       if (!presentation) this.checkFinish(undefined,dt);
       return;
     }
-    const iterations = dt === REST_DT ? 3 : 6;
-    if (this.world.numSolverIterations !== iterations) {
-      this.world.numSolverIterations = iterations;
+    if (this.solverStep !== dt) {
+      this.world.numSolverIterations = dt === DT ? 6 : dt === SCRAPE_DT ? 4 : 3;
       this.world.timestep = dt;
+      this.solverStep = dt;
     }
     for (const top of this.tops) {
       this.updateSlowBody(top);
@@ -1051,7 +1069,7 @@ export class Battle {
       this.contain(top);
       if (endOfSpin(top) < .85 || top.escape?.zone) this.settleVertical(top);
       this.carryStrikeOverRim(top);
-      this.steadyTip(top);
+      this.steadyTip(top,dt);
       this.keepTipAboveFloor(top);
       this.trackSpinFinish(top);
       if (!top.rail) {
