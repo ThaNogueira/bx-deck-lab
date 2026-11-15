@@ -215,6 +215,12 @@ dialog::backdrop { background:#060c19d4 }
 .launcher-controls,.launch-status,.winner-total { background:#141e31ed;border-color:#6d87bc8c }
 .battle-overlay strong { color:#eff6ff;text-shadow:0 3px 22px #0b132cce }
 .winner-score b { color:#91edff }
+.winner-actions { flex-wrap:wrap;justify-content:center;gap:6px }
+.winner-actions [data-action=rematch] { gap:5px;padding-inline:9px }
+.winner-actions .secondary-btn { min-height:44px;padding-inline:8px }
+.winner-actions .rematch-status {
+  flex-basis:100%;max-width:none;color:#e1ecff;text-align:center;text-shadow:0 1px 5px #060912;
+}
 .qte-panel { background:#11192bd9;border-color:#6482b69c }
 .combat-side button { background:linear-gradient(160deg,color-mix(in srgb,var(--player) 29%,#25334d),#131d32 83%) }
 .callout { color:#0b1930;background:#91e6ff }

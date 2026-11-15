@@ -64,6 +64,7 @@ let inLobby = true, demo = null, demoTime = 0, demoNext = 0;
 let roster = null, difficulty = 'normal', publicMatch = false;
 let opponentProfiles = null, prepTimer, opponentOrdered = false;
 let seat = 0, parityChooser = 0, diceOutcome = null, arenaChosen = false;
+let matchNumber = 1, requestedRematch = false, offeredRematch = false;
 const cpuDeck = [{blade:'aero',ratchet:'3-70',bit:'A'},{blade:'silver',ratchet:'3-80',bit:'FB'},{blade:'knight',ratchet:'4-60',bit:'H'}];
 const cpuReflex = {
   easy: {miss:.32,error:.58,min:315,spread:140},
@@ -292,6 +293,7 @@ function resetRound(newMatch = false) {
   view?.clearSideChoice();
   preparation.clear();
   opponentOrdered = false;
+  requestedRematch = offeredRematch = false;
   state.physics?.dispose();
   state.physics = null;
   state.phase = 'setup';
@@ -667,7 +669,7 @@ function handleBattleEvent(event) {
     state.result = event;
     if (event.winner !== null) state.scores[event.winner] += event.points;
     showResult();
-    if (state.mode === 'online') sendOnline({ type: 'finish', result: event, scores: state.scores, frames: state.frames, time: state.physics.time });
+    if (state.mode === 'online') sendOnline({type:'finish',match:matchNumber,result:event,scores:state.scores,frames:state.frames,time:state.physics.time});
     return;
   }
   if (event.qte) {
@@ -726,21 +728,30 @@ function visualizeEvent(event) {
   }
 }
 
+const matchFinished = () => state.phase==='result' && state.scores.some(score=>score>=4);
+
 function showResult() {
   state.phase = 'result';
   state.burstAt = performance.now();
   state.qte = null;
+  clearTimeout(flashTimer);
+  $('callout').hidden = true;
   overlay.setAttribute('aria-live','polite');
   const r = state.result;
   const finishTitle = escapeAttribute(r.title);
   const winner = r.winner === null ? null : playerName(r.winner);
-  const match = state.scores.some(s => s >= 4);
+  const match = matchFinished();
   const bey = winner ? BLADES[state.configs[r.winner].blade].name : '';
   const points = '+' + r.points + (r.points === 1 ? ' ponto' : ' pontos');
   const label = winner ? winner + ' · ' + bey + ' · ' + points : 'A rodada será repetida.';
-  const next = '<button class="launch-button" data-action="next"' + (isHost() || match && publicMatch ? '' : ' disabled') + '>' +
-    (match && publicMatch ? 'VOLTAR AO MENU' : isHost() ? match ? 'NOVA PARTIDA' :
-      r.winner!==null && roster?.[state.localPlayer]?.length===3 && state.round%3===0 ? 'ESCOLHER NOVA ORDEM' : 'PRÓXIMA RODADA' : 'AGUARDANDO ANFITRIÃO') + '</button>';
+  const rematch = match && state.mode!=='local';
+  const nextLabel = match ? 'NOVA PARTIDA' : !isHost() ? 'AGUARDANDO ANFITRIÃO' :
+    r.winner!==null && roster?.[state.localPlayer]?.length===3 && state.round%3===0 ? 'ESCOLHER NOVA ORDEM' : 'PRÓXIMA RODADA';
+  const next = rematch ?
+    '<button class="launch-button" type="button" data-action="rematch"><i data-icon="reset"></i><span>Revanche</span></button>'+
+    '<button class="secondary-btn" type="button" data-action="stadium-home">Voltar ao menu</button>'+
+    '<p class="rematch-status" role="status" hidden></p>' :
+    '<button class="launch-button" type="button" data-action="next"'+(isHost()?'':' disabled')+'>'+nextLabel+'</button>';
   view.setResultWinner(r.winner);
   overlay.classList.toggle('winner-result', Boolean(winner));
   overlay.innerHTML = winner ?
@@ -749,20 +760,63 @@ function showResult() {
       '<div class="winner-actions"><span class="winner-total" aria-label="Placar da partida">' + state.scores.join(' – ') + '</span>' + next + '</div>' :
     '<span class="overlay-label">FIM DA RODADA</span><strong>' + escapeAttribute(r.title.toUpperCase()) + '</strong><p>' + label + '</p>' + next;
   overlay.hidden = false;
+  if (rematch) {
+    drawIcons(overlay);
+    updateRematchControls();
+  }
   updateScore(); updateControls(); updateStamina();
   audio.play('finish');
   announce(r.title + ' · ' + label);
 }
 
-function nextRound() {
-  if (state.phase !== 'result') return;
-  const newMatch = state.scores.some(s => s >= 4);
-  if (newMatch && publicMatch) { openLobby(); return; }
-  if (!isHost()) return;
-  if (newMatch && roster && state.mode==='cpu') {
-    startLobbyMatch('cpu',roster[state.localPlayer].length===3?'trio':'single',roster[state.localPlayer],difficulty);
+function updateRematchControls() {
+  const button = overlay.querySelector('[data-action="rematch"]');
+  if (!button || state.mode!=='online') return;
+  const status = overlay.querySelector('.rematch-status');
+  button.disabled = !state.connected || requestedRematch;
+  button.querySelector('span').textContent = offeredRematch && !requestedRematch ? 'Aceitar revanche' : 'Revanche';
+  status.textContent = !state.connected ? 'O adversário saiu da partida.' :
+    requestedRematch ? 'Aguardando o adversário' : offeredRematch ? 'Seu adversário pediu revanche' : '';
+  status.hidden = !status.textContent;
+}
+
+function requestRematch() {
+  if (!matchFinished()) return;
+  if (state.mode==='cpu') {
+    restartMatch(matchNumber+1);
     return;
   }
+  if (state.mode!=='online' || !state.connected || requestedRematch) return;
+  requestedRematch = true;
+  updateRematchControls();
+  sendOnline({type:'rematch',match:matchNumber});
+  confirmDirectRematch();
+}
+
+function confirmDirectRematch() {
+  if (publicMatch || !isHost() || !requestedRematch || !offeredRematch) return;
+  const nextMatch = matchNumber+1;
+  sendOnline({type:'rematch-start',match:nextMatch});
+  restartMatch(nextMatch);
+}
+
+function restartMatch(number,chooser) {
+  matchNumber = number;
+  if (roster) {
+    const swap = seat!==state.localPlayer;
+    const decks = swap ? [roster[1],roster[0]] : roster;
+    const profiles = swap && opponentProfiles ? [opponentProfiles[1],opponentProfiles[0]] : opponentProfiles;
+    prepareMatch(decks,profiles,chooser);
+  } else {
+    resetRound(true);
+    enterLaunchSetup();
+  }
+}
+
+function nextRound() {
+  if (state.phase!=='result' || !isHost()) return;
+  const newMatch = matchFinished();
+  if (newMatch && state.mode!=='local') return;
   const advances = !newMatch && state.result.winner !== null;
   if (advances) state.round++;
   resetRound(newMatch);
@@ -783,9 +837,12 @@ const link = new Link((message, status) => {
     if (dialog.open && content.dataset.panel === 'multiplayer') dialog.close();
   } else if (status === 'closed') {
     state.connected = false;
-    resetRound(true);
     announce(message);
-    if (!dialog.open || content.dataset.panel === 'multiplayer') multiplayer();
+    if (matchFinished()) updateRematchControls();
+    else {
+      resetRound(true);
+      if (!dialog.open || content.dataset.panel === 'multiplayer') multiplayer();
+    }
   }
   if ($('room-status')) $('room-status').textContent = message;
 }, receiveOnline);
@@ -794,6 +851,18 @@ function receiveOnline(data) {
   if (state.mode !== 'online') return;
   const remote = 1 - state.localPlayer;
   switch (data.type) {
+    case 'rematch':
+    case 'rematch-request':
+      if (data.type===(publicMatch?'rematch-request':'rematch') && matchFinished() && data.match===matchNumber) {
+        offeredRematch = true;
+        updateRematchControls();
+        confirmDirectRematch();
+      }
+      break;
+    case 'rematch-start':
+      if (matchFinished() && requestedRematch && data.match===matchNumber+1 &&
+        (publicMatch ? [0,1].includes(data.chooser) : !isHost() && offeredRematch)) restartMatch(data.match,data.chooser);
+      break;
     case 'dice-roll':
       if (!publicMatch || diceOutcome || ![0,1].includes(data.winner) || !['even','odd'].includes(data.parity) ||
         !Number.isInteger(data.value) || data.value<1 || data.value>6) break;
@@ -922,6 +991,7 @@ function setMode(mode, player = 0) {
   publicMatch = false;
   opponentProfiles = null;
   arenaChosen = false;
+  matchNumber = 1;
   if (view) view.setCamera(state.camera);
   state.trial = null;
   state.mode = mode;
@@ -966,16 +1036,23 @@ function startLobbyMatch(mode,format,beys,level='normal',side=0,profiles=null,ch
   state.reflex = true;
   difficulty = level;
   publicMatch = mode === 'online';
-  opponentProfiles = profiles;
   seat = side;
+  matchNumber = 1;
+  const decks = [null,null];
+  decks[seat] = beys;
+  if (mode==='cpu') decks[1] = format==='trio' ? cpuDeck : [cpuDeck[Math.floor(Math.random()*cpuDeck.length)]];
+  stage.dataset.format = format;
+  prepareMatch(decks,profiles,chooser);
+}
+
+function prepareMatch(decks,profiles,chooser) {
+  state.localPlayer = seat;
+  opponentProfiles = profiles;
   parityChooser = publicMatch ? chooser : Math.floor(Math.random()*2);
   diceOutcome = null;
   arenaChosen = false;
-  roster = [null,null];
-  roster[side] = beys;
-  if (mode === 'cpu') roster[1] = format === 'trio' ? cpuDeck : [cpuDeck[Math.floor(Math.random()*cpuDeck.length)]];
+  roster = decks;
   state.configs = DEFAULTS.map(sanitizeConfig);
-  stage.dataset.format = format;
   resetRound(true);
   if (!publicMatch) { drawParity(); return; }
   state.phase = 'intro';
@@ -1008,8 +1085,9 @@ const matchmaking = new Matchmaking({
     if (pending) startLobbyMatch('online',pending.format,pending.beys,'normal',side,profiles,chooser);
   },
   error: (message,matched) => {
-    if (matched && state.phase === 'result' && state.scores.some(score=>score>=4)) {
+    if (matched && matchFinished()) {
       state.connected = false;
+      updateRematchControls();
       return;
     }
     if (matched) openLobby();
@@ -1268,6 +1346,7 @@ document.addEventListener('click', async e => {
   } else if (action === 'reaction') react(Number(btn.dataset.player),Number(btn.dataset.symbol));
   else if (action === 'combat') requestMove(Number(btn.dataset.player),btn.dataset.move);
   else if (action === 'next') nextRound();
+  else if (action === 'rematch') requestRematch();
   else if (action === 'sound') toggleSound();
   else if (['orbit', 'top', 'follow'].includes(action) && view) {
     view.setCameraLocked(false);
@@ -1469,7 +1548,7 @@ function frame(now) {
     if (state.mode==='online' && (settled || now-lastSent>32 && state.physics.time!==lastSentStep)) {
       lastSent = now;
       lastSentStep = state.physics.time;
-      sendOnline({type:'frames',round:state.round,phase:state.phase,frames:state.frames,time:lastSentStep});
+      sendOnline({type:'frames',match:matchNumber,round:state.round,phase:state.phase,frames:state.frames,time:lastSentStep});
     }
   }
   if (state.phase === 'qte') {

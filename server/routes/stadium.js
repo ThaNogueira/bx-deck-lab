@@ -12,8 +12,8 @@ const router = Router();
 const players = new Map();
 const rooms = new Map();
 const formats = new Set(['single','trio']);
-const hostMessages = new Set(['parity','arena-side','lineup','setup','countdown','start','frames','effect','reaction-ack','resume','finish','reset']);
-const guestMessages = new Set(['parity','arena-side','lineup','setup','move','reaction']);
+const hostMessages = new Set(['parity','arena-side','lineup','setup','countdown','start','frames','effect','reaction-ack','resume','finish','reset','rematch']);
+const guestMessages = new Set(['parity','arena-side','lineup','setup','move','reaction','rematch']);
 const matchLife = 20 * 60_000;
 const waitLife = 20_000;
 const snapshotBacklog = 24_000;
@@ -46,12 +46,20 @@ function pair(format) {
   announce(format);
 }
 
+function createMatch(number=1) {
+  return {
+    number,chooser:randomInt(0,2),round:1,
+    submissions:[null,null],ready:[false,false],previous:null,
+    finished:false,rematch:[false,false],
+  };
+}
+
 function startMatch(host,guest) {
   host.peer = guest;
   guest.peer = host;
   host.side = 0;
   guest.side = 1;
-  host.match = guest.match = {chooser:randomInt(0,2),round:1,submissions:[null,null],ready:[false,false],previous:null};
+  host.match = guest.match = createMatch();
   if (host.room) rooms.delete(host.room);
   host.expires = guest.expires = Date.now()+matchLife;
   const profiles = [host.profile,guest.profile];
@@ -63,6 +71,17 @@ function startMatch(host,guest) {
 function revealToBoth(player,payload) {
   emit(player,'play',payload);
   emit(player.peer,'play',payload);
+}
+
+function requestRematch(player,number) {
+  const {match,side} = player;
+  if (number!==match.number || !match.finished || match.rematch[side]) return;
+  match.rematch[side] = true;
+  emit(player.peer,'play',{type:'rematch-request',match:number});
+  if (match.rematch.every(Boolean)) {
+    const next = player.match = player.peer.match = createMatch(number+1);
+    revealToBoth(player,{type:'rematch-start',match:next.number,chooser:next.chooser});
+  }
 }
 
 function chooseParity(player,parity) {
@@ -217,8 +236,14 @@ function relay(player,messages) {
   if (!Array.isArray(messages) || messages.length < 1 || messages.length > 24 ||
     messages.some(message=>!allowed.has(message?.type)) || JSON.stringify(messages).length > 48_000) return 400;
   player.expires = player.peer.expires = Date.now()+matchLife;
-  const {match} = player;
   for (const message of messages) {
+    const {match} = player;
+    if (message.type==='rematch') {
+      requestRematch(player,message.match);
+      continue;
+    }
+    // Snapshots can arrive through a separate HTTP request after the rematch has started.
+    if (message.type==='frames' && ((message.match??1)!==match.number || !match.placement)) continue;
     if (message.type==='parity' || message.type==='arena-side') {
       const accepted = message.type==='parity' ? chooseParity(player,message.parity) : chooseArenaSide(player,message.side);
       if (!accepted) return 400;
@@ -234,7 +259,14 @@ function relay(player,messages) {
       match.ready[player.side] = message.ready===true;
     }
     if (message.type==='countdown' && !match.ready.every(Boolean)) return 400;
+    if (message.type==='finish') {
+      if ((message.match??1)!==match.number || match.finished) continue;
+      const {scores} = message;
+      if (!Array.isArray(scores) || scores.length!==2 || !scores.every(score=>Number.isInteger(score) && score>=0)) return 400;
+      match.finished = scores.some(score=>score>=4);
+    }
     if (message.type==='reset') {
+      if (match.finished) continue;
       if (message.round!==match.round && message.round!==match.round+1) return 400;
       if (message.round!==match.round) match.submissions = [null,null];
       match.round = message.round;
