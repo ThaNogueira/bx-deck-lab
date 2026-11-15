@@ -289,6 +289,7 @@ function flash(text) {
 
 function resetRound(newMatch = false) {
   clearTimeout(prepTimer);
+  view?.clearSideChoice();
   preparation.clear();
   opponentOrdered = false;
   state.physics?.dispose();
@@ -364,18 +365,21 @@ function showDiceRoll() {
   prepTimer = setTimeout(()=>{
     state.phase = 'side';
     updateControls();
-    view.setCamera('top');
-    preparation.sides(names[winner].name,winner===seat ? pickArenaSide : null);
+    view.showSideChoice(preparation.sides(names[winner].name,winner===seat ? pickArenaSide : null));
     if (!publicMatch && winner!==seat) prepTimer = setTimeout(()=>pickArenaSide(Math.random()<.5?'B':'X'),720);
   },1050);
 }
 
 function pickArenaSide(side) {
-  if (publicMatch) sendOnline({type:'arena-side',side});
-  else {
-    const left = side==='B' ? diceOutcome.winner : 1-diceOutcome.winner;
-    applyArenaSides([left,1-left]);
-  }
+  preparation.markSide(side);
+  view.updateSideHighlight();
+  prepTimer = setTimeout(()=>{
+    if (publicMatch) sendOnline({type:'arena-side',side});
+    else {
+      const left = side==='B' ? diceOutcome.winner : 1-diceOutcome.winner;
+      applyArenaSides([left,1-left]);
+    }
+  },280);
 }
 
 function applyArenaSides(placement) {
@@ -384,7 +388,6 @@ function applyArenaSides(placement) {
   roster = placement.map(player=>roster[player]);
   if (opponentProfiles) opponentProfiles = placement.map(player=>opponentProfiles[player]);
   state.localPlayer = placement.indexOf(seat);
-  view.setCamera(state.camera);
   resetRound();
   const trio = roster[state.localPlayer].length===3;
   if (trio) chooseLineup(false);

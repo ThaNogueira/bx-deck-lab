@@ -13,11 +13,13 @@ export class StadiumPreparation {
     this.thumb = thumb;
     root.addEventListener('click',event=>{
       const button = event.target.closest('button');
-      if (!button || this.locked || this.suppressClick) return;
-      if (button.dataset.parity || button.dataset.arenaSide) {
+      if (!button || button.disabled || this.locked || this.suppressClick) return;
+      if (button.dataset.arenaSide) {
+        this.confirm(button.dataset.arenaSide);
+      } else if (button.dataset.parity) {
         this.locked = true;
         this.root.querySelectorAll('button').forEach(node=>{ node.disabled = true; });
-        this.confirm(button.dataset.parity || button.dataset.arenaSide);
+        this.confirm(button.dataset.parity);
       } else if (button.dataset.orderSlot!==undefined) {
         this.selected = Number(button.dataset.orderSlot);
         this.updateOrder();
@@ -68,10 +70,21 @@ export class StadiumPreparation {
   sides(winner,confirm,assigned=false) {
     this.locked = false;
     this.confirm = confirm;
-    this.show('<h2>'+(assigned?'Preparando o lançamento':confirm?'Escolha seu lado':escapeText(winner)+' está escolhendo o lado')+'</h2>'+
-      '<div class="stadium-arena-map" aria-label="Vista de cima da arena">'+
-      '<button type="button" data-arena-side="B"'+(confirm?'':' disabled')+'><b>B</b><span>Esquerda</span></button>'+
-      '<button type="button" data-arena-side="X"'+(confirm?'':' disabled')+'><b>X</b><span>Direita</span></button></div>','sides');
+    const title = assigned ? 'Preparando o lançamento' : confirm ? 'Escolha seu lado' : escapeText(winner)+' está escolhendo o lado';
+    const buttons = assigned ? '' : [['B','Esquerda'],['X','Direita']].map(([side,label])=>
+      '<button type="button" class="stadium-side" data-arena-side="'+side+'" aria-label="Lado '+side+' · '+label+'"'+
+      (confirm?'':' disabled')+'><span class="stadium-side-label"><b>'+side+'</b><span>'+label+'</span></span></button>').join('');
+    this.show('<h2 aria-live="polite">'+title+'</h2>'+buttons,assigned?'side-wait':'side-choice');
+    return [...this.root.querySelectorAll('[data-arena-side]')];
+  }
+
+  markSide(side) {
+    this.locked = true;
+    this.root.querySelector('h2').textContent = 'Lado '+side+' selecionado';
+    for (const button of this.root.querySelectorAll('[data-arena-side]')) {
+      button.toggleAttribute('data-selected',button.dataset.arenaSide===side);
+      button.disabled = true;
+    }
   }
 
   versus(cards) {

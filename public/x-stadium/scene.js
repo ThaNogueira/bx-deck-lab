@@ -332,6 +332,7 @@ function makeLaunchArea(player,color) {
     new T.LineBasicMaterial({color,transparent:true,opacity:.52,depthWrite:false}));
   line.renderOrder = 8;
   group.add(line);
+  group.position.y = .041;
   group.visible = false;
   return group;
 }
@@ -372,6 +373,7 @@ export class ArenaView {
       ...[-1,1].flatMap(sign=>[-5.5,6.4].map(z=>new T.Vector3(sign*6.8,.08,z))),
       ...[-1,1].flatMap(sign=>[-3.7,4.4].map(z=>new T.Vector3(sign*4.3,4.05,z))),
     ];
+    this.sideBounds = coverAngles.filter((_,i)=>i%4===0).flatMap(a=>[0,1].map(f=>new T.Vector3(...coverPoint(a,f))));
     this.beys = [];
     const colors = [0x51b4ff,0xff9959];
     this.aims = colors.map(makeAim);
@@ -536,7 +538,7 @@ export class ArenaView {
     const cos = Math.cos(azimuth), sin = Math.sin(azimuth);
     const high = Math.sin(elevation), flat = Math.cos(elevation);
     let distance = 0;
-    for (const point of this.arenaBounds) {
+    for (const point of this.sideButtons ? this.sideBounds : this.arenaBounds) {
       const front = point.x*sin+(point.z-z)*cos, up = point.y-y;
       const across = point.x*cos-(point.z-z)*sin;
       distance = Math.max(distance,front*flat+up*high+Math.max(Math.abs(across)/halfX,Math.abs(up*flat-front*high)/halfY));
@@ -567,8 +569,80 @@ export class ArenaView {
     this.resultWinner = player;
   }
 
+  showSideChoice(buttons) {
+    this.sideButtons = buttons;
+    this.sideFraming = null;
+    this.stage.dataset.sideChoice = 'true';
+    for (const bey of this.beys) bey.holder.visible = false;
+    for (const launcher of this.launchers) launcher.group.visible = false;
+    for (const object of [...this.aims,...this.shadows]) object.visible = false;
+    for (const button of buttons) {
+      for (const event of ['pointerenter','pointerleave','focus','blur']) {
+        button.addEventListener(event,()=>this.updateSideHighlight());
+      }
+    }
+    this.updateSideHighlight();
+  }
+
+  updateSideHighlight() {
+    if (!this.sideButtons) return;
+    this.sideButtons.forEach((button,i)=>{
+      const area = this.launchAreas[i];
+      const selected = button.hasAttribute('data-selected');
+      const active = !button.disabled && button.matches(':hover,:focus-visible');
+      const [fill,outline] = area.children;
+      area.visible = true;
+      fill.material.opacity = selected ? .76 : active ? .60 : .29;
+      outline.material.opacity = selected || active ? 1 : .72;
+    });
+    this.dirty = true;
+  }
+
+  positionSideChoices() {
+    this.camera.updateMatrixWorld();
+    let arenaTop = Infinity;
+    for (const corner of this.sideBounds) {
+      const point = this.nextPosition.copy(corner).project(this.camera);
+      arenaTop = Math.min(arenaTop,(1-point.y)*this.height*.5);
+    }
+    this.stage.style.setProperty('--side-arena-top',arenaTop+'px');
+    this.sideButtons.forEach((button,i)=>{
+      const area = this.launchAreas[i];
+      const contour = area.children[1].geometry.attributes.position;
+      const points = [];
+      let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
+      // Project the same outline drawn on the arena for the native button hit area.
+      for (let p=0;p<contour.count;p++) {
+        const point = this.nextPosition.fromBufferAttribute(contour,p).add(area.position).project(this.camera);
+        const x = (point.x+1)*this.width*.5, y = (1-point.y)*this.height*.5;
+        points.push([x,y]);
+        left = Math.min(left,x); right = Math.max(right,x);
+        top = Math.min(top,y); bottom = Math.max(bottom,y);
+      }
+      const width = right-left, height = bottom-top;
+      const polygon = points.map(([x,y])=>`${(x-left).toFixed(2)}px ${(y-top).toFixed(2)}px`).join(',');
+      Object.assign(button.style,{left:left+'px',top:top+'px',width:width+'px',height:height+'px',clipPath:'polygon('+polygon+')'});
+    });
+    this.sideFraming = this.framing;
+  }
+
+  clearSideChoice() {
+    if (!this.sideButtons) return;
+    this.sideButtons = null;
+    delete this.stage.dataset.sideChoice;
+    this.stage.style.removeProperty('--side-arena-top');
+    for (const bey of this.beys) bey.holder.visible = true;
+    for (const area of this.launchAreas) {
+      const [fill,outline] = area.children;
+      fill.material.opacity = .10;
+      outline.material.opacity = .52;
+      area.visible = false;
+    }
+    this.dirty = true;
+  }
+
   changeZoom(factor) {
-    if (this.lockedCamera) return;
+    if (this.sideButtons || this.lockedCamera) return;
     this.zoom = clamp(this.zoom*factor,.43,1.88);
   }
 
@@ -645,7 +719,7 @@ export class ArenaView {
       handle.addEventListener('lostpointercapture',release);
     }
     canvas.addEventListener('pointerdown', e => {
-      if (e.button !== 0 && e.button !== 1 && e.button !== 2 || pointers.size >= 2) return;
+      if (this.sideButtons || e.button !== 0 && e.button !== 1 && e.button !== 2 || pointers.size >= 2) return;
       if (pointers.size) {
         for (const p of pointers.values()) {
           if (p.drag?.changed) this.launchControls.commit();
@@ -663,7 +737,7 @@ export class ArenaView {
     });
     canvas.addEventListener('pointermove', e => {
       const p = pointers.get(e.pointerId);
-      if (!p) return;
+      if (!p || this.sideButtons) return;
       const dx = e.clientX - p.x, dy = e.clientY - p.y;
       if (pointers.size > 1) {
         const other = [...pointers.entries()].find(([id]) => id !== e.pointerId)[1];
@@ -835,7 +909,6 @@ export class ArenaView {
       launcher.power = config.power;
       launcher.setPull(0);
       this.launchAreas[i].visible = editing && i === localPlayer;
-      this.launchAreas[i].position.setY(.041);
       aim.visible = true;
       aim.userData.arrow.material.opacity = i === localPlayer ? 1 : .63;
       placeAim(aim,x,z,direction,length);
@@ -1015,7 +1088,8 @@ export class ArenaView {
   draw(dt, motionRate, settled = false) {
     if (!this.width || !this.height) return;
     const phase = this.stage.dataset.phase;
-    const moving = phase !== 'setup';
+    const choosingSide = Boolean(this.sideButtons);
+    const moving = phase !== 'setup' && !choosingSide;
     const now = performance.now();
     if (this.fpsTarget && moving && !settled) {
       this.refreshInterval = Math.min(this.refreshInterval,dt);
@@ -1052,25 +1126,27 @@ export class ArenaView {
     this.updateFraming();
     const reflex = phase === 'qte' && this.beys.length === 2;
     const winner = phase === 'result' ? this.beys[this.resultWinner] : null;
-    const locked = reflex || winner ? null : this.lockedCamera;
-    const follow = !locked && this.cameraMode === 'follow' && this.beys.length === 2 && moving;
-    const focusY = this.cameraMode === 'top' ? .65 : moving ? .97 : 1.5;
+    const azimuth = choosingSide ? 0 : this.azimuth;
+    const elevation = choosingSide ? 1.568 : this.elevation;
+    const locked = reflex || winner || choosingSide ? null : this.lockedCamera;
+    const follow = !choosingSide && !locked && this.cameraMode === 'follow' && this.beys.length === 2 && moving;
+    const focusY = choosingSide || this.cameraMode === 'top' ? .65 : moving ? .97 : 1.5;
     const look = reflex || follow ? this.cameraTarget.lerpVectors(this.beys[0].holder.position,this.beys[1].holder.position,.5) :
       this.cameraTarget.set(0,focusY,.44);
     if (winner) {
       look.copy(winner.holder.position);
-    } else if (!reflex) {
+    } else if (!reflex && !choosingSide) {
       if (follow) look.setY(.45);
       look.add(this.pan);
       if (locked) look.copy(locked.focus);
     }
-    if (this.cameraDistance === undefined) this.focus.copy(look);
+    if (choosingSide || this.cameraDistance === undefined) this.focus.copy(look);
     else this.focus.lerp(look, 1 - Math.exp(-dt * (reflex ? 12 : winner ? 8 : 6)));
-    const fitted = this.fitDistance(focusY,.44,this.azimuth,this.elevation);
+    const fitted = this.fitDistance(focusY,.44,azimuth,elevation);
     const span = reflex || follow ? this.beys[0].holder.position.distanceTo(this.beys[1].holder.position) : 0;
     const baseDistance = follow ? fitted*(.53+.40*clamp(span/11,0,1)) : fitted;
     const {visibleWidth, visibleHeight, height} = this.framing;
-    let distanceTarget = locked?.distance ?? baseDistance*this.zoom;
+    let distanceTarget = choosingSide ? fitted : locked?.distance ?? baseDistance*this.zoom;
     if (winner) {
       distanceTarget = fitted*.66;
     } else if (reflex) {
@@ -1083,12 +1159,15 @@ export class ArenaView {
       distanceTarget = Math.abs(forward) + Math.max((Math.abs(across)+1.55)*height/(tangent*visibleWidth),
         (Math.abs(up)+1.55)*height/(tangent*visibleHeight));
     }
-    this.cameraDistance ??= baseDistance;
-    this.cameraDistance += (distanceTarget-this.cameraDistance)*(1-Math.exp(-dt*14));
+    if (choosingSide) this.cameraDistance = distanceTarget;
+    else {
+      this.cameraDistance ??= baseDistance;
+      this.cameraDistance += (distanceTarget-this.cameraDistance)*(1-Math.exp(-dt*14));
+    }
     const distance = this.cameraDistance;
-    const lateral = Math.cos(this.elevation) * distance;
-    this.nextPosition.set(this.focus.x + Math.sin(this.azimuth) * lateral,
-      this.focus.y + Math.sin(this.elevation) * distance, this.focus.z + Math.cos(this.azimuth) * lateral);
+    const lateral = Math.cos(elevation) * distance;
+    this.nextPosition.set(this.focus.x + Math.sin(azimuth) * lateral,
+      this.focus.y + Math.sin(elevation) * distance, this.focus.z + Math.cos(azimuth) * lateral);
     // Give the camera time to settle, then reuse the last frame during setup.
     const cameraChanged = this.camera.position.distanceToSquared(this.nextPosition) > .000001;
     const previewDrawn = this.drawInspection();
@@ -1096,6 +1175,7 @@ export class ArenaView {
     if ((!moving || settled) && !this.dirty && !cameraChanged && !previewDrawn && !effectsActive) return;
     this.camera.position.copy(this.nextPosition);
     this.camera.lookAt(this.focus);
+    if (choosingSide && (cameraChanged || this.sideFraming!==this.framing)) this.positionSideChoices();
     if (phase === 'setup') this.positionLauncherControls();
     const effectTime = dt*motionRate;
     for (const impact of this.impactRings) {

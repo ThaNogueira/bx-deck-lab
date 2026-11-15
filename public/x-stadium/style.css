@@ -449,18 +449,8 @@ i[data-icon] svg { width:100%;height:100% }
 .stadium-die-face[data-face="6"] { --face-turn:rotateY(180deg) }
 .stadium-die-face i { width:9px;height:9px;border-radius:50%;background:#173026;box-shadow:inset 0 1px 1px #070e09 }
 .stadium-dice-actions { display:flex;justify-content:center;gap:9px }
-.stadium-dice-actions button,.stadium-arena-map button { min-height:46px;min-width:86px;border-radius:8px;border:1px solid #92bc7d;background:#294533;font-weight:800 }
+.stadium-dice-actions button { min-height:46px;min-width:86px;border-radius:8px;border:1px solid #92bc7d;background:#294533;font-weight:800 }
 .stadium-dice-result { font-weight:720;color:#d6f7c8 }
-.stadium-arena-map {
-  display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:auto;width:min(100%,390px);padding:clamp(16px,5vw,30px);
-  border:3px solid #b3d3c7;border-radius:30% 30% 24% 24%;
-  background:radial-gradient(ellipse at center,#e4f3e8 0 48%,#b7f572 49% 50%,#8ca99c 51% 61%,#344d42 62%);
-}
-.stadium-arena-map button { min-height:clamp(80px,20vw,108px);display:grid;place-content:center;background:#24493de8 }
-.stadium-arena-map button:last-child { background:#475330e8 }
-.stadium-arena-map button:enabled:hover { border-color:var(--lime);background:#426a3c }
-.stadium-arena-map b { font:800 36px/.9 var(--heading);color:var(--lime) }
-.stadium-arena-map span { margin-top:5px;font-size:12px }
 .player-score>div { min-width:0 }
 .player-score>div>span { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
 @media (prefers-reduced-motion:no-preference) {
