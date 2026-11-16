@@ -365,27 +365,6 @@ function cupDisplay(ctx) {
   ctx.font = '800 18px Barlow, sans-serif';ctx.fillText('PALCO PRINCIPAL',151,104,192);
 }
 
-function seatedBlader(model,x,z,angle,base,jersey,skin,hair) {
-  chair(model,x,z,angle,0x344561,base);
-  const part = prop(model,x,z,angle,base);
-  for (const side of [-1,1]) {
-    part('bevel',0x364150,cm(side*10),cm(49),cm(-6),cm(14),cm(14),cm(36),side*.08);
-    part('bevel',0x364150,cm(side*10),cm(24),cm(-22),cm(13),cm(39),cm(14),side*.08);
-    part('bevel',0x252d3e,cm(side*10),cm(4),cm(-27),cm(13),cm(7),cm(24),side*.12);
-    part('bevel',jersey,cm(side*21),cm(66),cm(2),cm(11),cm(29),cm(15),side*.18);
-    part('bevel',skin,cm(side*19),cm(51),cm(-10),cm(10),cm(9),cm(27),side*.20);
-  }
-  part('bevel',jersey,0,cm(68),cm(3),cm(36),cm(37),cm(21));
-  part('box',0xa5b6bd,cm(8),cm(76),cm(-7.75),cm(7.5),cm(2.7),cm(.6));
-  part('bevel',skin,0,cm(89),cm(3),cm(10),cm(10),cm(10));
-  part('bevel',skin,0,cm(102),cm(3),cm(17),cm(22),cm(19));
-  part('bevel',hair,0,cm(111),cm(5),cm(17.8),cm(9.5),cm(19.7));
-  for (const eye of [-4.0,4.0]) {
-    part('box',0x343543,cm(eye),cm(104.6),cm(-6.58),cm(1.5),cm(.96),cm(.55));
-  }
-  part('bevel',skin,0,cm(100.9),cm(-6.9),cm(2.6),cm(3.9),cm(2.87));
-}
-
 function tournament(model,accessories,floorY) {
   ground(model,0x101923,0x263949,8.1);
   contactShade(model,40,36);
@@ -442,19 +421,11 @@ function tournament(model,accessories,floorY) {
         const base = floorY+step;
         stands.box(0x242f3e,x,floorY+step*.5,-5.6,16.9,step,49);
         for (let seat=0;seat<3;seat++) {
-          const z = -22+seat*16.4;
-          const jerseys = [0x526884,0x537d79,0x746279,0xa05d51,0x93966e];
-          if ((seat+row)%4===3) chair(stands,x,z,-sign*Math.PI/2,0x344561,base);
-          else seatedBlader(stands,x,z,-sign*Math.PI/2,base,jerseys[(seat+row+(sign<0?1:0))%5],
-            seat%2===0 ? 0xc59778 : 0x8d655a,seat%2===0 ? 0x273142 : 0x433439);
+          chair(stands,x,-22+seat*16.4,-sign*Math.PI/2,0x344561,base);
         }
       }
     },'x',sign*25,sign);
   }
-  accessories.cutaway(crew=>{
-    seatedBlader(crew,-13.2,-24.9,Math.PI-.21,floorY,0x557d86,0xc9977c,0x2b3541);
-    seatedBlader(crew,12.6,-24.4,Math.PI+.26,floorY,0x484c69,0x9d735f,0x3a3039);
-  },'z',-20,-1);
 }
 
 function diagnosticScreen(ctx) {
