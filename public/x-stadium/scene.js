@@ -518,7 +518,7 @@ export class ArenaView {
 
   setScenery(key) {
     if (this.sceneryKey===key) return;
-    if (!this.sceneryCache.has(key)) this.sceneryCache.set(key,createScenery(key));
+    if (!this.sceneryCache.has(key)) this.sceneryCache.set(key,createScenery(key,()=>{ this.dirty = true; }));
     const {sky,group} = this.sceneryCache.get(key);
     this.scenery?.removeFromParent();
     this.scenery = group;
@@ -1161,7 +1161,10 @@ export class ArenaView {
     }
     if (choosingSide || this.cameraDistance === undefined) this.focus.copy(look);
     else this.focus.lerp(look, 1 - Math.exp(-dt * (reflex ? 12 : winner ? 8 : 6)));
-    const fitted = this.fitDistance(focusY,.44,azimuth,elevation);
+    const venueFraming = this.scenery && !choosingSide && !reflex && !winner && this.cameraMode==='orbit';
+    const lens = this.mobile ? 1.08 : 1.14;
+    const stageOverview = this.sceneryKey==='tournament' && phase!=='fight';
+    const fitted = this.fitDistance(focusY,.44,azimuth,elevation)*(venueFraming ? lens+(stageOverview ? (this.mobile ? .10 : .14) : 0) : 1);
     const span = reflex || follow ? this.beys[0].holder.position.distanceTo(this.beys[1].holder.position) : 0;
     const baseDistance = follow ? fitted*(.53+.40*clamp(span/11,0,1)) : fitted;
     const {visibleWidth, visibleHeight, height} = this.framing;

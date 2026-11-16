@@ -1,8 +1,12 @@
 import * as T from './vendor/three.module.min.js';
 import { SHELL } from './stadium.js';
+import { BLADES } from './rules.js';
+import { disposeBey, makeBey } from './bey-model.js';
+import { makeLauncher } from './launcher.js';
 
 const tabletop = SHELL.table;
 const floor = -6.6;
+const cm = value => value/3;
 const shapes = {
   box: () => new T.BoxGeometry(1,1,1),
   bevel: () => new T.CylinderGeometry(.54,.54,1,8).rotateY(Math.PI/8),
@@ -10,9 +14,41 @@ const shapes = {
   ring: () => new T.RingGeometry(.38,.5,20).rotateX(-Math.PI/2),
 };
 
-function stageModel() {
+function stageModel(onAssetReady) {
   const group = new T.Group();
   const batches = new Map();
+  const staticMeshes = new Map();
+  const addProp = (figure,x,y,z,angle) => {
+    figure.position.set(x,y,z);
+    figure.rotation.y = angle;
+    figure.updateMatrixWorld(true);
+    const position = new T.Vector3(), normal = new T.Vector3(), normalMatrix = new T.Matrix3();
+    figure.traverse(mesh=>{
+      if (!mesh.isMesh) return;
+      const geometry = mesh.geometry, {position:vertices,normal:normals,uv} = geometry.attributes;
+      const index = geometry.index;
+      const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      const ranges = geometry.groups.length ? geometry.groups : [{start:0,count:index?.count ?? vertices.count,materialIndex:0}];
+      normalMatrix.getNormalMatrix(mesh.matrixWorld);
+      for (const {start,count,materialIndex} of ranges) {
+        const material = materials[materials.length===1 ? 0 : materialIndex];
+        const metallic = material.metalness>.5;
+        const key = material.map ?? (metallic?'metal':'plastic');
+        if (!staticMeshes.has(key)) staticMeshes.set(key,{metallic,map:material.map,positions:[],normals:[],uvs:[],colors:[]});
+        const data = staticMeshes.get(key), color = material.color;
+        for (let i=start;i<start+count;i++) {
+          const vertex = index ? index.getX(i) : i;
+          position.fromBufferAttribute(vertices,vertex).applyMatrix4(mesh.matrixWorld);
+          normal.fromBufferAttribute(normals,vertex).applyNormalMatrix(normalMatrix);
+          data.positions.push(position.x,position.y,position.z);
+          data.normals.push(normal.x,normal.y,normal.z);
+          data.colors.push(color.r,color.g,color.b);
+          if (data.map) data.uvs.push(uv.getX(vertex),uv.getY(vertex));
+        }
+      }
+    });
+    disposeBey({holder:figure});
+  };
   const instance = (shape,surface,tint,x,y,z,w,h,d,rotation=0,roll=0) => {
     const key = shape+':'+surface;
     if (!batches.has(key)) batches.set(key,{shape,surface,items:[]});
@@ -48,7 +84,7 @@ function stageModel() {
     ctx.fillText(caption,26,120,330);
   },{flat});
   const cutaway = (build,axis,edge,side) => {
-    const part = stageModel();
+    const part = stageModel(onAssetReady);
     build(part);
     const wall = part.finish();
     (group.userData.cutaways ??= []).push({wall,axis,edge,side});
@@ -72,9 +108,26 @@ function stageModel() {
       batch.computeBoundingSphere();
       group.add(batch);
     }
+    // The tabletop props share a few draw calls while retaining their original silhouettes and crests.
+    for (const data of staticMeshes.values()) {
+      const geometry = new T.BufferGeometry();
+      geometry.setAttribute('position',new T.Float32BufferAttribute(data.positions,3));
+      geometry.setAttribute('normal',new T.Float32BufferAttribute(data.normals,3));
+      geometry.setAttribute('color',new T.Float32BufferAttribute(data.colors,3));
+      if (data.map) geometry.setAttribute('uv',new T.Float32BufferAttribute(data.uvs,2));
+      const material = new T.MeshStandardMaterial({
+        vertexColors:true,map:data.map ?? null,metalness:data.metallic ? .78 : .16,roughness:data.metallic ? .29 : .48,
+      });
+      group.add(new T.Mesh(geometry,material));
+    }
     return group;
   };
-  return {box,glow,instance,label,decal,cutaway,finish};
+  const bey = (key,x,y,z,angle) => {
+    const [ratchet,bit] = BLADES[key].stock ?? (key==='dran' ? ['3-60','F'] : key==='hells' ? ['4-60','T'] : ['3-80','N']);
+    const {holder,standing} = makeBey({blade:key,ratchet,bit},undefined,onAssetReady);
+    addProp(holder,x,y+standing,z,angle);
+  };
+  return {box,glow,instance,label,decal,cutaway,addProp,bey,finish};
 }
 
 function ground(model,color,seam,step) {
@@ -104,66 +157,57 @@ function prop(model,x,z,angle,base=tabletop) {
     model.instance(shape,'solid',color,x+dx*cos+dz*sin,base+y,z+dz*cos-dx*sin,w,h,d,angle+rotation);
 }
 
-function displayBey(place,x,y,z,accent) {
-  place('disc',0x172737,x,y+.11,z,1.13,.22,1.13);
-  place('disc',accent,x,y+.24,z,1.57,.14,1.57);
-  place('ring',0xa5b0c6,x,y+.34,z,1.43,1,1.43);
-  for (let i=0;i<3;i++) {
-    const angle = i * Math.PI*2/3;
-    place('box',0xbdc6d1,x+Math.cos(angle)*.68,y+.29,z-Math.sin(angle)*.68,.37,.18,.35,angle+.27);
-  }
-  place('disc',0x22303a,x,y+.333,z,.72,.10,.72);
-  place('disc',accent,x,y+.39,z,.53,.036,.53);
-  place('box',0xffedbf,x,y+.412,z,.28,.014,.09,.65);
-}
-
-function deckCase(model,x,z,angle,lid,accents) {
+function deckCase(model,x,z,angle,lid,blades) {
   const part = prop(model,x,z,angle);
-  part('bevel',0x1b2230,0,.195,.64,5.10,.38,1.88);
-  part('bevel',lid,0,.13,-1.03,5.14,.24,1.65);
-  part('box',0x2b3444,0,.261,-1.03,4.44,.04,1.11);
-  for (const edge of [-.46,1.44]) part('box',0x3d475a,0,.37,edge,4.7,.18,.12);
-  for (const corner of [-2.2,2.2]) {
-    part('box',lid,corner,.36,.60,.13,.17,1.64);
-    part('box',0x99a9b9,corner*.75,.43,-.20,.36,.14,.19);
-    part('box',0x666f80,corner*.74,.30,1.62,.39,.17,.24);
+  part('bevel',0x282c35,0,.19,.98,6.26,.36,2.29);
+  part('bevel',0x171b24,0,.39,.97,6.04,.17,2.16);
+  part('bevel',lid,0,.09,-1.18,6.29,.17,2.13);
+  part('bevel',0x413340,0,.187,-1.18,5.96,.049,1.91);
+  part('bevel',lid,0,.22,-1.18,5.70,.052,1.68);
+  for (const edge of [-.05,1.98]) part('box',0x343a47,0,.44,edge,5.80,.20,.12);
+  for (const end of [-2.90,2.90]) {
+    part('box',0x343a47,end,.44,.97,.12,.20,1.99);
+    part('box',0x282e38,end*.64,.36,-.08,.44,.19,.41);
+    part('box',lid,end*.64,.355,2.04,.49,.18,.29);
+    part('box',lid,end*.93,.29,-1.19,.12,.22,1.71);
   }
-  [-1.51,0,1.51].forEach((slot,i)=>{
-    part('disc',0x0b111b,slot,.386,.61,1.22,.031,1.22);
-    part('ring',0x4b5a70,slot,.413,.61,1.48,1,1.48);
-    if (accents[i]) displayBey(part,slot,.387,.61,accents[i]);
+  for (const edge of [-2.12,-.25]) {
+    part('box',lid,0,.28,edge,5.77,.21,.13);
+  }
+  [-1.92,0,1.92].forEach((slot,i)=>{
+    part('disc',0x0c111a,slot,.485,.97,1.66,.043,1.66);
+    part('ring',0x424752,slot,.516,.97,1.81,1,1.81);
+    const key = blades[i];
+    if (key) model.bey(key,x+slot*Math.cos(angle)+.97*Math.sin(angle),tabletop+.506,z+.97*Math.cos(angle)-slot*Math.sin(angle),angle+.52*i);
   });
 }
 
-function spareLauncher(model,x,z,angle,accent,string=false) {
-  const part = prop(model,x,z,angle);
-  part('bevel',0x151b25,0,.25,0,2.39,.49,1.34);
-  part('bevel',0x343e4e,-.16,.52,0,1.39,.17,1.21);
-  part('box',0x232b36,.89,.26,0,.61,.43,.49);
-  for (const edge of [-.51,.51]) {
-    part('box',accent,-.24,.55,edge,1.03,.092,.13);
-    part('box',0x647487,.36,.46,edge,.38,.14,.12);
-  }
-  part('disc',0x7c8b9b,-.25,.625,.02,.34,.047,.34);
-  part('disc',0x232b36,-.25,.65,.02,.17,.032,.17);
-  if (string) {
-    part('box',0xd2d9d7,1.46,.15,0,.68,.05,.05);
-    part('box',0x303a49,1.83,.16,0,.19,.27,.83);
-  } else {
-    part('box',accent,2.39,.057,0,2.49,.08,.14);
-    part('ring',accent,3.94,.12,0,.67,1,.49);
-    for (let i=0;i<10;i++) part('box',accent,1.26+i*.22,.061,.088,.08,.071,.11);
-  }
+function spareLauncher(model,x,z,angle,accent,ripcord=false) {
+  const launcher = makeLauncher(accent,ripcord?'ripcord':'string');
+  launcher.setPull(ripcord?2.36:.78);
+  const y = -new T.Box3().setFromObject(launcher.group).min.y;
+  model.addProp(launcher.group,x,tabletop+y+.022,z,angle);
 }
 
-function chair(model,x,z,angle,tint) {
-  const part = prop(model,x,z,angle,floor);
-  for (const lx of [-.84,.84]) for (const lz of [-.78,.78]) {
-    part('box',0x34323a,lx,1.18,lz,.16,2.36,.16);
+function looseCord(model,x,z,angle,color) {
+  const part = prop(model,x,z,angle);
+  const points = [[-.86,-.66],[-.56,-.55],[-.08,-.38],[.12,-.16],[.11,.02],[-.11,.20],[-.38,.27],[-.52,.44],[-.41,.65],[.05,.71],[.51,.46],[.68,.22],[.87,.08]];
+  for (let i=1;i<points.length;i++) {
+    const [ax,az] = points[i-1], [bx,bz] = points[i];
+    part('box',color,(ax+bx)*.5,.057,(az+bz)*.5,Math.hypot(bx-ax,bz-az)+.063,.074,.073,-Math.atan2(bz-az,bx-ax));
   }
-  part('bevel',tint,0,2.33,0,2.1,.33,1.97);
-  for (const back of [-.77,.77]) part('box',0x34323a,back,2.99,.91,.18,1.65,.18);
-  part('bevel',tint,0,3.91,.91,2.1,.87,.30);
+  part('box',0x171e27,1.01,.109,.04,.39,.19,.46,.25);
+}
+
+function chair(model,x,z,angle,tint,base) {
+  const part = prop(model,x,z,angle,base);
+  for (const lx of [-18,18]) for (const lz of [-17.3,17.3]) {
+    part('box',0x34323a,cm(lx),cm(21.5),cm(lz),cm(3.1),cm(43),cm(3.1));
+  }
+  part('bevel',tint,0,cm(42.7),0,cm(42.5),cm(4.6),cm(42));
+  for (const back of [-17.3,17.3]) part('box',0x34323a,cm(back),cm(64),cm(18),cm(2.6),cm(42),cm(2.6));
+  part('bevel',tint,0,cm(75),cm(19),cm(44),cm(23),cm(3.8));
+  part('box',tint,0,cm(54),cm(19),cm(37),cm(2.9),cm(3.5));
 }
 
 function leafPot(model,x,z,base) {
@@ -196,7 +240,7 @@ function shopPoster(ctx) {
   ctx.font = '700 24px Barlow, sans-serif';ctx.fillText('BEYBLADE X',17,103,192);
 }
 
-function cardShop(model) {
+function cardShop(model,accessories,floorY) {
   ground(model,0x685353,0x514446,5.5);
   for (let row=-4;row<=3;row++) for (let col=-4;col<=4;col++) {
     const shade = (row+col)%2===0 ? 0x8e7770 : 0x756361;
@@ -213,35 +257,33 @@ function cardShop(model) {
   }
   for (const z of [-10.94,10.94]) model.box(0xc18661,0,tabletop-.10,z,27.44,.16,.10);
   for (const x of [-13.66,13.66]) model.box(0x784b3c,x,tabletop-.13,0,.10,.15,22.72);
-  model.instance('box','table',0x204651,0,tabletop+.025,.14,17.6,.05,17.7);
-  for (const x of [-8.64,8.64]) model.box(0xb59269,x,tabletop+.058,.14,.058,.02,17.28);
-  for (const z of [-8.51,8.79]) model.box(0xb59269,0,tabletop+.058,z,17.32,.02,.058);
-  chair(model,-14.3,4.2,1.09,0x7a494b);
-  chair(model,13.6,-1.7,-1.38,0x335e5c);
-  chair(model,-3.7,13.1,.18,0x72766b);
+  model.instance('box','table',0x204651,0,tabletop+.006,.14,17.6,.012,17.7);
+  for (const x of [-8.64,8.64]) model.box(0xb59269,x,tabletop+.014,.14,.058,.003,17.28);
+  for (const z of [-8.51,8.79]) model.box(0xb59269,0,tabletop+.014,z,17.32,.003,.058);
+  accessories.cutaway(side=>chair(side,-23.6,-.4,1.16,0x924c4f,floorY),'x',-25,-1);
+  accessories.cutaway(side=>chair(side,22.9,-8.9,-1.86,0x3c6a65,floorY),'x',25,1);
+  accessories.cutaway(side=>chair(side,-8.55,17.4,.19,0x8b7060,floorY),'z',20,1);
 
-  deckCase(model,-10.12,-6.65,-.32,0xd34a59,[0x19a8cd,0,0x8b56d6]);
-  deckCase(model,7.52,9.03,.18,0x387bb1,[0xf5a839,0x2dafac,0]);
-  spareLauncher(model,-10.65,3.38,-1.65,0xf36289);
-  spareLauncher(model,10.08,-4.69,2.11,0x2b9fcf,true);
-  spareLauncher(model,-5.6,9.06,-.19,0xf2ad42,true);
-  displayBey(prop(model,-11.4,-2.2,.42),0,0,0,0xefa937);
-  displayBey(prop(model,-9.57,6.4,-.45),0,0,0,0x8654d9);
-  displayBey(prop(model,10.98,-8.38,.3),0,0,0,0x42bad9);
-  displayBey(prop(model,9.92,1.58,-.7),0,0,0,0xde6d40);
-  model.instance('ring','solid',0x39343d,10.86,tabletop+.042,3.14,1.24,1,.84,.31);
-  model.instance('ring','solid',0x39343d,11.17,tabletop+.045,3.37,.93,1,.64,-.14);
-  model.box(0x161f27,11.62,tabletop+.12,3.55,.25,.22,.45,-.35);
+  deckCase(accessories,-10.70,-9.61,-.15,0xc14d5e,['dran',null,'shark']);
+  deckCase(accessories,7.41,10.13,.04,0x377a9d,['wizard','silver',null]);
+  spareLauncher(accessories,-10.65,2.45,-1.65,0xed426d,true);
+  spareLauncher(accessories,10.33,-5.41,2.11,0x2b9fcf);
+  spareLauncher(accessories,-5.45,9.75,-.32,0xe7963f);
+  accessories.bey('superion',-11.29,tabletop,-2.17,.42);
+  accessories.bey('shark',-9.52,tabletop,6.24,-.45);
+  accessories.bey('wyvern',10.98,tabletop,-8.38,.3);
+  accessories.bey('hells',9.92,tabletop,1.58,-.7);
+  looseCord(accessories,10.77,3.72,-.45,0x252a35);
   for (let i=0;i<5;i++) {
-    model.box(0x302929,5.65+i*.08,tabletop+.06+i*.025,-9.78,1.15,.042,.80,-.22+i*.06);
+    accessories.box(0x302929,5.32+i*.12,tabletop+.06+i*.025,-9.54,3.0,.042,2.09,-.22+i*.06);
   }
-  model.box(0xdb9a58,5.97,tabletop+.18,-9.78,.94,.023,.64,.02);
-  model.box(0x326469,5.97,tabletop+.21,-9.78,.43,.015,.31,.81);
-  model.instance('disc','solid',0xdebd93,-6.16,tabletop+.55,-8.86,.78,1.10,.78);
-  model.instance('ring','solid',0xf8e2bf,-6.16,tabletop+1.11,-8.86,.79,1,.79);
-  model.instance('disc','solid',0x79544b,-6.16,tabletop+1.06,-8.86,.60,.04,.60);
-  model.instance('ring','solid',0xebba51,1.40,tabletop+.055,9.58,.68,1,.68,.36);
-  model.instance('disc','solid',0x4bb0bc,2.37,tabletop+.16,9.51,.34,.31,.34);
+  accessories.box(0xdb9a58,5.80,tabletop+.18,-9.54,2.73,.023,1.84,.02);
+  accessories.box(0x326469,5.80,tabletop+.21,-9.54,1.26,.015,.91,.81);
+  accessories.instance('disc','solid',0xdebd93,-4.78,tabletop+1.68,-9.48,2.55,3.35,2.55);
+  accessories.instance('ring','solid',0xf8e2bf,-4.78,tabletop+3.38,-9.48,2.58,1,2.58);
+  accessories.instance('disc','solid',0x79544b,-4.78,tabletop+3.28,-9.48,2.07,.04,2.07);
+  accessories.instance('ring','solid',0xebba51,1.40,tabletop+.055,9.46,.84,1,.84,.36);
+  accessories.instance('disc','solid',0x4bb0bc,2.58,tabletop+.16,9.51,.36,.31,.36);
 
   model.cutaway(wall=>{
     wall.box(0x30676d,0,1.10,-19.16,40.4,15.4,.66);
@@ -261,10 +303,10 @@ function cardShop(model) {
         for (let i=0;i<5;i++) {
           const tint = packs[(i+row*2+(center>0?2:0))%packs.length];
           const x = center+(i-2)*1.54;
-          const h = 1.12+.31*((i+row)%3);
-          wall.box(tint,x,y+.15+h*.5,-17.19,1.01,h,.66);
-          wall.box(0xf2d8ad,x,y+.36,-16.85,.66,.14,.027);
-          wall.box(0x39525c,x,y+.51+h*.38,-16.85,.47,.33,.028,.02,.45);
+          const h = .84+.18*((i+row)%3);
+          wall.box(tint,x,y+.15+h*.5,-17.19,1.12,h,.66);
+          wall.box(0xf2d8ad,x,y+.30,-16.85,.72,.07,.027);
+          wall.box(0x39525c,x,y+.38+h*.38,-16.85,.51,.18,.028);
         }
       }
     }
@@ -323,7 +365,28 @@ function cupDisplay(ctx) {
   ctx.font = '800 18px Barlow, sans-serif';ctx.fillText('PALCO PRINCIPAL',151,104,192);
 }
 
-function tournament(model) {
+function seatedBlader(model,x,z,angle,base,jersey,skin,hair) {
+  chair(model,x,z,angle,0x344561,base);
+  const part = prop(model,x,z,angle,base);
+  for (const side of [-1,1]) {
+    part('bevel',0x364150,cm(side*10),cm(49),cm(-6),cm(14),cm(14),cm(36),side*.08);
+    part('bevel',0x364150,cm(side*10),cm(24),cm(-22),cm(13),cm(39),cm(14),side*.08);
+    part('bevel',0x252d3e,cm(side*10),cm(4),cm(-27),cm(13),cm(7),cm(24),side*.12);
+    part('bevel',jersey,cm(side*21),cm(66),cm(2),cm(11),cm(29),cm(15),side*.18);
+    part('bevel',skin,cm(side*19),cm(51),cm(-10),cm(10),cm(9),cm(27),side*.20);
+  }
+  part('bevel',jersey,0,cm(68),cm(3),cm(36),cm(37),cm(21));
+  part('box',0xa5b6bd,cm(8),cm(76),cm(-7.75),cm(7.5),cm(2.7),cm(.6));
+  part('bevel',skin,0,cm(89),cm(3),cm(10),cm(10),cm(10));
+  part('bevel',skin,0,cm(102),cm(3),cm(17),cm(22),cm(19));
+  part('bevel',hair,0,cm(111),cm(5),cm(17.8),cm(9.5),cm(19.7));
+  for (const eye of [-4.0,4.0]) {
+    part('box',0x343543,cm(eye),cm(104.6),cm(-6.58),cm(1.5),cm(.96),cm(.55));
+  }
+  part('bevel',skin,0,cm(100.9),cm(-6.9),cm(2.6),cm(3.9),cm(2.87));
+}
+
+function tournament(model,accessories,floorY) {
   ground(model,0x101923,0x263949,8.1);
   contactShade(model,40,36);
   model.instance('bevel','solid',0x151c30,0,-3.40,0,31.1,4.22,25.9);
@@ -336,14 +399,16 @@ function tournament(model) {
   model.glow(0x58c5ce,0,-1.42,12.68,14.45,.085,.085);
   model.box(0x41475a,0,-1.68,12.73,15.0,.42,.46);
   model.box(0x131e30,0,-3.53,12.64,13.8,2.23,.48);
-  model.label('X STADIUM','CAMPEONATO','#b5ea87',0,tabletop+.018,9.30,7.5,2.21,true);
-  for (let i=0;i<4;i++) {
-    model.box(0x233449,0,floor+.29+i*.86,16.5-i*1.32,7.4,.62,1.43);
-    model.glow(0x53b1bf,0,floor+.57+i*.86,17.20-i*1.32,7.13,.043,.045);
+  model.label('X STADIUM','CAMPEONATO','#b5ea87',0,tabletop+.018,7.72,7.5,1.93,true);
+  for (let step=0;step<6;step++) {
+    const rise = (tabletop-floor)*(step+1)/6;
+    const z = 15.8+(5-step)*5.6;
+    model.box(0x233449,0,floor+rise*.5,z,7.4,rise,5.61);
+    model.glow(0x53b1bf,0,floor+rise+.004,z+2.77,7.13,.008,.06);
   }
 
   model.cutaway(back=>{
-    const z = -16.0;
+    const z = -25;
     for (const sign of [-1,1]) {
       const x = sign*14.6;
       for (const beam of [-.43,.43]) back.box(0x53627b,x+beam,.86,z,.159,13.9,.67);
@@ -361,34 +426,35 @@ function tournament(model) {
       back.box(0x151e30,x,5.41,z+.48,.86,.75,.87,0,.22);
       back.glow(i%3===0?0xbef88b:0x7ed8ed,x,5.39,z+.929,.50,.26,.029,0,.22);
     }
-    back.box(0x131b2b,0,1.45,z+.02,22.4,7.2,.53);
-    back.glow(0x4b8296,0,1.45,z+.30,21.69,6.63,.047);
-    back.decal(0,1.45,z+.331,21.21,6.16,cupDisplay);
+    back.box(0x131b2b,0,-2.03,z+.02,22.4,3.80,.53);
+    back.glow(0x4b8296,0,-2.03,z+.30,21.69,3.47,.047);
+    back.decal(0,-2.03,z+.331,21.21,3.22,cupDisplay);
     for (const x of [-11.72,11.72]) {
       back.box(0x243847,x,.98,z+.39,1.03,5.53,.68);
       for (let i=0;i<4;i++) back.glow(x<0?0xa7ea73:0x4dbddd,x,2.94-i*1.31,z+.747,.30,.73,.026);
     }
-  },'z',-15.73,-1);
+  },'z',-24.73,-1);
   for (const sign of [-1,1]) {
-    model.cutaway(stands=>{
-      for (let row=0;row<3;row++) {
-        const x = sign*(15.4+row*1.64);
-        const riser = floor+row*.76;
-        stands.box(0x242f3e,x,(floor+riser)*.5+.18,-1.33,1.61,riser-floor+.36,17.4);
-        for (let seat=0;seat<8;seat++) {
-          const z = -8.78+seat*2.10;
-          stands.box(0x495973,x,riser+.68,z,1.18,.32,1.58);
-          stands.box(0x344561,x+sign*.51,riser+.96,z,.23,.98,1.58);
-          if ((seat+row*2)%4!==1) {
-            const jerseys = [0x4a6382,0x748484,0x586980,0x716279,0x4c5266];
-            stands.instance('bevel','solid',jerseys[(seat+row)%jerseys.length],x,riser+1.47,z,.71,1.12,1.04);
-            stands.instance('bevel','solid',seat%2 ? 0x9e7480 : 0xc19389,x,riser+2.22,z,.58,.71,.59);
-            stands.instance('bevel','solid',0x253344,x+sign*.02,riser+2.47,z,.59,.26,.60);
-          }
+    accessories.cutaway(stands=>{
+      for (let row=0;row<2;row++) {
+        const x = sign*(33+row*17);
+        const step = cm(row*20+5);
+        const base = floorY+step;
+        stands.box(0x242f3e,x,floorY+step*.5,-5.6,16.9,step,49);
+        for (let seat=0;seat<3;seat++) {
+          const z = -22+seat*16.4;
+          const jerseys = [0x526884,0x537d79,0x746279,0xa05d51,0x93966e];
+          if ((seat+row)%4===3) chair(stands,x,z,-sign*Math.PI/2,0x344561,base);
+          else seatedBlader(stands,x,z,-sign*Math.PI/2,base,jerseys[(seat+row+(sign<0?1:0))%5],
+            seat%2===0 ? 0xc59778 : 0x8d655a,seat%2===0 ? 0x273142 : 0x433439);
         }
       }
-    },'x',sign*16.9,sign);
+    },'x',sign*25,sign);
   }
+  accessories.cutaway(crew=>{
+    seatedBlader(crew,-13.2,-24.9,Math.PI-.21,floorY,0x557d86,0xc9977c,0x2b3541);
+    seatedBlader(crew,12.6,-24.4,Math.PI+.26,floorY,0x484c69,0x9d735f,0x3a3039);
+  },'z',-20,-1);
 }
 
 function diagnosticScreen(ctx) {
@@ -406,7 +472,7 @@ function diagnosticScreen(ctx) {
   ctx.fillStyle = '#dceeea';ctx.font = '800 24px Barlow, sans-serif';ctx.fillText('GIRO / TELEMETRIA',19,36);
 }
 
-function workshop(model) {
+function workshop(model,accessories,floorY) {
   ground(model,0x414654,0x323845,7.3);
   contactShade(model,39,28);
   for (const x of [-14.0,14.0]) {
@@ -418,7 +484,7 @@ function workshop(model) {
   model.box(0x28383f,0,-3.88,.22,22.95,5.05,19.91);
   model.box(0xf28a48,0,-1.81,10.25,22.32,.39,.17);
   model.instance('bevel','table',0x737b88,0,tabletop-.25,0,25.40,.50,22.45);
-  model.instance('bevel','table',0x414a5c,0,tabletop+.023,.03,18.2,.046,16.75);
+  model.instance('bevel','table',0x414a5c,0,tabletop+.005,.03,18.2,.010,16.75);
   for (const x of [-9.68,9.68]) {
     model.glow(0xd69756,x,tabletop+.026,-.37,.12,.031,14.45);
     for (let slot=0;slot<6;slot++) {
@@ -426,17 +492,21 @@ function workshop(model) {
     }
   }
   model.label('PIT 03','CALIBRAÇÃO','#ffc47d',0,tabletop+.016,9.39,6.3,1.85,true);
-  for (const [x,z,angle] of [[-15.8,2.14,.24],[15.92,-2.5,-.28]]) {
-    const part = prop(model,x,z,angle,floor);
-    part('box',0x292d3b,0,1.27,0,2.94,2.51,3.57);
-    part('box',0x9d483a,0,2.66,0,3.08,.36,3.71);
+  for (const [x,z,angle] of [[-25,3.2,.24],[25,-4.2,-.28]]) {
+    const part = prop(accessories,x,z,angle,floorY);
+    part('box',0x292d3b,0,cm(42),0,cm(53),cm(70),cm(42));
+    part('box',0x9d483a,0,cm(78),0,cm(54),cm(4),cm(43.5));
+    for (const dx of [-20,20]) for (const dz of [-15,15]) {
+      part('disc',0x222a32,cm(dx),cm(4),cm(dz),cm(7.5),cm(8),cm(7.5));
+    }
     for (let row=0;row<4;row++) {
-      part('box',row%2 ? 0xa75442 : 0xb96851,0,.56+row*.51,1.80,2.63,.44,.18);
-      part('box',0xb2a28d,0,.61+row*.51,1.92,1.21,.062,.14);
+      part('box',row%2 ? 0xa75442 : 0xb96851,0,cm(19+row*15),cm(21.3),cm(49),cm(13.8),cm(2));
+      part('box',0xb2a28d,0,cm(22+row*15),cm(22.7),cm(21),cm(1.2),cm(1.5));
     }
   }
-  spareLauncher(model,-8.45,8.78,-.32,0xeda24c,true);
-  displayBey(prop(model,10.63,4.03,.29),0,0,0,0xc96b39);
+  spareLauncher(accessories,-8.64,9.36,-.32,0xeda24c);
+  accessories.bey('hells',10.63,tabletop,4.03,.29);
+  accessories.bey('cobalt',-9.78,tabletop,-3.53,-.46);
 
   model.cutaway(bay=>{
     bay.box(0x3b4b55,0,1.01,-19.14,38.8,15.2,.80);
@@ -467,25 +537,34 @@ function workshop(model) {
         bay.instance('disc','solid',0xb2c0bf,xTool+.12,1.78,-16.86,.52,.20,.38);
       }
     }
-    bay.box(0x1b2832,3.04,.88,-10.87,5.9,2.83,.37,.08);
-    bay.decal(3.06,.88,-10.661,5.57,2.48,diagnosticScreen,{angle:.08});
+    bay.box(0x1b2832,3.04,.20,-10.87,5.9,1.10,.37,.08);
+    bay.decal(3.06,.20,-10.661,5.57,.93,diagnosticScreen,{angle:.08});
     bay.box(0x1c2933,3.04,-.71,-10.87,1.70,.27,1.42);
   },'z',-17.66,-1);
 }
 
 const places = {
   standard:{label:'Padrão',sky:0x0e1324},
-  shop:{label:'Loja de card game',sky:0x514449,build:cardShop},
-  tournament:{label:'Estande de torneio',sky:0x101620,build:tournament},
-  workshop:{label:'Oficina neon',sky:0x343d48,build:workshop},
+  shop:{label:'Loja de card game',sky:0x514449,build:cardShop,height:75,widthScale:cm(120)/27.5,depthScale:cm(75)/22.7},
+  tournament:{label:'Estande de torneio',sky:0x101620,build:tournament,height:100,widthScale:1.58,depthScale:1.46},
+  workshop:{label:'Oficina neon',sky:0x343d48,build:workshop,height:88,widthScale:cm(115)/25.4,depthScale:cm(75)/22.45},
 };
 
 export const sceneryOptions = Object.entries(places).map(([key,{label}])=>[key,label]);
 
-export function createScenery(key) {
+export function createScenery(key,onAssetReady) {
   const place = Object.hasOwn(places,key) ? places[key] : places.standard;
   if (!place.build) return {sky:place.sky};
-  const model = stageModel();
-  place.build(model);
-  return {sky:place.sky,group:model.finish()};
+  const model = stageModel(), props = stageModel(onAssetReady);
+  // Anchor the furniture to the BX-10 support surface. Props already use the arena's 3 cm unit.
+  place.build(model,props,tabletop-cm(place.height));
+  const structure = model.finish();
+  const heightScale = cm(place.height)/(tabletop-floor);
+  structure.scale.set(place.widthScale,heightScale,place.depthScale);
+  structure.position.y = tabletop*(1-heightScale);
+  const group = props.finish();
+  const cuts = (structure.userData.cutaways ?? []).map(cut=>({...cut,edge:cut.edge*structure.scale[cut.axis]}));
+  group.userData.cutaways = [...(group.userData.cutaways ?? []),...cuts];
+  group.add(structure);
+  return {sky:place.sky,group};
 }

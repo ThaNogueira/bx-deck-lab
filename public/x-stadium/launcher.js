@@ -3,7 +3,7 @@ import { BLADE_TOP } from './rules.js';
 
 const material = (color, roughness, metalness = 0) => new T.MeshStandardMaterial({color,roughness,metalness});
 
-export function makeLauncher(color) {
+export function makeLauncher(color,style='string') {
   const group = new T.Group();
   const housing = material(0x202733,.38,.22);
   const side = material(0x394956,.46,.18);
@@ -39,9 +39,21 @@ export function makeLauncher(color) {
   box(group,.045,.175,.15,ivory,.91,BLADE_TOP+.40,0);
   const pull = new T.Group();
   group.add(pull);
-  box(pull,.28,.14,.48,dark,0,0,0);
-  box(pull,.14,.106,.34,accent,.024,.081,0);
-  const cord = box(group,1,.024,.024,ivory,0,BLADE_TOP+.40,0);
+  const isRipcord = style==='ripcord';
+  if (isRipcord) {
+    const loop = new T.Mesh(new T.RingGeometry(.215,.30,8).rotateX(-Math.PI/2),accent);
+    loop.scale.set(1.23,1,.89);
+    loop.position.x = .16;
+    pull.add(loop);
+    box(pull,.18,.087,.12,accent,-.10,0,0);
+  } else {
+    box(pull,.28,.14,.48,dark,0,0,0);
+    box(pull,.14,.106,.34,accent,.024,.081,0);
+  }
+  const cord = box(group,1,isRipcord ? .044 : .024,isRipcord ? .088 : .024,isRipcord ? accent : ivory,0,BLADE_TOP+.40,0);
+  if (isRipcord) {
+    for (let i=0;i<11;i++) box(cord,.031,.042,.06,accent,-.46+i*.089,.008,.055);
+  }
   const setPull = length => {
     pull.position.set(1.07+length,BLADE_TOP+.40,0);
     cord.scale.x = .14+length;
