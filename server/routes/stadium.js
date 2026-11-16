@@ -111,8 +111,8 @@ function submitLineup(player,message) {
   if (match.submissions[side]) return true;
   const beys = validateLineup(message.beys);
   if (!beys) return false;
-  const current = lineupKeys(beys), previous = match.previous?.[side];
-  if (previous && (current.every((key,i)=>key===previous[i]) || !current.every(key=>previous.includes(key)))) return false;
+  const previous = match.previous?.[side];
+  if (previous && !lineupKeys(beys).every(key=>previous.includes(key))) return false;
   match.submissions[side] = beys;
   emit(player.peer,'play',{type:'lineup-ready',round:match.round});
   if (match.submissions.every(Boolean)) {

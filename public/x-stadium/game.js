@@ -392,7 +392,7 @@ function applyArenaSides(placement) {
   state.localPlayer = placement.indexOf(seat);
   resetRound();
   const trio = roster[state.localPlayer].length===3;
-  if (trio) chooseLineup(false);
+  if (trio) chooseLineup();
   else if (publicMatch) {
     state.phase = 'side';
     updateControls();
@@ -401,11 +401,11 @@ function applyArenaSides(placement) {
   } else enterLaunchSetup();
 }
 
-function chooseLineup(reorder) {
+function chooseLineup() {
   state.phase = 'order';
   updateControls();
   const local = state.localPlayer;
-  preparation.order(roster[local],reorder,publicMatch,beys=>{
+  preparation.order(roster[local],publicMatch,beys=>{
     if (publicMatch) sendOnline({type:'lineup',round:state.round,beys});
     else {
       roster[local] = beys;
@@ -420,7 +420,7 @@ function chooseLineup(reorder) {
 }
 
 function nextPreparation(chooseOrder) {
-  if (chooseOrder) chooseLineup(state.round>1);
+  if (chooseOrder) chooseLineup();
   else if (publicMatch && roster[0] && roster[1]) showFaceoff();
   else enterLaunchSetup();
 }
@@ -746,7 +746,7 @@ function showResult() {
   const label = winner ? winner + ' · ' + bey + ' · ' + points : 'A rodada será repetida.';
   const rematch = match && state.mode!=='local';
   const nextLabel = match ? 'NOVA PARTIDA' : !isHost() ? 'AGUARDANDO ANFITRIÃO' :
-    r.winner!==null && roster?.[state.localPlayer]?.length===3 && state.round%3===0 ? 'ESCOLHER NOVA ORDEM' : 'PRÓXIMA RODADA';
+    r.winner!==null && roster?.[state.localPlayer]?.length===3 && state.round%3===0 ? 'ORDEM DO DECK' : 'PRÓXIMA RODADA';
   const next = rematch ?
     '<button class="launch-button" type="button" data-action="rematch"><i data-icon="reset"></i><span>Revanche</span></button>'+
     '<button class="secondary-btn" type="button" data-action="stadium-home">Voltar ao menu</button>'+

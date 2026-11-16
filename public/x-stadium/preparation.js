@@ -25,7 +25,7 @@ export class StadiumPreparation {
         this.updateOrder();
       } else if (button.dataset.moveOrder) {
         this.move(this.selected,this.selected+Number(button.dataset.moveOrder));
-      } else if (button.dataset.confirmOrder!==undefined && this.canConfirm()) {
+      } else if (button.dataset.confirmOrder!==undefined) {
         this.locked = true;
         this.updateOrder();
         this.confirm(this.deck);
@@ -98,25 +98,19 @@ export class StadiumPreparation {
     this.confirm = null;
   }
 
-  order(deck,reorder,online,confirm) {
-    this.original = deck;
+  order(deck,online,confirm) {
     this.deck = [...deck];
     this.selected = 0;
-    this.reorder = reorder;
     this.online = online;
     this.confirm = confirm;
     this.locked = this.opponentReady = this.suppressClick = false;
-    this.show('<h2>'+(reorder?'Escolha uma nova ordem':'Escolha a ordem do deck')+'</h2>'+
+    this.show('<h2>Escolha a ordem do deck</h2>'+
       '<div class="stadium-lineup-cards"></div><div class="stadium-lineup-actions">'+
       '<button type="button" data-move-order="-1" aria-label="Mover para a esquerda">‹</button>'+
       '<button type="button" data-confirm-order>Confirmar ordem</button>'+
       '<button type="button" data-move-order="1" aria-label="Mover para a direita">›</button></div>'+
       '<p class="stadium-lineup-status" role="status"></p>','order');
     this.drawOrder();
-  }
-
-  canConfirm() {
-    return !this.locked && (!this.reorder || this.deck.some((bey,i)=>bey!==this.original[i]));
   }
 
   drawOrder() {
@@ -137,9 +131,9 @@ export class StadiumPreparation {
     });
     this.root.querySelector('[data-move-order="-1"]').disabled = this.locked || this.selected===0;
     this.root.querySelector('[data-move-order="1"]').disabled = this.locked || this.selected===2;
-    this.root.querySelector('[data-confirm-order]').disabled = !this.canConfirm();
+    this.root.querySelector('[data-confirm-order]').disabled = this.locked;
     this.root.querySelector('.stadium-lineup-status').textContent = this.locked && this.online ? 'Ordem confirmada · aguardando o adversário' :
-      this.opponentReady ? 'Adversário pronto' : this.reorder && !this.canConfirm() ? 'Mova uma Bey para confirmar a nova ordem.' : 'Arraste as Beys ou use as setas.';
+      this.opponentReady ? 'Adversário pronto' : 'Confirme a ordem atual ou mova as Beys.';
   }
 
   readyOpponent() {
