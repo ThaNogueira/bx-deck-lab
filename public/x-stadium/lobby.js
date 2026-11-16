@@ -1,6 +1,7 @@
 import { BLADES, RATCHETS, BITS, BIT_TYPES, DEFAULTS, GRAMS_PER_MASS_UNIT, getParts, sanitizeConfig } from './rules.js';
 import { partKinds as kinds, hasRepeatedParts, loadoutStats } from './deck.js';
 import { avatarMarkup, escapeText as escape, insideWebView, stadiumRequest } from './account.js';
+import { sceneryOptions } from './scenery.js';
 
 const storageKey = 'x-stadium-decks-v1';
 const labels = {blade:'Blades',ratchet:'Ratchets',bit:'Bits'};
@@ -62,6 +63,9 @@ export class StadiumLobby {
       if (e.target.id === 'lobby-deck-name') this.draft.name = e.target.value;
       if (e.target.id === 'lobby-room-code') this.roomCode = e.target.value;
       if (e.target.id === 'lobby-graphics') this.actions.graphics(e.target.value);
+    });
+    root.addEventListener('change',e=>{
+      if (e.target.id === 'lobby-scenery') this.actions.scenery(e.target.value);
     });
     root.addEventListener('keydown',e=>{
       const back = root.querySelector('[data-lobby="back"]');
@@ -377,6 +381,9 @@ export class StadiumLobby {
       case 'settings':
         title = 'Opções';
         body = tile(this.actions.soundEnabled()?'Silenciar som':'Ativar som','sound',{icon:this.actions.soundEnabled()?'sound':'muted'})+
+          '<label class="lobby-field">Cenário<select id="lobby-scenery">'+
+          sceneryOptions.map(([key,label])=>'<option value="'+key+'" '+(key===this.actions.sceneryValue()?'selected':'')+'>'+label+'</option>').join('')+
+          '</select></label>'+
           '<label class="lobby-field">Gráficos<select id="lobby-graphics">'+
           [['auto','Automático'],['fps30','Meta 30 FPS'],['fps60','Meta 60 FPS'],['fps120','Meta 120 FPS'],['low','Leve'],['medium','Equilibrado'],['high','Alto']]
             .map(([key,label])=>'<option value="'+key+'" '+(key===this.actions.graphicsValue()?'selected':'')+'>'+label+'</option>').join('')+

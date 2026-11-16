@@ -2,6 +2,7 @@ import * as T from './vendor/three.module.min.js';
 import { BITS, BLADES, MAX_LAUNCH_ANGLE, launchPose, launchRelease } from './rules.js';
 import { disposeBey, makeBey } from './bey-model.js';
 import { makeLauncher } from './launcher.js';
+import { createScenery } from './scenery.js';
 import { TAU, RIDGE, RAIL, SHELL, SHOOT_HEIGHT, coverAngles, coverPoint, coverGeometry, coverCollarGeometry, coverSideGeometry, openingRadius, shellRadius,
   floorGeometry, floorAt, tipSurfaceAt, height, mouthRadius, pocketGeometry, pocketWalls,
   polarPoint, railFrame, railRadius, rimShelfGeometry, rimWallGeometry, sectors, stripGeometry, trayRadius, clamp } from './stadium.js';
@@ -234,17 +235,18 @@ function environment(renderer, scene, mobile) {
   rim.position.set(5, 4, -8);
   scene.add(rim);
 
-  const ground = mesh(scene, plane(110,110), mat(0x11182d, .87, .1), 0, SHELL.table);
+  const backdrop = new T.Group();
+  const ground = mesh(backdrop, plane(110,110), mat(0x11182d, .87, .1), 0, SHELL.table);
   ground.receiveShadow = true;
   const grid = new T.GridHelper(80, 56, 0x384770, 0x304061);
   grid.position.y = SHELL.table+.01;
   grid.material.transparent = true;
   grid.material.opacity = .39;
-  scene.add(grid);
+  backdrop.add(grid);
   for (const x of [-9.2, 9.2]) {
     for (const z of [-7.6, 7.6]) {
       const marker = new T.Group();
-      scene.add(marker);
+      backdrop.add(marker);
       marker.position.set(x, SHELL.table+.017, z);
       marker.rotation.y = Math.sign(x * z) === 1 ? 0 : Math.PI;
       const markerMat = new T.MeshBasicMaterial({ color: 0x7e75da, transparent: true, opacity: .6 });
@@ -254,6 +256,8 @@ function environment(renderer, scene, mobile) {
       }
     }
   }
+  scene.add(backdrop);
+  return backdrop;
 }
 
 function startShadowTexture() {
@@ -356,7 +360,8 @@ export class ArenaView {
     this.renderer.toneMapping = T.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.17;
     container.append(this.renderer.domElement);
-    environment(this.renderer, this.scene, this.mobile);
+    this.defaultBackdrop = environment(this.renderer, this.scene, this.mobile);
+    this.sceneryCache = new Map();
     stadium(this.scene);
     floor(this.scene);
     this.camera = new T.PerspectiveCamera(43, 1, .12, 100);
@@ -509,6 +514,20 @@ export class ArenaView {
     this.renderer.shadowMap.enabled = quality !== 'low';
     this.renderer.shadowMap.needsUpdate = true;
     this.resize();
+  }
+
+  setScenery(key) {
+    if (this.sceneryKey===key) return;
+    if (!this.sceneryCache.has(key)) this.sceneryCache.set(key,createScenery(key));
+    const {sky,group} = this.sceneryCache.get(key);
+    this.scenery?.removeFromParent();
+    this.scenery = group;
+    if (group) this.scene.add(group);
+    this.defaultBackdrop.visible = !group;
+    this.scene.background.setHex(sky);
+    this.sceneryKey = key;
+    this.renderer.shadowMap.needsUpdate = true;
+    this.dirty = true;
   }
 
   updateFraming() {
@@ -1216,6 +1235,11 @@ export class ArenaView {
       return;
     }
     this.lastDraw = interval ? Math.max(now-interval,this.lastDraw+interval) : now;
+    if (this.scenery?.userData.cutaways) {
+      for (const {wall,axis,edge,side} of this.scenery.userData.cutaways) {
+        wall.visible = (this.camera.position[axis]-edge)*side<0;
+      }
+    }
     this.renderer.render(this.scene, this.camera);
     this.dirty = false;
   }

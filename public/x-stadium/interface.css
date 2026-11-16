@@ -40,6 +40,10 @@ body,.stage:fullscreen { background:#0a0d19 }
   color:var(--lime);border-color:#6ddaffaa;background:#223452;
 }
 .tool-menu .tool-popover { background:#11192a;box-shadow:0 16px 32px #040610b0 }
+.tool-menu .settings-menu {
+  max-height:calc(100dvh - var(--top) - var(--header) - var(--bottom) - 7px);
+  overflow:auto;overscroll-behavior:contain;
+}
 .graphics-setting select { background:#0c1222 }
 
 .stadium-lobby {

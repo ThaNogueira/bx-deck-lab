@@ -1,4 +1,5 @@
 import { ArenaView } from './scene.js';
+import { sceneryOptions } from './scenery.js';
 import { Battle, DT, initPhysics } from './physics.js';
 import { ATTACK, BIT_TYPES, BITS, BLADE_TOP, BLADES, DEFAULTS, GRAMS_PER_MASS_UNIT, MAX_LAUNCH_ANGLE, MOVE_USES, RATCHETS, STAMINA, getParts, railRating, sanitizeConfig, specialMove } from './rules.js';
 import { clamp } from './stadium.js';
@@ -90,6 +91,20 @@ graphics.addEventListener('change', () => {
   view?.setGraphics(graphics.value);
   try { localStorage.setItem('x-stadium-graphics', graphics.value); } catch { /* Preferência da sessão. */ }
 });
+const scenery = $('scenery');
+for (const [value,label] of sceneryOptions) scenery.add(new Option(label,value));
+try {
+  const saved = localStorage.getItem('x-stadium-scenery');
+  if (sceneryOptions.some(([key])=>key===saved)) scenery.value = saved;
+} catch { /* Preferência da sessão. */ }
+function selectScenery(value) {
+  scenery.value = value;
+  const lobbyScenery = $('lobby-scenery');
+  if (lobbyScenery) lobbyScenery.value = value;
+  view?.setScenery(value);
+  try { localStorage.setItem('x-stadium-scenery',value); } catch { /* Preferência da sessão. */ }
+}
+scenery.addEventListener('change',()=>selectScenery(scenery.value));
 let previousFrames = null, previousStep = 0, settledFrames = null, lastSentStep = -1;
 const playback = new BattlePlayback();
 let onlineDraft = '';
@@ -1070,6 +1085,8 @@ const lobby = new StadiumLobby($('stadium-lobby'),$('stadium-queue'),{
   toggleSound,
   graphicsValue: () => graphics.value,
   graphics: value => { graphics.value = value; graphics.dispatchEvent(new Event('change')); },
+  sceneryValue: () => scenery.value,
+  scenery: selectScenery,
   inspect: (canvas,config) => canvas ? view?.inspectLoadout(canvas,config) : view?.closeInspection(),
   inspectAngle: angle => view?.inspectAngle(angle),
   local: () => { leaveDemo(); setMode('local'); view.setLoadouts(state.configs); view.ready(state.configs,0); },
@@ -1608,6 +1625,7 @@ try {
     aimGrip,
   });
   view.setGraphics(graphics.value);
+  view.setScenery(scenery.value);
   view.setLoadouts(state.configs);
   view.ready(state.configs, 0);
   available = true;
