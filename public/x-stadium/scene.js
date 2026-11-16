@@ -1162,9 +1162,9 @@ export class ArenaView {
     if (choosingSide || this.cameraDistance === undefined) this.focus.copy(look);
     else this.focus.lerp(look, 1 - Math.exp(-dt * (reflex ? 12 : winner ? 8 : 6)));
     const venueFraming = this.scenery && !choosingSide && !reflex && !winner && this.cameraMode==='orbit';
-    const lens = this.mobile ? 1.08 : 1.14;
-    const stageOverview = this.sceneryKey==='tournament' && phase!=='fight';
-    const fitted = this.fitDistance(focusY,.44,azimuth,elevation)*(venueFraming ? lens+(stageOverview ? (this.mobile ? .10 : .14) : 0) : 1);
+    const overview = phase==='demo' || phase==='setup';
+    const lens = overview ? (this.mobile ? 1.16 : 1.28) : (this.mobile ? 1.08 : 1.14);
+    const fitted = this.fitDistance(focusY,.44,azimuth,elevation)*(venueFraming ? lens : 1);
     const span = reflex || follow ? this.beys[0].holder.position.distanceTo(this.beys[1].holder.position) : 0;
     const baseDistance = follow ? fitted*(.53+.40*clamp(span/11,0,1)) : fitted;
     const {visibleWidth, visibleHeight, height} = this.framing;
@@ -1238,11 +1238,6 @@ export class ArenaView {
       return;
     }
     this.lastDraw = interval ? Math.max(now-interval,this.lastDraw+interval) : now;
-    if (this.scenery?.userData.cutaways) {
-      for (const {wall,axis,edge,side} of this.scenery.userData.cutaways) {
-        wall.visible = (this.camera.position[axis]-edge)*side<0;
-      }
-    }
     this.renderer.render(this.scene, this.camera);
     this.dirty = false;
   }

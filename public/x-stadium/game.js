@@ -96,6 +96,7 @@ for (const [value,label] of sceneryOptions) scenery.add(new Option(label,value))
 try {
   const saved = localStorage.getItem('x-stadium-scenery');
   if (sceneryOptions.some(([key])=>key===saved)) scenery.value = saved;
+  else if (saved) localStorage.removeItem('x-stadium-scenery');
 } catch { /* Preferência da sessão. */ }
 function selectScenery(value) {
   scenery.value = value;
