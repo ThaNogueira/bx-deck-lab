@@ -8,6 +8,7 @@ import { json, waLink } from '../util.js';
 import { partDto } from './catalog.js';
 import { getCompetitiveLadder } from '../competitive-ladder.js';
 import { RANK_TIERS } from '../rating.js';
+import { battlePassStats } from '../battle-pass-stats.js';
 
 const router = Router();
 const ah = (fn) => (req, res, next) => fn(req, res, next).catch(next);
@@ -278,6 +279,7 @@ router.delete('/api/combos/:id', requireUser, ah(async (req, res) => {
 // ---------------------------------------------------------------------------
 
 router.get('/api/users/:slug', ah(async (req, res) => {
+  res.set('Cache-Control','private, no-store');
   const user = await prisma.user.findUnique({
     where: { slug: req.params.slug },
     include: { favoritePart: true },
@@ -305,6 +307,7 @@ router.get('/api/users/:slug', ah(async (req, res) => {
   res.json({
     user: publicUser(user, { cosmetics: { frame, stickers } }),
     favoritePart: user.favoritePart ? partDto(user.favoritePart) : null,
+    battlePass: user.battlePassPublic || req.user?.id===user.id ? await battlePassStats(user.id) : null,
     collection: items.filter((i) => !i.hidden).map((i) => ({
       partId: i.partId, qty: i.qty, part: byId.get(i.partId) ?? null,
       forSale: saleActive && i.forSale,

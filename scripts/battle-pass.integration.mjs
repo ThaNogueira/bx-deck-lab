@@ -1,0 +1,159 @@
+// Real HTTP authentication, isolated SQLite migrations, IndexedDB and mocked BLE radio.
+import assert from 'node:assert/strict';
+import {mkdtempSync,mkdirSync,readFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
+import {spawnSync} from 'node:child_process';
+import {DatabaseSync} from 'node:sqlite';
+const temp=mkdtempSync(path.join(tmpdir(),'bx-battle-pass-'));
+new DatabaseSync(path.join(temp,'qa.db')).close();
+process.env.DATABASE_URL='file:'+path.join(temp,'qa.db').replaceAll('\\','/');
+process.env.NODE_ENV='test';process.env.BX_ISOLATED_TEST='1';
+const migrated=spawnSync(process.execPath,['node_modules/prisma/build/index.js','migrate','deploy'],{env:process.env,encoding:'utf8'});
+assert.equal(migrated.status,0,migrated.stderr);
+const {prisma}=await import('../server/db.js');
+const {createSession,sessionMiddleware,publicUser}=await import('../server/auth.js');
+const {default:express}=await import('express');
+const {default:routes}=await import('../server/routes/battle-pass.js');
+const {default:profile}=await import('../server/routes/profile.js');
+const {chromium}=await import('playwright');
+let server,browser;
+try {
+  const users=await Promise.all(['one','two','radio'].map(name=>prisma.user.create({data:{name:'Blader '+name,slug:'bp-'+name,email:name+'@battle-pass.invalid'}})));
+  const cookies=[];
+  for(const user of users) await createSession({cookie:(name,value)=>cookies.push(name+'='+value)},user.id);
+  const app=express();app.use(express.json());
+  app.use((req,_res,next)=>{req.cookies=Object.fromEntries((req.headers.cookie??'').split(';').filter(Boolean).map(pair=>pair.trim().split('=')));next();});
+  app.use(sessionMiddleware);
+  app.get('/api/me',(req,res)=>res.json({user:publicUser(req.user)}));
+  app.get('/api/site',(_req,res)=>res.json({site:{name:'BX LAB'}}));
+  app.get('/api/cosmetics',(_req,res)=>res.json({cosmetics:[]}));
+  app.get('/api/parts-index',(_req,res)=>res.json({parts:[]}));
+  app.get('/api/notifications/unread-count',(_req,res)=>res.json({unread:0}));
+  app.use(routes,profile);
+  app.get('/battle-pass',(_req,res)=>res.sendFile(path.resolve('public/battle-pass.html')));
+  app.get('/u/:slug',(_req,res)=>res.sendFile(path.resolve('public/u.html')));
+  app.use(express.static('public'));
+  app.use((error,_req,res,_next)=>{console.error(error);res.status(500).json({error:error.message});});
+  server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.on('listening',resolve));
+  const base='http://127.0.0.1:'+server.address().port;
+  async function api(url,{who=0,body,method='GET'}={}) {
+    const response=await fetch(base+url,{method,headers:{'Content-Type':'application/json',...(who===null?{}:{Cookie:cookies[who]})},...(body?{body:JSON.stringify(body)}:{})});
+    return {status:response.status,data:await response.json()};
+  }
+  const device={key:'a'.repeat(64),name:'BEYBLADE_TOOL01'};
+  const payload={accountId:users[0].id,device,session:{id:'training-http-001',startedAt:new Date().toISOString(),endedAt:null},
+    launches:Array.from({length:50},(_,i)=>({sp:3000+i*10,counter:i+1,epoch:0,source:'history',measuredAt:null}))};
+  assert.equal((await api('/api/battle-pass',{who:null})).status,401);
+  assert.equal((await api('/api/battle-pass/sync',{who:null,method:'POST',body:payload})).status,401);
+  assert.equal((await api('/api/battle-pass/sync',{who:1,method:'POST',body:payload})).status,409);
+  const first=await api('/api/battle-pass/sync',{method:'POST',body:payload});assert.equal(first.data.inserted,50);
+  const repeated=await Promise.all(Array.from({length:4},()=>api('/api/battle-pass/sync',{method:'POST',body:payload})));
+  assert.ok(repeated.every(r=>r.status===200 && r.data.inserted===0));
+  assert.equal(await prisma.battlePassLaunch.count(),50);
+  const other=await api('/api/battle-pass/sync',{who:1,method:'POST',body:{...payload,accountId:users[1].id}});assert.equal(other.status,403);
+  assert.equal((await api('/api/battle-pass/sessions/training-http-001',{who:1})).status,404);
+  const sessionPage=await api('/api/battle-pass/sessions/training-http-001?page=2');assert.equal(sessionPage.data.launches.length,20);
+  const own=await api('/api/battle-pass');assert.equal(own.data.summary.average,3245);assert.equal(own.data.summary.best,3490);
+  assert.equal(own.data.summary.imported,50);assert.equal(own.data.sessions[0].launches[0].measuredAt,null);
+  const conflict=structuredClone(payload);conflict.launches[0].sp=10000;
+  assert.equal((await api('/api/battle-pass/sync',{method:'POST',body:conflict})).status,409);
+  for(const bad of [{sp:0},{sp:65536},{counter:-1},{epoch:1.5},{source:'history',measuredAt:new Date().toISOString()},{simulated:true},{source:'live',measuredAt:null}]) {
+    const body={...payload,launches:[{...payload.launches[0],...bad}]};assert.equal((await api('/api/battle-pass/sync',{method:'POST',body})).status,422);
+  }
+  assert.equal((await api('/api/battle-pass/sync',{method:'POST',body:{...payload,launches:Array(101).fill(payload.launches[0])}})).status,422);
+  assert.equal((await api('/api/users/bp-one',{who:null})).data.battlePass,null);
+  assert.equal((await api('/api/users/bp-one')).data.battlePass.average,3245);
+  assert.equal((await api('/api/battle-pass/ranking',{who:null})).data.entries.length,0);
+  await api('/api/battle-pass/preferences',{method:'PATCH',body:{accountId:users[0].id,public:true}});
+  const ranking=await api('/api/battle-pass/ranking?sort=average',{who:null});assert.equal(ranking.data.entries[0].average,3245);
+  assert.ok(!JSON.stringify(ranking.data).includes('@battle-pass.invalid'));
+  assert.equal((await api('/api/users/bp-one',{who:null})).data.battlePass.count,50);
+  await prisma.user.update({where:{id:users[0].id},data:{status:'BANNED'}});
+  assert.equal((await api('/api/battle-pass/ranking',{who:null})).data.entries.length,0);
+  await prisma.user.update({where:{id:users[0].id},data:{status:'ACTIVE'}});
+  console.log('PASS: migrations, auth, ownership, account switch, concurrent idempotency, validation, pagination, profile privacy and ranking.');
+
+  browser=await chromium.launch({headless:true,channel:'msedge'});
+  mkdirSync('artifacts/battle-pass',{recursive:true});
+  const fixture=JSON.parse(readFileSync(new URL('./fixtures/battle-pass.json',import.meta.url))).first;
+  for(const width of [1440,390,360]) {
+    const context=await browser.newContext({viewport:{width,height:1000},reducedMotion:'reduce'});
+    const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
+    await page.goto(base+'/battle-pass');
+    await page.getByRole('button',{name:'Experimentar demonstração'}).click();
+    await page.waitForFunction(()=>document.querySelector('#lastSp').textContent==='4.230');
+    await page.screenshot({path:`artifacts/battle-pass/${width}-training.png`,fullPage:true});
+    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+    await page.getByRole('button',{name:'Como conectar',exact:true}).click();
+    await page.locator('.bp-official-image img').first().waitFor();
+    await page.evaluate(async()=>{await Promise.all([...document.querySelectorAll('.bp-official-image img')].map(img=>img.decode()));});
+    await page.screenshot({path:`artifacts/battle-pass/${width}-guide.png`,fullPage:true});
+    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+    assert.deepEqual(errors,[]);
+    assert.equal(await prisma.battlePassLaunch.count({where:{userId:users[2].id}}),0);
+    await context.close();
+  }
+  const context=await browser.newContext({viewport:{width:390,height:1000},reducedMotion:'reduce'});
+  await context.addCookies([{name:'bx_session',value:cookies[2].split('=')[1],url:base}]);
+  await context.addInitScript(({fixture})=>{
+    const bytes=hex=>new Uint8Array(hex.match(/../g).map(x=>parseInt(x,16)));
+    const notify=new EventTarget();notify.startNotifications=async()=>{};
+    const emit=hex=>{notify.value=new DataView(bytes(hex).buffer);notify.dispatchEvent(new Event('characteristicvaluechanged'));};
+    const device=new EventTarget();device.name='BEYBLADE_TOOL01';device.id='radio-fixture';
+    device.gatt={connected:false,disconnect(){this.connected=false;device.dispatchEvent(new Event('gattserverdisconnected'));},async connect(){this.connected=true;return {async getPrimaryService(){return {async getCharacteristic(uuid){
+      if(uuid.includes('f002')) return notify;
+      return {async writeValueWithoutResponse(data){window.__writes.push(data[0]);if(data[0]===81) emit(fixture[0]);else fixture.slice(1,9).forEach(emit);}};
+    }}}};}};
+    window.__requests=0;window.__writes=[];
+    Object.defineProperty(navigator,'bluetooth',{configurable:true,value:{async requestDevice(){window.__requests++;return device;}}});
+    window.__launch=()=>{
+      const data=new Uint8Array(128),view=new DataView(data.buffer);
+      view.setUint16(0,3234,true);view.setUint16(2,6500,true);view.setUint16(102,6500,true);view.setUint16(104,2,true);view.setUint16(106,2,true);
+      data[127]=data.slice(0,127).reduce((a,b)=>a+b,0)%256;
+      const hex=bytes=>[...bytes].map(b=>b.toString(16).padStart(2,'0')).join('');
+      emit('a03a0000ff00006419020035b40451c4da');
+      for(let i=0;i<8;i++) emit(hex([176+i,...data.slice(i*16,(i+1)*16)]));
+      fixture.slice(9).forEach(emit);
+    };
+  },{fixture});
+  const page=await context.newPage();await page.goto(base+'/battle-pass');
+  await page.waitForFunction(()=>!document.querySelector('#connectBtn').disabled);
+  assert.equal(await page.evaluate(()=>window.__requests),0);
+  await page.getByRole('button',{name:'Conectar Battle Pass',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelector('#launchCount').textContent==='1');
+  assert.deepEqual(await page.evaluate(()=>window.__writes),[81,116]);
+  await page.waitForFunction(()=>document.querySelector('#saveState').textContent==='Salvo na sua conta');
+  let offline=true;await context.route('**/api/battle-pass/sync',route=>offline?route.abort():route.continue());
+  await page.evaluate(()=>window.__launch());
+  await page.waitForFunction(()=>document.querySelector('#lastSp').textContent==='6.500');
+  await page.waitForFunction(()=>document.querySelector('#saveState').textContent.includes('pendente'));
+  assert.equal(await prisma.battlePassLaunch.count({where:{userId:users[2].id}}),1);
+  await page.screenshot({path:'artifacts/battle-pass/390-offline.png',fullPage:true});
+  await page.reload();offline=false;await page.evaluate(()=>dispatchEvent(new Event('online')));
+  await page.waitForFunction(()=>document.querySelector('#saveState').textContent==='Salvo na sua conta');
+  const records=await prisma.battlePassLaunch.findMany({where:{userId:users[2].id},orderBy:{counter:'asc'}});
+  assert.equal(records.length,2);assert.equal(records[1].source,'live');assert.ok(records[1].measuredAt);
+  await page.getByRole('button',{name:'Registros',exact:true}).click();
+  await page.waitForFunction(()=>!document.querySelector('#publicStats').disabled);
+  await page.getByRole('checkbox').check();
+  await page.waitForFunction(()=>!document.querySelector('#publicStats').disabled);
+  assert.equal((await prisma.user.findUnique({where:{id:users[2].id}})).battlePassPublic,true);
+  await page.goto(base+'/u/bp-radio');
+  await page.locator('.bp-profile-stats').waitFor();
+  assert.match(await page.locator('.bp-profile-stats').innerText(),/4.867/);
+  assert.match(await page.locator('.bp-profile-stats').innerText(),/6.500/);
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+  await page.locator('.bp-profile').scrollIntoViewIfNeeded();
+  await page.screenshot({path:'artifacts/battle-pass/390-profile.png',fullPage:true});
+  await context.close();
+  const ios=await browser.newContext({viewport:{width:390,height:844},userAgent:'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Safari/604.1'});
+  await ios.addInitScript(()=>Object.defineProperty(navigator,'bluetooth',{configurable:true,value:undefined}));
+  const iphone=await ios.newPage();await iphone.goto(base+'/battle-pass');
+  await iphone.waitForFunction(()=>document.querySelector('#compatibility').textContent.includes('indisponível'));
+  assert.ok(await iphone.locator('#connectBtn').isDisabled());assert.ok(await iphone.locator('#iosHelp').isVisible());
+  await ios.close();
+  console.log('PASS: 1440/390/360 layouts, guide images, isolated demo, click-only BLE, live capture, IndexedDB reload, offline retry and sharing control.');
+} finally {
+  await browser?.close();await new Promise(resolve=>server?server.close(resolve):resolve());await prisma.$disconnect();
+}

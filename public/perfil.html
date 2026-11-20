@@ -13,12 +13,14 @@
   <title>Meu perfil — BX Deck Lab</title>
   <link rel="stylesheet" href="/styles.css" />
   <link rel="stylesheet" href="/design-system.css" />
+  <link rel="stylesheet" href="/ui/battle-pass-profile.css" />
 </head>
 <body>
   <div class="noise"></div>
   <header id="topbar"></header>
   <main id="app"><div class="empty-state">Carregando perfil…</div></main>
   <script src="/js/shared.js"></script>
+  <script src="/js/battle-pass/profile.js"></script>
   <script>
     (async () => {
       BX.renderTopbar(null);
@@ -81,6 +83,7 @@
           </div>
           <div class="profile-grid">
             <div style="display:flex;flex-direction:column;gap:16px">
+              ${BX.battlePassProfile(profile?.battlePass,{owner:true})}
               <div class="panel-card form-grid">
                 <p class="eyebrow" style="margin:0">EDITAR PERFIL</p>
                 <div><label>Nome</label><input id="fName" maxlength="40" value="${BX.esc(current.name)}" /></div>

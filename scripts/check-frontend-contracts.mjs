@@ -4,6 +4,11 @@ import assert from 'node:assert/strict';
 // Migration-stage guard: only add the new stylesheet to existing entry points.
 let count = 0;
 for (const file of readdirSync('public').filter(name => name.endsWith('.html'))) {
+  if(file==='battle-pass.html') {
+    const html=readFileSync(`public/${file}`,'utf8');
+    for(const hook of ['id="topbar"','/js/shared.js','/js/battle-pass/lab.mjs','id="connectBtn"','id="lastSp"','id="diagnostic"','data-view="guide"']) assert(html.includes(hook),hook);
+    continue;
+  }
   if(file==='admin.html'){
     const html=readFileSync('public/admin.html','utf8');for(const hook of ['id="app"','id="topbar"','/js/shared.js','/js/admin.js','/js/champion-generator.js','/js/tournament-decks.js'])assert(html.includes(hook));continue;
   }
