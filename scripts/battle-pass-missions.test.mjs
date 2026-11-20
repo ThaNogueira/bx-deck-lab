@@ -50,18 +50,18 @@ test('mission API rewards fresh live launches exactly once, excludes history and
     const initial=(await api('/api/battle-pass/missions')).data;
     assert.equal(initial.level,1);assert.equal(initial.totalXp,0);assert.equal(initial.periods.length,3);
     const at=new Date().toISOString(),device={key:'a'.repeat(64),name:'BEYBLADE_TOOL01'};
-    const body={accountId:a.id,device,session:{id:'missions-live-001',startedAt:at,endedAt:null},launches:Array.from({length:28},(_,i)=>({sp:5000,counter:i+1,epoch:0,source:'live',measuredAt:at}))};
-    const below=await api('/api/battle-pass/sync',{method:'POST',body:{...body,launches:body.launches.slice(0,27)}});
+    const body={accountId:a.id,device,session:{id:'missions-live-001',startedAt:at,endedAt:null},launches:Array.from({length:30},(_,i)=>({sp:5000,counter:i+1,epoch:0,source:'live',measuredAt:at}))};
+    const below=await api('/api/battle-pass/sync',{method:'POST',body:{...body,launches:body.launches.slice(0,29)}});
     assert.equal(below.data.progression.totalXp,380);
     assert.equal((await api('/api/battle-pass/missions')).data.periods[0].missions.find(m=>m.id==='d-flow').done,false);
     const first=await api('/api/battle-pass/sync',{method:'POST',body});assert.equal(first.status,200,JSON.stringify(first.data));
     assert.equal(first.data.progression.rewards.length,1);assert.equal(first.data.progression.totalXp,600);assert.equal(first.data.progression.insignias,8);
     const repeated=await Promise.all(Array.from({length:3},()=>api('/api/battle-pass/sync',{method:'POST',body})));
     assert.ok(repeated.every(r=>r.data.inserted===0));assert.equal((await api('/api/battle-pass/missions')).data.totalXp,600);
-    const imported={...body,launches:Array.from({length:100},(_,i)=>({sp:15000,counter:29+i,epoch:0,source:'history',measuredAt:null}))};
+    const imported={...body,launches:Array.from({length:100},(_,i)=>({sp:15000,counter:31+i,epoch:0,source:'history',measuredAt:null}))};
     await api('/api/battle-pass/sync',{method:'POST',body:imported});
     const state=(await api('/api/battle-pass/missions')).data;assert.equal(state.totalXp,600);assert.equal(state.insignias,8);
-    assert.ok(state.periods[0].missions.every(m=>m.done));assert.equal(state.periods[1].missions[0].progress,28);
+    assert.ok(state.periods[0].missions.every(m=>m.done));assert.equal(state.periods[1].missions[0].progress,30);
     assert.equal((await api('/api/battle-pass/missions',{who:b.id})).data.totalXp,0);
     assert.equal((await api('/api/battle-pass/missions/ack',{who:b.id,method:'POST',body:{accountId:a.id,ids:state.rewards.map(r=>r.id)}})).status,409);
     await api('/api/battle-pass/missions/ack',{who:b.id,method:'POST',body:{accountId:b.id,ids:state.rewards.map(r=>r.id)}});
@@ -75,12 +75,12 @@ test('mission API rewards fresh live launches exactly once, excludes history and
   }finally{await new Promise(resolve=>server.close(resolve));}
 });
 test('weekly and monthly missions track different active days and preserve earned rewards across resets',async()=>{
-  const user=await prisma.user.create({data:{name:'Regular',email:'regular@mission.invalid',slug:'mission-regular'}}),now=new Date('2026-11-22T20:00:00Z');
-  const rows=Array.from({length:660},(_,i)=>({source:'live',sp:6000,measuredAt:new Date(Date.UTC(2026,10,1+Math.floor(i/30),15,0,i%30))}));
+  const user=await prisma.user.create({data:{name:'Regular',email:'regular@mission.invalid',slug:'mission-regular'}}),now=new Date('2026-11-29T20:00:00Z');
+  const rows=Array.from({length:750},(_,i)=>({source:'live',sp:6000,measuredAt:new Date(Date.UTC(2026,10,5+Math.floor(i/30),15,0,i%30))}));
   await prisma.$transaction(tx=>advanceMissions(tx,user.id,rows,now),{timeout:15000});
   const state=await missionState(user.id,now);
   assert.ok(state.periods.find(p=>p.cadence==='monthly').missions.every(m=>m.done));
-  assert.equal(state.periods.find(p=>p.cadence==='monthly').missions.find(m=>m.metric==='days').progress,14);
+  assert.equal(state.periods.find(p=>p.cadence==='monthly').missions.find(m=>m.metric==='days').progress,15);
   assert.ok(state.periods.find(p=>p.cadence==='weekly').missions.find(m=>m.metric==='days').done);
   const later=await missionState(user.id,new Date('2026-12-01T12:00:00Z'));
   assert.equal(later.totalXp,state.totalXp);assert.equal(later.insignias,state.insignias);
@@ -90,12 +90,12 @@ test('weekly and monthly missions track different active days and preserve earne
 test('missions completed at the previous target stay complete and do not reward twice',async()=>{
   const user=await prisma.user.create({data:{name:'Existing',email:'existing@mission.invalid',slug:'mission-existing'}}),now=new Date();
   const period=missionPeriods(now)[0].key,identity={userId:user.id,cadence:'daily',period};
-  await prisma.battlePassMissionPeriod.create({data:{...identity,count:1}});
-  await prisma.battlePassProgress.create({data:{userId:user.id,totalXp:80,insignias:1,missionsCompleted:1}});
-  await prisma.battlePassMissionReward.create({data:{...identity,missionKey:'d-first',xp:80,insignias:1}});
-  const first=(await missionState(user.id,now)).periods[0].missions.find(m=>m.id==='d-first');
-  assert.equal(first.done,true);assert.equal(first.progress,first.target);assert.equal(first.target,2);
+  await prisma.battlePassMissionPeriod.create({data:{...identity,count:11}});
+  await prisma.battlePassProgress.create({data:{userId:user.id,totalXp:220,insignias:3,missionsCompleted:2}});
+  await prisma.battlePassMissionReward.createMany({data:[{...identity,missionKey:'d-first',xp:80,insignias:1},{...identity,missionKey:'d-warmup',xp:140,insignias:2}]});
+  const warmup=(await missionState(user.id,now)).periods[0].missions.find(m=>m.id==='d-warmup');
+  assert.equal(warmup.done,true);assert.equal(warmup.progress,warmup.target);assert.equal(warmup.target,15);
   const updated=await prisma.$transaction(tx=>advanceMissions(tx,user.id,[{source:'live',sp:5000,measuredAt:now}],now));
-  assert.equal(updated.totalXp,80);assert.equal(updated.insignias,1);assert.equal(updated.rewards.length,0);
+  assert.equal(updated.totalXp,220);assert.equal(updated.insignias,3);assert.equal(updated.rewards.length,0);
 });
 test.after(()=>prisma.$disconnect());

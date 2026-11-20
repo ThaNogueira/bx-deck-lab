@@ -210,9 +210,9 @@ try {
   await page.getByRole('button',{name:'Missões',exact:true}).click();
   await page.locator('.mm-progress').waitFor();
   assert.equal(await page.locator('.mm-mission').count(),4);
-  await page.locator('[data-mission-id="d-first"] [role="progressbar"][aria-valuenow="1"][aria-valuemax="2"]').waitFor();
-  assert.equal(await page.locator('[data-mission-id="d-first"].is-complete').count(),0);
-  assert.match(await page.locator('.mm-xp-label').innerText(),/0 \/ 100 XP/);
+  await page.locator('[data-mission-id="d-first"].is-complete').waitFor();
+  assert.equal(await page.locator('[data-mission-id="d-first"].is-complete').count(),1);
+  assert.match(await page.locator('.mm-xp-label').innerText(),/80 \/ 100 XP/);
   await page.getByRole('button',{name:'Semanais',exact:true}).click();
   assert.equal(await page.locator('[data-mission-id^="w-"]').count(),4);
   await page.getByRole('button',{name:'Mensais',exact:true}).click();
@@ -287,17 +287,15 @@ try {
   await training.locator('[data-tab="training"]').click();
   // No mission tab visit and no sensor pages: the observed counter still credits this real launch.
   await training.evaluate(()=>window.__launch(11000,2,false));
-  await training.waitForFunction(()=>document.querySelector('#launchCount').textContent==='2');
-  await training.waitForFunction(()=>document.querySelector('.bp-page').dataset.sync==='saved');
-  assert.equal(await training.locator('.mm-toast').count(),0);
-  await training.evaluate(()=>window.__launch(11050,3,false));
   await training.locator('.mm-toast').waitFor();
   assert.match(await training.locator('.mm-toast').innerText(),/MISSÃO CONCLUÍDA.*Primeiro impulso/s);
   assert.ok(await training.locator('[data-view="training"]').isVisible());
   assert.equal(await training.locator('.bp-launch-toast').count(),0);
   await training.screenshot({path:'artifacts/battle-pass/390-training-achievement.png',fullPage:true});
   let result=(await api('/api/battle-pass/missions',{who:1})).data;
-  assert.equal(result.totalXp,80);assert.equal(result.periods[0].missions.find(m=>m.id==='d-warmup').progress,2);
+  assert.equal(result.totalXp,80);assert.equal(result.periods[0].missions.find(m=>m.id==='d-warmup').progress,1);
+  await training.evaluate(()=>window.__launch(11050,3,false));
+  await training.waitForFunction(()=>document.querySelector('#launchCount').textContent==='3');
   await training.evaluate(()=>window.__launch(11100,4,false));
   await training.waitForFunction(()=>document.querySelector('#launchCount').textContent==='4');
   for(const [tab,sp,counter] of [['records',11150,5],['ranking',11200,6],['guide',11300,7],['missions',11400,8]]) {
@@ -309,12 +307,11 @@ try {
     const launches=await prisma.battlePassLaunch.findMany({where:{userId:users[1].id,source:'live'}});
     assert.equal(launches.length,counter-1);
     if(tab==='guide') {
-      await training.waitForFunction(()=>document.querySelector('.mm-toast')?.textContent.includes('Mão firme'));
-      await training.screenshot({path:'artifacts/battle-pass/390-guide-achievement.png',fullPage:true});
+      await training.screenshot({path:'artifacts/battle-pass/390-guide-launch-notice.png',fullPage:true});
     }
   }
   result=(await api('/api/battle-pass/missions',{who:1})).data;
-  assert.equal(result.totalXp,240);assert.equal(result.completed,2);
+  assert.equal(result.totalXp,80);assert.equal(result.completed,1);
   assert.equal(result.periods[0].missions.find(m=>m.id==='d-warmup').progress,7);
   assert.equal(result.periods[1].missions.find(m=>m.id==='w-reps').progress,7);
   assert.equal(result.periods[2].missions.find(m=>m.id==='m-reps').progress,7);
@@ -337,7 +334,7 @@ try {
     await route.fulfill({response,json:data});
   });
   await training.locator('[data-tab="guide"]').click();
-  for(let counter=9;counter<=12;counter++) {
+  for(let counter=9;counter<=16;counter++) {
     await training.evaluate(counter=>window.__launch(11500,counter,false),counter);
     await training.waitForFunction(counter=>document.querySelector('#launchCount').textContent===String(counter),counter);
     await training.waitForFunction(()=>document.querySelector('.bp-page').dataset.sync==='saved');
@@ -345,6 +342,7 @@ try {
   await training.waitForFunction(()=>document.querySelector('.mm-toast')?.textContent.includes('Aquecimento'));
   assert.ok(await training.locator('[data-view="guide"]').isVisible());
   assert.equal((await api('/api/battle-pass/missions',{who:1})).data.totalXp,380);
+  await training.waitForFunction(()=>document.querySelector('.mm-toast')?.textContent.includes('Mão firme'));
   await training.getByRole('button',{name:'Opções do Battle Pass conectado'}).click();
   await training.locator('#disconnectBtn').click();
   assert.equal(await training.locator('#batteryState b').innerText(),'—');
