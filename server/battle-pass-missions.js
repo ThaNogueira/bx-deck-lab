@@ -1,5 +1,5 @@
 import {prisma} from './db.js';
-import {MISSION_RULES,levelProgress} from '../public/js/battle-pass/mission-rules.mjs';
+import {ALL_MISSION_RULES,POWER_THRESHOLDS,rulesForPeriod,levelProgress} from '../public/js/battle-pass/mission-rules.mjs';
 
 const DAY=86400000;
 const dateParts=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'});
@@ -22,7 +22,9 @@ export function missionPeriods(now=new Date()) {
   ];
 }
 const parse=(text)=>{try{return JSON.parse(text);}catch{return [];}};
-const rewardDto=r=>({...r,title:MISSION_RULES.find(m=>m.id===r.missionKey)?.title??'Missão concluída'});
+const parseCounts=text=>{try{const value=JSON.parse(text);return value && typeof value==='object' && !Array.isArray(value)?value:{};}catch{return {};}};
+const metric=(rule,metrics,power)=>rule.metric==='power'?(power[rule.minSp]??0):metrics[rule.metric];
+const rewardDto=r=>({...r,title:ALL_MISSION_RULES.find(m=>m.id===r.missionKey)?.title??'Missão concluída'});
 
 export async function advanceMissions(tx,userId,launches,now=new Date()) {
   const eligible=launches.filter(r=>r.source==='live' && r.measuredAt && new Date(r.measuredAt)<=new Date(now.getTime()+300000) && now-new Date(r.measuredAt)<=35*DAY);
@@ -41,8 +43,11 @@ export async function advanceMissions(tx,userId,launches,now=new Date()) {
   for(const group of groups.values()) {
     const identity={userId,cadence:group.cadence,period:group.key};
     const period=await tx.battlePassMissionPeriod.upsert({where:{userId_cadence_period:identity},create:identity,update:{}});
+    const rules=rulesForPeriod(group.cadence,group.key,userId,parse(period.missionKeysJson));
+    const power=parseCounts(period.powerCountsJson);
     const days=new Set(parse(period.daysJson)),samples=parse(period.samplesJson);let sets=period.sets;
     for(const row of group.rows) {
+      if(group.cadence!=='monthly')for(const threshold of POWER_THRESHOLDS)if(row.sp>=threshold)power[threshold]=(power[threshold]??0)+1;
       days.add(row.day);samples.push(row.sp);
       if(samples.length===3) {
         const average=samples.reduce((a,b)=>a+b,0)/3;
@@ -51,9 +56,9 @@ export async function advanceMissions(tx,userId,launches,now=new Date()) {
       }
     }
     const count=period.count+group.rows.length;
-    await tx.battlePassMissionPeriod.update({where:{id:period.id},data:{count,sets,daysJson:JSON.stringify([...days]),samplesJson:JSON.stringify(samples)}});
+    await tx.battlePassMissionPeriod.update({where:{id:period.id},data:{count,sets,daysJson:JSON.stringify([...days]),samplesJson:JSON.stringify(samples),powerCountsJson:JSON.stringify(power),missionKeysJson:JSON.stringify(rules.filter(m=>m.metric==='power').map(m=>m.id))}});
     const metrics={count,sets,days:days.size};
-    for(const rule of MISSION_RULES.filter(m=>m.cadence===group.cadence && metrics[m.metric]>=m.target)) {
+    for(const rule of rules.filter(m=>metric(m,metrics,power)>=m.target)) {
       const rewardKey={...identity,missionKey:rule.id};
       if(await tx.battlePassMissionReward.findUnique({where:{userId_cadence_period_missionKey:rewardKey}}))continue;
       rewards.push(await tx.battlePassMissionReward.create({data:{...rewardKey,xp:rule.xp,insignias:rule.insignias}}));
@@ -77,9 +82,10 @@ export async function missionState(userId,now=new Date()) {
     collection:collection.map(c=>({cadence:c.cadence,count:c._sum.insignias??0})),rewards:unread.map(rewardDto),
     periods:periods.map(p=>{
       const saved=stored.find(s=>s.cadence===p.cadence && s.period===p.key),metrics={count:saved?.count??0,sets:saved?.sets??0,days:parse(saved?.daysJson??'[]').length};
-      return {...p,missions:MISSION_RULES.filter(m=>m.cadence===p.cadence).map(m=>{
+      const power=parseCounts(saved?.powerCountsJson??'{}');
+      return {...p,missions:rulesForPeriod(p.cadence,p.key,userId,parse(saved?.missionKeysJson??'[]')).map(m=>{
         const done=earned.some(e=>e.missionKey===m.id && e.cadence===p.cadence && e.period===p.key);
-        return {...m,progress:done?m.target:Math.min(m.target,metrics[m.metric]),done};
+        return {...m,progress:done?m.target:Math.min(m.target,metric(m,metrics,power)),done};
       })};
     })};
 }

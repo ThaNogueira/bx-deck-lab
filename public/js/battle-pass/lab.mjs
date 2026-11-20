@@ -223,8 +223,9 @@ async function ranking(sort='best') {
   $('rankingList').textContent='Carregando ranking…';
   try {
     const data=await request('/api/battle-pass/ranking?sort='+sort);
-    $('rankingList').innerHTML=data.entries.length?data.entries.map(r=>`<div class="bp-rank-row"><span>${r.place}º</span><a href="/u/${esc(r.user.slug)}"><img src="${esc(r.user.avatarUrl||'/assets/profiles/default-blader.png')}" alt="" loading="lazy"><strong>${esc(r.user.name)}</strong></a><div><b>${number(r.best)}</b><small>RECORDE SP</small></div><div><b>${number(r.average)}</b><small>MÉDIA · ${number(r.count)}</small></div></div>`).join(''):'<p class="bp-empty">O primeiro lugar está em aberto.<br>Registre 10 lançamentos e ative o compartilhamento em Registros.</p>';
-  } catch {$('rankingList').textContent='Não foi possível carregar o ranking. Tente novamente quando a conexão voltar.';}
+    document.querySelector('.bp-rank-head').hidden=!data.entries.length;
+    $('rankingList').innerHTML=data.entries.length?data.entries.map(r=>`<div class="bp-rank-row"><span>${r.place}º</span><a href="/u/${esc(r.user.slug)}"><img src="${esc(r.user.avatarUrl||'/assets/profiles/default-blader.png')}" alt="" loading="lazy"><strong>${esc(r.user.name)}</strong></a><div><b aria-label="Recorde: ${number(r.best)} SP">${number(r.best)}</b></div><div><b aria-label="Média: ${number(r.average)} SP">${number(r.average)}</b></div></div>`).join(''):'<p class="bp-empty">Nenhum jogador no ranking.</p>';
+  } catch {$('rankingList').textContent='Não foi possível carregar o ranking.';}
 }
 
 document.querySelectorAll('[data-tab]').forEach(button=>button.onclick=()=>{

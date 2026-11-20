@@ -4,13 +4,23 @@ Implementadas na aba **Missões**, dentro de `/battle-pass`. A correção de con
 
 ## Regras
 
-- Quatro missões diárias, quatro semanais e quatro mensais, com metas de lançamentos, dias ativos e regularidade.
+- Seis missões diárias, seis semanais e quatro mensais. As quatro metas tradicionais de cada período continuam; diárias e semanais recebem duas metas extras por SP.
 - Primeiro impulso requer 1 lançamento. As demais metas usam múltiplos de 5: diárias de 15 e 30 lançamentos e 5 trios, por exemplo. Metas semanais e mensais de lançamentos, trios e dias seguem o mesmo padrão. XP e insígnias permanecem iguais; missões já concluídas conservam o crédito e aparecem completas.
 - Dia e mês seguem `America/Sao_Paulo`; a semana começa segunda-feira. O prazo aparece na aba.
 - Apenas lançamentos novos ao vivo, com horário conhecido, entram nas missões. Importações do histórico, demonstrações e registros duplicados não geram progresso nem recompensas. Não há recálculo retroativo dos lançamentos antigos do banco.
 - A fila offline preserva a data do lançamento. Registros ao vivo sincronizados até 35 dias depois entram no período original; datas futuras além da tolerância de cinco minutos são rejeitadas pela API. Dentro dessa tolerância, o calendário é limitado ao horário atual do servidor.
 - Regularidade usa trios sem sobreposição: `(máximo - mínimo) / média <= 0,20`. Cada trio elegível conta uma vez, em cada período correspondente.
 - Cada missão só recompensa uma vez em seu período. O fechamento de um período zera as metas desse período, sem remover XP, insígnias ou conquistas já ganhos. Dias de treino não precisam ser consecutivos.
+
+## Missões de força
+
+- Nas diárias, o primeiro desafio alterna 1 e 5 lançamentos a cada dia. O segundo pede 5 ou 10. Os limites vão de 5.000 a 10.000 SP, com preferência por 8.000 SP ou mais; existe a combinação de 10 lançamentos a partir de 5.000 SP.
+- Nas semanais, uma meta pede 10 lançamentos a partir de 10.000 SP. A outra normalmente pede 15 a partir de 12.000 SP (peso 4); em cerca de 20% dos períodos por jogador, pede apenas 5 a partir de 15.000 SP (peso 1).
+- Nenhuma missão exige menos de 5.000 ou mais de 15.000 SP. A meta de 15.000 SP sempre pede exatamente 5 lançamentos. O SP medido pode superar o limite: a condição é inclusiva, `sp >= minSp`, sem alterar a medição.
+- As escolhas dependem da conta e da data do período em São Paulo. Atualizar a página ou trocar de aba não sorteia de novo. Os IDs são fixados no período quando ele recebe lançamentos; duas metas diárias com o mesmo limite e quantidade são evitadas.
+- Cada lançamento ao vivo incrementa os contadores de limites atingidos no dia e na semana. Um mesmo lançamento pode avançar mais de uma missão. Histórico importado e dados repetidos continuam excluídos. A fila offline aplica o SP ao dia/semana originais.
+- O progresso de força começa com os lançamentos recebidos após esta atualização; não há reprocessamento dos registros antigos. Progresso e recompensas das missões anteriores são mantidos.
+- A regularidade aparece como “Faça 3 lançamentos seguidos com força parecida. Repita N vezes.” A contagem mostra sequências, sem o termo “trios”; a fórmula de 20% continua igual e está disponível na dica do texto.
 
 As metas e recompensas ficam em `public/js/battle-pass/mission-rules.mjs`, compartilhado como módulo puro com o servidor. O cliente não determina XP, saldo, conclusão ou alvo.
 
@@ -26,11 +36,12 @@ As metas e recompensas ficam em `public/js/battle-pass/mission-rules.mjs`, compa
 ## Persistência e idempotência
 
 Migração aditiva: `prisma/migrations/20261120000000_battle_pass_missions/migration.sql`.
+Migração de força: `prisma/migrations/20261120010000_battle_pass_power_missions/migration.sql`, acrescenta `powerCountsJson` e `missionKeysJson` ao período com padrões vazios, sem apagar dados.
 
 | Modelo | Uso |
 |---|---|
 | `BattlePassProgress` | XP total, insígnias totais e missões concluídas por usuário |
-| `BattlePassMissionPeriod` | Contagem, dias ativos, trios e amostras pendentes por usuário/período |
+| `BattlePassMissionPeriod` | Contagem, dias ativos, sequências, amostras pendentes, contadores por SP e IDs das metas de força por usuário/período |
 | `BattlePassMissionReward` | Registro permanente de cada recompensa e estado da notificação |
 
 A chave única de recompensa é `(userId, cadence, period, missionKey)`. Os avanços e créditos ocorrem na mesma transação que insere os lançamentos novos; conflitos ou falhas desfazem tudo. Repetir uma sincronização aceita não volta a creditar a carteira.
@@ -40,6 +51,8 @@ A chave única de recompensa é `(userId, cadence, period, missionKey)`. Os avan
 ## Interface e som
 
 `public/js/battle-pass/missions.mjs` exibe carteira, nível, barra de XP, períodos e cartões de metas. A coleção é feita com SVGs planos; os efeitos mais fortes são reservados à evolução de nível.
+
+O ranking de treino mostra somente título, seleção de ordenação, cabeçalhos e linhas com jogador/recorde/média. Foram removidos o texto de apresentação, a descrição das regras e as legendas repetidas sob cada número.
 
 O progresso e os avisos de conquista funcionam em todas as abas do Battle Pass, inclusive Treinar, sem precisar abrir Missões. Fora de Treinar, cada lançamento novo também mostra um aviso compacto com o último SP; tocar nele abre Treinar. A conexão não muda a aba selecionada.
 

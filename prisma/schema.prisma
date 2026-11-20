@@ -148,6 +148,8 @@ model BattlePassMissionPeriod {
   sets Int @default(0)
   daysJson String @default("[]")
   samplesJson String @default("[]")
+  powerCountsJson String @default("{}")
+  missionKeysJson String @default("[]")
   user User @relation(fields:[userId],references:[id],onDelete:Cascade)
   @@unique([userId,cadence,period])
 }

@@ -209,12 +209,14 @@ try {
   assert.equal(records.length,2);assert.equal(records[1].source,'live');assert.ok(records[1].measuredAt);
   await page.getByRole('button',{name:'Missões',exact:true}).click();
   await page.locator('.mm-progress').waitFor();
-  assert.equal(await page.locator('.mm-mission').count(),4);
+  assert.equal(await page.locator('.mm-mission').count(),6);
   await page.locator('[data-mission-id="d-first"].is-complete').waitFor();
   assert.equal(await page.locator('[data-mission-id="d-first"].is-complete').count(),1);
-  assert.match(await page.locator('.mm-xp-label').innerText(),/80 \/ 100 XP/);
+  const radioProgress=(await api('/api/battle-pass/missions',{who:2})).data;
+  await page.waitForFunction(level=>document.querySelector('.mm-progress')?.dataset.level===String(level),radioProgress.level);
+  assert.doesNotMatch(await page.locator('[data-mission-id="d-steady"] p').innerText(),/trios|20%/);
   await page.getByRole('button',{name:'Semanais',exact:true}).click();
-  assert.equal(await page.locator('[data-mission-id^="w-"]').count(),4);
+  assert.equal(await page.locator('[data-mission-id^="w-"]').count(),6);
   await page.getByRole('button',{name:'Mensais',exact:true}).click();
   assert.equal(await page.locator('[data-mission-id^="m-"]').count(),4);
   await page.getByRole('button',{name:'Som de conquistas'}).click();
@@ -279,6 +281,10 @@ try {
   await training.goto(base+'/battle-pass');
   await training.waitForFunction(()=>document.querySelector('.bp-page').dataset.sync==='saved');
   await training.locator('[data-tab="ranking"]').click();
+  await training.locator('.bp-rank-row').first().waitFor();
+  assert.equal(await training.locator('[data-view="ranking"] .bp-note, [data-view="ranking"] .eyebrow, .bp-rank-row small').count(),0);
+  assert.ok(await training.locator('.bp-rank-head').isVisible());
+  await training.screenshot({path:'artifacts/battle-pass/390-ranking-clean.png',fullPage:true});
   await training.getByRole('button',{name:'Conectar Battle Pass',exact:true}).click();
   await training.waitForFunction(()=>document.querySelector('#launchCount').textContent==='1');
   await training.waitForFunction(()=>document.querySelector('.bp-page').dataset.sync==='saved');
@@ -293,7 +299,7 @@ try {
   assert.equal(await training.locator('.bp-launch-toast').count(),0);
   await training.screenshot({path:'artifacts/battle-pass/390-training-achievement.png',fullPage:true});
   let result=(await api('/api/battle-pass/missions',{who:1})).data;
-  assert.equal(result.totalXp,80);assert.equal(result.periods[0].missions.find(m=>m.id==='d-warmup').progress,1);
+  assert.ok(result.totalXp>=80);assert.equal(result.periods[0].missions.find(m=>m.id==='d-warmup').progress,1);
   await training.evaluate(()=>window.__launch(11050,3,false));
   await training.waitForFunction(()=>document.querySelector('#launchCount').textContent==='3');
   await training.evaluate(()=>window.__launch(11100,4,false));
@@ -311,7 +317,7 @@ try {
     }
   }
   result=(await api('/api/battle-pass/missions',{who:1})).data;
-  assert.equal(result.totalXp,80);assert.equal(result.completed,1);
+  assert.equal(result.periods[0].missions.find(m=>m.id==='d-first').done,true);
   assert.equal(result.periods[0].missions.find(m=>m.id==='d-warmup').progress,7);
   assert.equal(result.periods[1].missions.find(m=>m.id==='w-reps').progress,7);
   assert.equal(result.periods[2].missions.find(m=>m.id==='m-reps').progress,7);
@@ -339,10 +345,21 @@ try {
     await training.waitForFunction(counter=>document.querySelector('#launchCount').textContent===String(counter),counter);
     await training.waitForFunction(()=>document.querySelector('.bp-page').dataset.sync==='saved');
   }
-  await training.waitForFunction(()=>document.querySelector('.mm-toast')?.textContent.includes('Aquecimento'));
+  await training.waitForFunction(()=>document.querySelector('.mm-toast')?.textContent.includes('Aquecimento'),null,{timeout:60000});
   assert.ok(await training.locator('[data-view="guide"]').isVisible());
-  assert.equal((await api('/api/battle-pass/missions',{who:1})).data.totalXp,380);
-  await training.waitForFunction(()=>document.querySelector('.mm-toast')?.textContent.includes('Mão firme'));
+  const completedPower=(await api('/api/battle-pass/missions',{who:1})).data;
+  assert.equal(completedPower.totalXp,1330);
+  assert.ok(completedPower.periods[0].missions.filter(m=>m.metric==='power').every(m=>m.done));
+  assert.equal(completedPower.periods[1].missions.find(m=>m.id==='w-power-10000-10').done,true);
+  await training.waitForFunction(()=>document.querySelector('.mm-toast')?.textContent.includes('Mão firme'),null,{timeout:60000});
+  await training.locator('[data-tab="missions"]').click();
+  await training.locator('[data-mission-id="d-warmup"].is-complete').waitFor();
+  for(const width of [390,360,1440]) {
+    await training.setViewportSize({width,height:1000});
+    await training.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+    assert.ok(await training.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+    await training.screenshot({path:`artifacts/battle-pass/${width}-power-missions.png`,fullPage:true});
+  }
   await training.getByRole('button',{name:'Opções do Battle Pass conectado'}).click();
   await training.locator('#disconnectBtn').click();
   assert.equal(await training.locator('#batteryState b').innerText(),'—');
