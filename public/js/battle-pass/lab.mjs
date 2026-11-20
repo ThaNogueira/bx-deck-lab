@@ -3,6 +3,7 @@ import { renderLaunchChart } from './chart.mjs';
 import { BattlePassSpinner } from './spinner.mjs';
 import { BattlePassMissions } from './missions.mjs';
 import { LaunchFeedback } from './launch-feedback.mjs';
+import { SessionHistory } from './session-history.mjs';
 import { BattlePassTransport,compatibility } from './transport.mjs';
 import { BattlePassSession } from './session.mjs';
 import { BattlePassStore,BattlePassSync } from './sync.mjs';
@@ -15,6 +16,7 @@ let support = compatibility();
 const spinner=new BattlePassSpinner($('bladeBtn'));
 const missions=new BattlePassMissions($('missionsView'),request);
 const launchFeedback=new LaunchFeedback(()=>document.querySelector('[data-tab="training"]').click());
+const sessionHistory=new SessionHistory($('savedHistory'),{request,getAccount:()=>account,getStore:()=>store,getLevel:()=>missions.state?.level??1});
 let account,store,sync,current,demo=false,demoRows=[],rows=[],personalBest=0,page=1,pages=1,visibleRows=20;
 let savedRefresh,events=Promise.resolve(),demoTimer,initialized=false;
 let connectionState='disconnected';
@@ -212,7 +214,7 @@ async function savedSessions() {
   }
   $('lifetimeStats').innerHTML=[['Média geral',summary.average,'SP'],['Recorde pessoal',summary.best,'SP'],['Lançamentos',summary.count,'registros'],['Sessões de treino',summary.sessions,'sessões']].map(([label,value,unit])=>`<article><span>${label}</span><strong>${number(value)}</strong><small>${unit}</small></article>`).join('');
   $('savedSummary').textContent=number(summary.count)+' lançamentos';
-  $('savedHistory').innerHTML=sessions.length?sessions.map(s=>`<details data-session="${esc(s.id)}"><summary><span>${esc(date(s.startedAt))}</span><span>${number(s.launchCount)} lançamentos</span><b>Média ${number(s.averageSp)} · Recorde ${number(s.bestSp)} SP</b></summary><p class="bp-note">${esc(s.device.name)} · ${s.endedAt?'Encerrada '+esc(date(s.endedAt)):'Sessão iniciada '+esc(date(s.startedAt))}</p><ol class="bp-history">${s.launches.slice(0,30).map(historyRow).join('')}</ol>${s.launchCount>30?`<button class="btn" data-more-session="${esc(s.id)}" data-page="1" data-local="${s.local?'true':'false'}">Mais lançamentos</button>`:''}</details>`).join(''):'<p class="bp-empty">Seu histórico começa no primeiro lançamento.</p>';
+  sessionHistory.render(sessions);
   $('pageNumber').textContent=pages>1?`${page} / ${pages}`:'';
   $('previousPage').hidden=page<=1;$('nextPage').hidden=page>=pages;
   if(!demo) {$('bestSp').textContent=number(personalBest||null);$('bestSp').dataset.powerTone=BX.shootPower.tone(personalBest);}
@@ -275,20 +277,6 @@ $('readBtn').onclick=async()=>{
 $('moreCurrent').onclick=()=>{visibleRows+=20;renderTraining();};
 $('previousPage').onclick=()=>{page--;savedSessions().catch(error=>notice(error.message));};
 $('nextPage').onclick=()=>{page++;savedSessions().catch(error=>notice(error.message));};
-$('savedHistory').onclick=async event=>{
-  const button=event.target.closest('[data-more-session]');if(!button) return;
-  button.disabled=true;
-  try {
-    const next=Number(button.dataset.page)+1,id=button.dataset.moreSession;
-    let data;
-    if(button.dataset.local==='true') {
-      const session=(await store.read()).sessions.find(s=>s.id===id);
-      data={launches:session.launches.slice().reverse().slice((next-1)*30,next*30),pages:Math.ceil(session.launches.length/30)};
-    } else data=await request('/api/battle-pass/sessions/'+encodeURIComponent(id)+'?page='+next);
-    button.previousElementSibling.insertAdjacentHTML('beforeend',data.launches.map(historyRow).join(''));
-    button.dataset.page=next;button.hidden=next>=data.pages;
-  } catch(error){notice(error.message);} finally {button.disabled=false;}
-};
 $('publicStats').onchange=async()=>{
   const checkbox=$('publicStats');checkbox.disabled=true;
   try {await request('/api/battle-pass/preferences',{method:'PATCH',body:{accountId:account.id,public:checkbox.checked}});}

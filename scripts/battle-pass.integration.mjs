@@ -306,9 +306,11 @@ try {
   await training.waitForFunction(()=>document.querySelector('#launchCount').textContent==='4');
   for(const [tab,sp,counter] of [['records',11150,5],['ranking',11200,6],['guide',11300,7],['missions',11400,8]]) {
     await training.locator(`[data-tab="${tab}"]`).click();
+    const accepted=training.waitForResponse(response=>response.url().endsWith('/api/battle-pass/sync') && response.ok() && response.request().postDataJSON()?.launches?.some(r=>r.counter===counter && r.source==='live'));
     await training.evaluate(([sp,counter])=>window.__launch(sp,counter,false),[sp,counter]);
     await training.waitForFunction(sp=>document.querySelector('.bp-launch-toast b>span')?.textContent===sp.toLocaleString('pt-BR'),sp);
     await training.waitForFunction(()=>document.querySelector('.bp-page').dataset.sync==='saved');
+    await accepted;
     assert.ok(await training.locator(`[data-view="${tab}"]`).isVisible());
     const launches=await prisma.battlePassLaunch.findMany({where:{userId:users[1].id,source:'live'}});
     assert.equal(launches.length,counter-1);
@@ -336,14 +338,17 @@ try {
   assert.equal(await training.locator('.bp-launch-toast').count(),0);
   // A saved response without inline rewards must still recover achievements outside Missions.
   await missionContext.route('**/api/battle-pass/sync',async route=>{
-    const response=await route.fetch(),data=await response.json();delete data.progression;
-    await route.fulfill({response,json:data});
+    try{const response=await route.fetch(),data=await response.json();delete data.progression;
+      await route.fulfill({response,json:data});
+    }catch(error){if(!/closed|disposed|aborted/i.test(error.message))throw error;}
   });
   await training.locator('[data-tab="guide"]').click();
   for(let counter=9;counter<=16;counter++) {
+    const accepted=training.waitForResponse(response=>response.url().endsWith('/api/battle-pass/sync') && response.ok() && response.request().postDataJSON()?.launches?.some(r=>r.counter===counter && r.source==='live'));
     await training.evaluate(counter=>window.__launch(11500,counter,false),counter);
     await training.waitForFunction(counter=>document.querySelector('#launchCount').textContent===String(counter),counter);
     await training.waitForFunction(()=>document.querySelector('.bp-page').dataset.sync==='saved');
+    await accepted;
   }
   await training.waitForFunction(()=>document.querySelector('.mm-toast')?.textContent.includes('Aquecimento'),null,{timeout:60000});
   assert.ok(await training.locator('[data-view="guide"]').isVisible());
@@ -360,6 +365,36 @@ try {
     assert.ok(await training.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
     await training.screenshot({path:`artifacts/battle-pass/${width}-power-missions.png`,fullPage:true});
   }
+  const olderDevice=await prisma.battlePassDevice.create({data:{userId:users[1].id,key:'e'.repeat(64),name:'BEYBLADE_TOOL01'}});
+  const olderStart=new Date(Date.now()-7200000);
+  await prisma.battlePassTraining.create({data:{id:'overview-ui-previous',userId:users[1].id,deviceId:olderDevice.id,startedAt:olderStart,endedAt:new Date(olderStart.getTime()+3600000),launchCount:6,averageSp:7250,bestSp:8500,
+    launches:{create:[6000,6500,7000,7500,8000,8500].map((sp,i)=>({userId:users[1].id,deviceId:olderDevice.id,sp,source:'live',epoch:0,counter:i+1,measuredAt:new Date(olderStart.getTime()+i*10000)}))}}});
+  await prisma.user.update({where:{id:users[1].id},data:{avatarUrl:'/assets/profiles/default-blader.png'}});
+  await training.locator('[data-tab="records"]').click();
+  const currentTraining=await prisma.battlePassTraining.findFirst({where:{userId:users[1].id,id:{not:'overview-ui-previous'}}});
+  const overview=training.locator(`.bp-session-entry[data-session="${currentTraining.id}"]`);
+  await overview.locator(':scope>summary').click();
+  await overview.locator('.bp-session-chart svg').waitFor();
+  assert.match(await overview.locator('.bp-session-progress').innerText(),/1\.330/);
+  assert.equal(await overview.locator('.bp-chart-point').count(),15);
+  assert.equal(await overview.locator('.bp-session-comparison button').count(),2);
+  assert.match(await overview.locator('.bp-session-highlights').innerText(),/Novo recorde/);
+  await overview.locator('.bp-session-log>summary').click();
+  assert.ok(await overview.locator('.bp-session-log li').count()>=6);
+  for(const width of [390,360,1440]) {
+    await training.setViewportSize({width,height:1000});
+    await training.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+    assert.ok(await training.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+    await training.evaluate(()=>window.scrollTo(0,0));
+    await training.screenshot({path:`artifacts/battle-pass/${width}-session-overview.png`,fullPage:true});
+  }
+  await overview.locator('[data-share-session]').click();
+  await training.locator('#sessionShareDialog img').waitFor({state:'visible'});
+  const downloaded=training.waitForEvent('download');
+  await training.locator('[data-download]').click();
+  const imageDownload=await downloaded;await imageDownload.saveAs('artifacts/battle-pass/session-share.png');
+  const png=readFileSync('artifacts/battle-pass/session-share.png');assert.equal(png.readUInt32BE(16),2160);assert.equal(png.readUInt32BE(20),2160);
+  await training.getByRole('button',{name:'Fechar compartilhamento'}).click();
   await training.getByRole('button',{name:'Opções do Battle Pass conectado'}).click();
   await training.locator('#disconnectBtn').click();
   assert.equal(await training.locator('#batteryState b').innerText(),'—');

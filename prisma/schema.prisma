@@ -102,9 +102,13 @@ model BattlePassTraining {
   launchCount Int @default(0)
   averageSp   Float @default(0)
   bestSp      Int @default(0)
+  startXp     Int?
+  lastXp      Int?
   user        User @relation(fields:[userId], references:[id], onDelete:Cascade)
   device      BattlePassDevice @relation(fields:[deviceId], references:[id], onDelete:Cascade)
   launches    BattlePassLaunch[]
+  missionRewards BattlePassMissionReward[]
+  gains BattlePassTrainingGain[]
 
   @@index([userId, startedAt])
 }
@@ -164,9 +168,24 @@ model BattlePassMissionReward {
   insignias Int
   awardedAt DateTime @default(now())
   announcedAt DateTime?
+  missionTitle String?
+  missionDescription String?
+  sessionId String?
+  session BattlePassTraining? @relation(fields:[sessionId],references:[id],onDelete:SetNull)
   user User @relation(fields:[userId],references:[id],onDelete:Cascade)
   @@unique([userId,cadence,period,missionKey])
   @@index([userId,announcedAt])
+  @@index([sessionId])
+}
+
+model BattlePassTrainingGain {
+  id String @id @default(cuid())
+  sessionId String
+  xpBefore Int
+  xpAfter Int
+  createdAt DateTime @default(now())
+  session BattlePassTraining @relation(fields:[sessionId],references:[id],onDelete:Cascade)
+  @@index([sessionId,createdAt])
 }
 
 model AuthSession {

@@ -3,6 +3,7 @@ import { prisma } from '../db.js';
 import { requireUser } from '../auth.js';
 import { battlePassStats } from '../battle-pass-stats.js';
 import { advanceMissions,missionState } from '../battle-pass-missions.js';
+import { sessionOverview } from '../battle-pass-sessions.js';
 
 const router = Router();
 const ah = handler => (req,res,next)=>handler(req,res).catch(next);
@@ -60,7 +61,8 @@ router.get('/api/battle-pass',ah(async(req,res)=>{
     prisma.battlePassDevice.findMany({where:{userId},select:{key:true,name:true,lastCounter:true,epoch:true,lastUsedAt:true}}),
     prisma.user.findUnique({where:{id:userId},select:{battlePassPublic:true}}),
   ]);
-  res.json({summary,public:user.battlePassPublic,sessions,devices,total,page:Math.floor(page),pages:Math.max(1,Math.ceil(total/10))});
+  const live=await prisma.battlePassLaunch.groupBy({by:['sessionId'],where:{userId,source:'live',sessionId:{in:sessions.map(s=>s.id)}},_count:{_all:true},_avg:{sp:true},_max:{sp:true}});
+  res.json({summary,public:user.battlePassPublic,sessions:sessions.map(s=>{const stats=live.find(v=>v.sessionId===s.id);return {...s,liveCount:stats?._count._all??0,liveAverageSp:stats?._avg.sp??0,liveBestSp:stats?._max.sp??0};}),devices,total,page:Math.floor(page),pages:Math.max(1,Math.ceil(total/10))});
 }));
 
 router.get('/api/battle-pass/sessions/:id',ah(async(req,res)=>{
@@ -69,6 +71,12 @@ router.get('/api/battle-pass/sessions/:id',ah(async(req,res)=>{
   const page = Math.max(1,Math.min(100000,Math.floor(Number(req.query.page)||1)));
   const launches = await prisma.battlePassLaunch.findMany({where:{sessionId:session.id,userId:req.user.id},orderBy:[{epoch:'desc'},{counter:'desc'}],skip:(page-1)*30,take:30});
   res.json({launches,page,pages:Math.max(1,Math.ceil(session.launchCount/30))});
+}));
+
+router.get('/api/battle-pass/sessions/:id/overview',ah(async(req,res)=>{
+  const result=await sessionOverview(req.user.id,req.params.id);
+  if(!result)return res.status(404).json({error:'Sessão não encontrada.'});
+  res.json(result);
 }));
 
 router.post('/api/battle-pass/devices',ah(async(req,res)=>{
@@ -105,8 +113,9 @@ router.post('/api/battle-pass/sync',ah(async(req,res)=>{
       update:{lastUsedAt:new Date()}});
     const existing = await tx.battlePassTraining.findUnique({where:{id:session.id}});
     if (existing && (existing.userId!==userId || existing.deviceId!==dev.id)) return {forbidden:true};
+    const accountProgress=await tx.battlePassProgress.findUnique({where:{userId}});
     const training = await tx.battlePassTraining.upsert({where:{id:session.id},
-      create:{id:session.id,userId,deviceId:dev.id,startedAt:start,endedAt:end},
+      create:{id:session.id,userId,deviceId:dev.id,startedAt:start,endedAt:end,startXp:accountProgress?.totalXp??0,lastXp:accountProgress?.totalXp??0},
       update:{...(end?{endedAt:end}:{})}});
     let inserted = 0;const fresh=[];
     for (const row of launches) {
@@ -125,7 +134,8 @@ router.post('/api/battle-pass/sync',ah(async(req,res)=>{
       launchCount:stats._count._all,averageSp:stats._avg.sp??0,bestSp:stats._max.sp??0}});
     const latest = await tx.battlePassLaunch.findFirst({where:{userId,deviceId:dev.id},orderBy:[{epoch:'desc'},{counter:'desc'}]});
     if (latest) await tx.battlePassDevice.update({where:{id:dev.id},data:{lastCounter:latest.counter,epoch:latest.epoch}});
-    const progression=await advanceMissions(tx,userId,fresh);
+    const progression=await advanceMissions(tx,userId,fresh,new Date(),training.id);
+    await tx.battlePassTraining.update({where:{id:training.id},data:{lastXp:progression?.totalXp??accountProgress?.totalXp??0}});
     return {inserted,progression};
   })).catch(error=>{
     if (error.battlePassConflict) return {conflict:error.message};

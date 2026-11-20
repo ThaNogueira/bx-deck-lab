@@ -24,9 +24,9 @@ export function missionPeriods(now=new Date()) {
 const parse=(text)=>{try{return JSON.parse(text);}catch{return [];}};
 const parseCounts=text=>{try{const value=JSON.parse(text);return value && typeof value==='object' && !Array.isArray(value)?value:{};}catch{return {};}};
 const metric=(rule,metrics,power)=>rule.metric==='power'?(power[rule.minSp]??0):metrics[rule.metric];
-const rewardDto=r=>({...r,title:ALL_MISSION_RULES.find(m=>m.id===r.missionKey)?.title??'Missão concluída'});
+const rewardDto=r=>({...r,title:r.missionTitle??ALL_MISSION_RULES.find(m=>m.id===r.missionKey)?.title??'Missão concluída'});
 
-export async function advanceMissions(tx,userId,launches,now=new Date()) {
+export async function advanceMissions(tx,userId,launches,now=new Date(),sessionId=null) {
   const eligible=launches.filter(r=>r.source==='live' && r.measuredAt && new Date(r.measuredAt)<=new Date(now.getTime()+300000) && now-new Date(r.measuredAt)<=35*DAY);
   if(!eligible.length) return null;
   const groups=new Map();
@@ -61,12 +61,13 @@ export async function advanceMissions(tx,userId,launches,now=new Date()) {
     for(const rule of rules.filter(m=>metric(m,metrics,power)>=m.target)) {
       const rewardKey={...identity,missionKey:rule.id};
       if(await tx.battlePassMissionReward.findUnique({where:{userId_cadence_period_missionKey:rewardKey}}))continue;
-      rewards.push(await tx.battlePassMissionReward.create({data:{...rewardKey,xp:rule.xp,insignias:rule.insignias}}));
+      rewards.push(await tx.battlePassMissionReward.create({data:{...rewardKey,xp:rule.xp,insignias:rule.insignias,sessionId,missionTitle:rule.title,missionDescription:rule.description}}));
     }
   }
   const updated=await tx.battlePassProgress.update({where:{userId},data:{
     totalXp:{increment:rewards.reduce((sum,r)=>sum+r.xp,0)},insignias:{increment:rewards.reduce((sum,r)=>sum+r.insignias,0)},missionsCompleted:{increment:rewards.length},
   }});
+  if(sessionId && rewards.length)await tx.battlePassTrainingGain.create({data:{sessionId,xpBefore:updated.totalXp-rewards.reduce((sum,r)=>sum+r.xp,0),xpAfter:updated.totalXp}});
   return {userId,...levelProgress(updated.totalXp),insignias:updated.insignias,completed:updated.missionsCompleted,rewards:rewards.map(rewardDto)};
 }
 
