@@ -2,6 +2,7 @@ import { BattlePassProtocol } from './protocol.mjs';
 import { renderLaunchChart } from './chart.mjs';
 import { BattlePassSpinner } from './spinner.mjs';
 import { BattlePassMissions } from './missions.mjs';
+import { LaunchFeedback } from './launch-feedback.mjs';
 import { BattlePassTransport,compatibility } from './transport.mjs';
 import { BattlePassSession } from './session.mjs';
 import { BattlePassStore,BattlePassSync } from './sync.mjs';
@@ -13,6 +14,7 @@ const average = values=>values.length?values.reduce((a,b)=>a+b,0)/values.length:
 let support = compatibility();
 const spinner=new BattlePassSpinner($('bladeBtn'));
 const missions=new BattlePassMissions($('missionsView'),request);
+const launchFeedback=new LaunchFeedback(()=>document.querySelector('[data-tab="training"]').click());
 let account,store,sync,current,demo=false,demoRows=[],rows=[],personalBest=0,page=1,pages=1,visibleRows=20;
 let savedRefresh,events=Promise.resolve(),demoTimer,initialized=false;
 let connectionState='disconnected';
@@ -60,8 +62,9 @@ const protocol=new BattlePassProtocol({
       context.observedCounter=event.counter;
     }
     if(context && !demo && event.type==='history' && event.values.length && (event.live || spinner.model.token===context.id+':'+event.counter)) spinner.launch(context.id+':'+event.counter,event.values.at(-1));
-    if(context && !demo && event.type==='history' && event.values.length) setShootPower(event.values.at(-1),{animate:event.live && context.tracker.counter!==event.counter});
-    if(context) enqueue(()=>receive(event,context));
+    if(context && !demo && event.type==='history' && event.values.length) setShootPower(event.values.at(-1),{animate:(event.live || spinner.model.token===context.id+':'+event.counter) && context.tracker.counter!==event.counter});
+    const receivedAt=new Date().toISOString();
+    if(context) enqueue(()=>receive({...event,receivedAt},context));
   },
 });
 const transport=new BattlePassTransport({
@@ -71,7 +74,6 @@ const transport=new BattlePassTransport({
     connection(state);
     if(state==='connected') {
       current.info=info;
-      document.querySelector('[data-tab="training"]').click();
       beyState('ready','Aguardando a Bey');
     } else if(state==='searching' || state==='connecting') beyState('offline','Aguardando o Battle Pass');
     else if(state==='disconnected') {
@@ -105,13 +107,15 @@ async function receive(event,context) {
   if(event.type==='device-reset') {notice('O acessório informou uma reinicialização. Confira o contador ao reler o histórico.');return;}
   if(event.type!=='history') return;
   if(!context.device) { context.waiting=event;return; }
-  const entries=context.tracker.snapshot(event), oldBest=personalBest;
+  const entries=context.tracker.snapshot(event,event.receivedAt), oldBest=personalBest;
   const saved=await sync.add(context,context.device,entries,cursor(context));
   if(current!==context || demo) return;
   rows=saved.launches;personalBest=Math.max(personalBest,...entries.map(r=>r.sp));
   renderTraining();
   if(!rows.length && event.values.length) setShootPower(event.values.at(-1));
   if(entries.some(r=>r.source==='live')) {
+    const latest=entries.filter(r=>r.source==='live').at(-1);
+    if(document.querySelector('[data-view="training"]').hidden) launchFeedback.show(latest,context.device.key+':'+latest.key);
     if(!context.endedAt) beyState('launched','Lançamento recebido · encaixe a próxima Bey');
     $('record').textContent=entries.at(-1).sp>oldBest?'Novo recorde pessoal!':'';
     flash();
@@ -219,6 +223,7 @@ document.querySelectorAll('[data-tab]').forEach(button=>button.onclick=()=>{
   document.querySelectorAll('[data-tab]').forEach(b=>b.toggleAttribute('aria-current',b===button));
   button.setAttribute('aria-current','page');
   document.querySelectorAll('[data-view]').forEach(view=>view.hidden=view.dataset.view!==button.dataset.tab);
+  if(button.dataset.tab==='training') launchFeedback.hide();
   if(button.dataset.tab==='records') savedSessions().catch(error=>notice(error.message));
   if(button.dataset.tab==='ranking') ranking();
   if(button.dataset.tab==='missions') missions.load();
@@ -325,7 +330,7 @@ try {
     if(state==='pending' && !demo) {syncNotice=true;notice('Sem conexão. Seus lançamentos estão salvos neste aparelho e serão sincronizados.');}
     if(state==='saved' && syncNotice) {syncNotice=false;notice();}
     if(state==='blocked') notice(detail);
-    if(state==='saved') {clearTimeout(savedRefresh);savedRefresh=setTimeout(()=>savedSessions().catch(()=>{}),500);}
+    if(state==='saved') {missions.refreshSoon();clearTimeout(savedRefresh);savedRefresh=setTimeout(()=>savedSessions().catch(()=>{}),500);}
   }});
   initialized=true;connection(demo?'demo':'disconnected');
   savedSessions().catch(()=>{});sync.flush();

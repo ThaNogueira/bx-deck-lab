@@ -107,7 +107,7 @@ try {
   }
   const context=await browser.newContext({viewport:{width:390,height:1000},reducedMotion:'reduce'});
   await context.addCookies([{name:'bx_session',value:cookies[2].split('=')[1],url:base}]);
-  await context.addInitScript(({fixture})=>{
+  const mockRadioFixture=({fixture})=>{
     const bytes=hex=>new Uint8Array(hex.match(/../g).map(x=>parseInt(x,16)));
     const notify=new EventTarget();notify.startNotifications=async()=>{};
     const emit=hex=>{notify.value=new DataView(bytes(hex).buffer);notify.dispatchEvent(new Event('characteristicvaluechanged'));};
@@ -121,16 +121,17 @@ try {
     window.__detach=()=>emit(fixture[0]);
     window.__beginLaunch=()=>{const header=bytes(fixture[0]);new DataView(header.buffer).setUint16(9,2,true);emit([...header].map(b=>b.toString(16).padStart(2,'0')).join(''));};
     Object.defineProperty(navigator,'bluetooth',{configurable:true,value:{async getDevices(){return localStorage.getItem('qa-bx-known')==='1'?[device]:[];},async requestDevice(){window.__requests++;return device;}}});
-    window.__launch=(sp=6500,counter=2)=>{
+    window.__launch=(sp=6500,counter=2,sensors=true)=>{
       const data=new Uint8Array(128),view=new DataView(data.buffer);
       view.setUint16(0,3234,true);view.setUint16(2,sp,true);view.setUint16(102,Math.max(3234,sp),true);view.setUint16(104,counter,true);view.setUint16(106,2,true);
       data[127]=data.slice(0,127).reduce((a,b)=>a+b,0)%256;
       const hex=bytes=>[...bytes].map(b=>b.toString(16).padStart(2,'0')).join('');
       const header=bytes(fixture[0]);new DataView(header.buffer).setUint16(7,Math.max(3234,sp),true);new DataView(header.buffer).setUint16(9,counter,true);emit(hex(header));
       for(let i=0;i<8;i++) emit(hex([176+i,...data.slice(i*16,(i+1)*16)]));
-      fixture.slice(9).forEach(emit);
+      if(sensors) fixture.slice(9).forEach(emit);
     };
-  },{fixture});
+  };
+  await context.addInitScript(mockRadioFixture,{fixture});
   const page=await context.newPage();await page.goto(base+'/battle-pass');
   await page.waitForFunction(()=>!document.querySelector('#connectBtn').disabled);
   await page.waitForFunction(id=>document.querySelector('#bladeBtn').dataset.bladeId===id,blades[1].id);
@@ -196,6 +197,7 @@ try {
   await page.getByRole('button',{name:'Missões',exact:true}).click();
   await page.locator('.mm-progress').waitFor();
   assert.equal(await page.locator('.mm-mission').count(),4);
+  await page.locator('[data-mission-id="d-first"].is-complete').waitFor();
   assert.equal(await page.locator('[data-mission-id="d-first"].is-complete').count(),1);
   assert.match(await page.locator('.mm-xp-label').innerText(),/80 \/ 100 XP/);
   await page.getByRole('button',{name:'Semanais',exact:true}).click();
@@ -256,6 +258,77 @@ try {
   await page.waitForFunction(()=>document.querySelector('#connectBtn').dataset.connected==='true');
   assert.equal(await page.evaluate(()=>window.__requests),0);
   await context.close();
+  const missionContext=await browser.newContext({viewport:{width:390,height:844},reducedMotion:'reduce'});
+  await missionContext.addCookies([{name:'bx_session',value:cookies[1].split('=')[1],url:base}]);
+  await missionContext.addInitScript(mockRadioFixture,{fixture});
+  const training=await missionContext.newPage(),missionErrors=[];
+  training.on('pageerror',error=>missionErrors.push(error.message));
+  await training.goto(base+'/battle-pass');
+  await training.waitForFunction(()=>document.querySelector('.bp-page').dataset.sync==='saved');
+  await training.locator('[data-tab="ranking"]').click();
+  await training.getByRole('button',{name:'Conectar Battle Pass',exact:true}).click();
+  await training.waitForFunction(()=>document.querySelector('#launchCount').textContent==='1');
+  await training.waitForFunction(()=>document.querySelector('.bp-page').dataset.sync==='saved');
+  assert.ok(await training.locator('[data-view="ranking"]').isVisible());
+  assert.equal(await training.locator('.mm-toast, .bp-launch-toast').count(),0);
+  await training.locator('[data-tab="training"]').click();
+  // No mission tab visit and no sensor pages: the observed counter still credits this real launch.
+  await training.evaluate(()=>window.__launch(11000,2,false));
+  await training.locator('.mm-toast').waitFor();
+  assert.match(await training.locator('.mm-toast').innerText(),/MISSÃO CONCLUÍDA.*Primeiro impulso/s);
+  assert.ok(await training.locator('[data-view="training"]').isVisible());
+  assert.equal(await training.locator('.bp-launch-toast').count(),0);
+  await training.screenshot({path:'artifacts/battle-pass/390-training-achievement.png',fullPage:true});
+  let result=(await api('/api/battle-pass/missions',{who:1})).data;
+  assert.equal(result.totalXp,80);assert.equal(result.periods[0].missions.find(m=>m.id==='d-warmup').progress,1);
+  for(const [tab,sp,counter] of [['records',11100,3],['ranking',11200,4],['guide',11300,5],['missions',11400,6]]) {
+    await training.locator(`[data-tab="${tab}"]`).click();
+    await training.evaluate(([sp,counter])=>window.__launch(sp,counter,false),[sp,counter]);
+    await training.waitForFunction(sp=>document.querySelector('.bp-launch-toast b>span')?.textContent===sp.toLocaleString('pt-BR'),sp);
+    await training.waitForFunction(()=>document.querySelector('.bp-page').dataset.sync==='saved');
+    assert.ok(await training.locator(`[data-view="${tab}"]`).isVisible());
+    const launches=await prisma.battlePassLaunch.findMany({where:{userId:users[1].id,source:'live'}});
+    assert.equal(launches.length,counter-1);
+    if(tab==='ranking') {
+      await training.waitForFunction(()=>document.querySelector('.mm-toast')?.textContent.includes('Mão firme'));
+      await training.screenshot({path:'artifacts/battle-pass/390-ranking-achievement.png',fullPage:true});
+    }
+  }
+  result=(await api('/api/battle-pass/missions',{who:1})).data;
+  assert.equal(result.totalXp,240);assert.equal(result.completed,2);
+  assert.equal(result.periods[0].missions.find(m=>m.id==='d-warmup').progress,5);
+  assert.equal(result.periods[1].missions.find(m=>m.id==='w-reps').progress,5);
+  assert.equal(result.periods[2].missions.find(m=>m.id==='m-reps').progress,5);
+  await training.evaluate(()=>window.__launch(11400,6,false));
+  await training.waitForFunction(()=>document.querySelector('.bp-page').dataset.sync==='saved');
+  assert.equal(await prisma.battlePassLaunch.count({where:{userId:users[1].id,source:'live'}}),5);
+  for(const width of [390,360,1440]) {
+    await training.setViewportSize({width,height:844});
+    assert.ok(await training.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+    assert.ok(await training.locator('.bp-launch-toast').isVisible());
+    assert.ok(await training.evaluate(()=>document.querySelector('.bp-launch-toast').getBoundingClientRect().top>document.querySelector('.bp-status-controls').getBoundingClientRect().bottom));
+    await training.screenshot({path:`artifacts/battle-pass/${width}-launch-notice.png`,fullPage:true});
+  }
+  await training.locator('.bp-launch-toast button').click();
+  assert.ok(await training.locator('[data-view="training"]').isVisible());
+  assert.equal(await training.locator('.bp-launch-toast').count(),0);
+  // A saved response without inline rewards must still recover achievements outside Missions.
+  await missionContext.route('**/api/battle-pass/sync',async route=>{
+    const response=await route.fetch(),data=await response.json();delete data.progression;
+    await route.fulfill({response,json:data});
+  });
+  await training.locator('[data-tab="guide"]').click();
+  for(let counter=7;counter<=11;counter++) {
+    await training.evaluate(counter=>window.__launch(11500,counter,false),counter);
+    await training.waitForFunction(counter=>document.querySelector('#launchCount').textContent===String(counter),counter);
+    await training.waitForFunction(()=>document.querySelector('.bp-page').dataset.sync==='saved');
+  }
+  await training.waitForFunction(()=>document.querySelector('.mm-toast')?.textContent.includes('Aquecimento'));
+  assert.ok(await training.locator('[data-view="guide"]').isVisible());
+  assert.equal((await api('/api/battle-pass/missions',{who:1})).data.totalXp,380);
+  assert.deepEqual(missionErrors,[]);
+  await missionContext.close();
+  console.log('PASS: achievements in Training without visiting Missions, sensor-less launches in every tab, SP notices, no tab switches, duplicates and daily/weekly/monthly progress.');
   const ios=await browser.newContext({viewport:{width:390,height:844},userAgent:'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Safari/604.1'});
   await ios.addInitScript(()=>Object.defineProperty(navigator,'bluetooth',{configurable:true,value:undefined}));
   const iphone=await ios.newPage();await iphone.goto(base+'/battle-pass');

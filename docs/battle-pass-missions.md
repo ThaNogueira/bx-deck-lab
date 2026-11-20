@@ -40,7 +40,11 @@ A chave única de recompensa é `(userId, cadence, period, missionKey)`. Os avan
 
 `public/js/battle-pass/missions.mjs` exibe carteira, nível, barra de XP, períodos e cartões de metas. A coleção é feita com SVGs planos; os efeitos mais fortes são reservados à evolução de nível.
 
-Novas recompensas geram um aviso temporário de conquista, sem bloquear cliques. A fila e os IDs vistos evitam repetir o mesmo aviso a cada atualização. Notificações ainda não confirmadas podem ser recuperadas após uma queda de rede. O som é sintetizado com Web Audio e desbloqueado por interação real do usuário; o botão de som permite desligá-lo e guarda a preferência. As políticas de áudio do navegador continuam sendo respeitadas.
+O progresso e os avisos de conquista funcionam em todas as abas do Battle Pass, inclusive Treinar, sem precisar abrir Missões. Fora de Treinar, cada lançamento novo também mostra um aviso compacto com o último SP; tocar nele abre Treinar. A conexão não muda a aba selecionada.
+
+Um avanço observado no contador A0 identifica o lançamento novo mesmo quando as páginas de sensores não chegam ou a captura coincide com uma leitura de histórico. O registro precisa estar no histórico com checksum válido; usa o horário de recebimento do A0. A primeira leitura ao conectar continua sendo importação, sem progresso ou aviso de lançamento. Releituras e quadros duplicados não repetem créditos nem avisos.
+
+Novas recompensas geram um aviso temporário de conquista, sem bloquear cliques. A fila e os IDs vistos evitam repetir o mesmo aviso a cada atualização. Notificações ainda não confirmadas podem ser recuperadas após uma queda de rede. A recuperação ocorre depois de sincronizar, ao voltar para a página e periodicamente enquanto a página está visível, independentemente da aba interna. O som é sintetizado com Web Audio e desbloqueado por interação real do usuário; o botão de som permite desligá-lo e guarda a preferência. As políticas de áudio do navegador continuam sendo respeitadas.
 
 O marcador de Blade vazio agora é um círculo HTML, escondido quando há render selecionado. Isso evita a sobreposição do SVG genérico anterior, cujo atributo `hidden` não era refletido pelo DOM de SVG em alguns navegadores.
 
@@ -54,4 +58,4 @@ node scripts/check-frontend-contracts.mjs
 node node_modules/typescript/bin/tsc --noEmit
 ```
 
-Os testes usam SQLite temporário e rádio simulado. Cobrem nível máximo, curva crescente, cores únicas, virada do dia/semana/mês, dados offline, descarte de histórico/demonstração, idempotência, concorrência, tentativas de injetar XP, isolamento entre contas, confirmação de avisos, metas mensais e preservação das recompensas após renovação. O teste de navegador cobre os três períodos, progresso, controle de som e layouts de 360/390/1440 px.
+Os testes usam SQLite temporário e rádio simulado. Cobrem nível máximo, curva crescente, cores únicas, virada do dia/semana/mês, dados offline, descarte de histórico/demonstração, idempotência, concorrência, tentativas de injetar XP, isolamento entre contas, confirmação de avisos, metas mensais e preservação das recompensas após renovação. O teste de navegador cobre os três períodos, progresso, controle de som, conquista em Treinar antes de visitar Missões, lançamentos sem sensores nas cinco abas, avisos de SP e layouts de 360/390/1440 px.

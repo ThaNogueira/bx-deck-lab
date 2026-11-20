@@ -28,9 +28,10 @@ export class BattlePassMissions {
     this.timer=setInterval(()=>{
       if(document.hidden)return;
       this.updateReset();
-      if(!view.hidden)this.load();
+      this.load();
     },60000);
     window.addEventListener('online',()=>this.load());
+    document.addEventListener('visibilitychange',()=>{if(!document.hidden){this.load();this.showNext();}});
   }
   initialize(account) {
     this.account=account;
@@ -42,7 +43,7 @@ export class BattlePassMissions {
     this.load();
   }
   async load() {
-    if(this.loading)return;
+    if(this.loading){this.reload=true;return;}
     if(!this.account){this.view.innerHTML='<div class="mm-guest"><svg width="58" height="58" aria-hidden="true"><use href="/assets/battle-pass/insignias.svg#level"></use></svg><h2>Seu próximo nível começa no treino</h2><button class="btn primary" data-mission-login>Entrar para participar</button></div>';return;}
     this.loading=true;
     try {
@@ -52,15 +53,16 @@ export class BattlePassMissions {
       this.state=data;this.offset=Date.parse(data.now)-Date.now();this.render();this.achievements(data);
     }catch {
       if(!this.state)this.view.innerHTML='<p class="bp-empty">As missões voltam quando sua conexão retornar. Seus lançamentos continuam salvos.</p>';
-    }finally{this.loading=false;}
+    }finally{this.loading=false;if(this.reload){this.reload=false;this.refreshSoon(0);}}
   }
   receive(data) {
     if(data.userId!==this.account?.id)return;
     this.state={...this.state,...data};
     if(this.state.periods)this.render();
     this.achievements(data);
-    clearTimeout(this.refresh);this.refresh=setTimeout(()=>this.load(),150);
+    this.refreshSoon();
   }
+  refreshSoon(delay=150) {clearTimeout(this.refresh);this.refresh=setTimeout(()=>this.load(),delay);}
   render() {
     const data=this.state;if(!data?.periods)return;
     const period=data.periods.find(p=>p.cadence===this.cadence),done=period.missions.filter(m=>m.done).length;

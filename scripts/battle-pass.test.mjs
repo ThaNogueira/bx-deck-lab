@@ -61,6 +61,33 @@ test('idempotent repeated frames, reconnect cursor, counter wrap and external re
   assert.deepEqual(initialWrap.map(e=>[e.epoch,e.counter]),[[0,65535],[1,0],[1,1]]);
   const reset=new BattlePassSession({counter:500,epoch:0});assert.equal(reset.snapshot(data)[0].epoch,1);
 });
+test('observed counter changes identify live launches even without sensor pages or during a history read',()=>{
+  const session=new BattlePassSession();
+  const at='2026-11-20T12:00:00Z';
+  session.metadata({counter:25,state:'ready',receivedAt:at});
+  const imported=session.snapshot({counter:25,values:[3000,4000],live:false},at);
+  assert.ok(imported.every(row=>row.source==='history' && row.measuredAt===null));
+  session.metadata({counter:25,state:'attached',receivedAt:at});
+  assert.equal(session.metadata({counter:25,state:'ready',receivedAt:at}),'cancelled');
+  assert.equal(session.snapshot({counter:25,values:[3000,4000],live:false}).length,0);
+  session.metadata({counter:26,state:'ready',receivedAt:at});
+  const [launch]=session.snapshot({counter:26,values:[4000,11000],live:false},'2026-11-20T12:01:00Z');
+  assert.equal(launch.source,'live');assert.equal(launch.measuredAt,at);assert.equal(launch.sp,11000);
+  assert.equal(session.snapshot({counter:26,values:[4000,11000],live:true}).length,0);
+  assert.equal(session.pendingLive.size,0);
+  session.metadata({counter:27,state:'ready',receivedAt:at});
+  session.metadata({counter:28,state:'ready',receivedAt:at});
+  const batch=session.snapshot({counter:28,values:[11000,12000,13000],live:false});
+  assert.equal(batch.length,2);assert.ok(batch.every(row=>row.source==='live' && row.measuredAt===at));
+  session.metadata({counter:29,state:'ready',receivedAt:at});
+  session.metadata({counter:1,state:'ready',receivedAt:at});
+  assert.equal(session.pendingLive.size,0);
+  assert.equal(session.snapshot({counter:1,values:[5000],live:false})[0].source,'history');
+  const wrap=new BattlePassSession({counter:65535});
+  wrap.metadata({counter:65535,state:'attached',receivedAt:at});
+  wrap.metadata({counter:0,state:'ready',receivedAt:at});
+  assert.equal(wrap.snapshot({counter:0,values:[5000],live:false})[0].source,'live');
+});
 test('only read commands exist; unsupported and insecure browsers detected',()=>{
   assert.deepEqual([...command('metadata')],[81]);assert.deepEqual([...command('history')],[116]);
   assert.throws(()=>command('erase'));assert.throws(()=>command('clear'));
