@@ -14,6 +14,7 @@ Não exige aplicativo próprio nem Bluetooth no servidor.
 - **Demonstração:** dados temporários em memória, identificados como simulação. Não chama a fila de gravação e não alimenta banco, perfil ou ranking.
 - **Animações:** etapa visual breve de cálculo e dígitos em rolos alternados a cada lançamento, inclusive quando o SP é igual ao anterior. Verde a partir de 11.000, laranja a partir de 12.000, vermelho a partir de 15.000. Reflexos metálicos e fundo espacial suave usam animações de transformação; a preferência de reduzir movimento é respeitada.
 - **Reconexão:** `getDevices()` recupera somente permissões já concedidas; um BX-09 autorizado pode reconectar diretamente ao abrir o Lab ou ao tocar no Bluetooth. Na primeira conexão `requestDevice()` continua exigindo o seletor nativo e um gesto do usuário. Não existe varredura sem autorização. Conexões conhecidas indisponíveis geram erro recuperável, sem tentativas infinitas.
+- **Mini Blade:** a renderização do catálogo aparece no card do último SP. Toque nela para escolher entre as Blades; a escolha fica no navegador por conta e usa a favorita como padrão. Ao receber o primeiro `A0` com contador novo, o modelo visual já recebe impulso, antes do número final. O SP recebido ajusta a velocidade; arrasto, precessão, inclinação e sombra desaceleram até o repouso. É uma dinâmica decorativa em 2,5D, sem conversão SP/RPM e sem motor 3D pesado. Fora da tela/aba o desenho pausa; reduzir movimento mantém o render estático. O perfil mostra somente os números, a régua e suas descrições.
 
 ## Arquitetura e arquivos
 
@@ -25,6 +26,7 @@ Não exige aplicativo próprio nem Bluetooth no servidor.
 | Persistência | `public/js/battle-pass/sync.mjs` | IndexedDB por conta, fila durável, lotes de 100, repetição com espera progressiva |
 | Interface | `public/battle-pass.html`, `public/ui/battle-pass.css`, `public/js/battle-pass/lab.mjs`, `public/js/battle-pass/chart.mjs` | Abas, gráfico SVG completo, estados, tutorial e demo |
 | Escala SP | `public/js/battle-pass/power.js`, `public/ui/battle-pass-power.css` | Cores, faixas de treino, régua e reflexos compartilhados com o perfil |
+| Mini Blade | `public/js/battle-pass/spinner.mjs` | Seletor do catálogo e dinâmica visual desacoplada dos dígitos |
 | Perfil | `public/js/battle-pass/profile.js`, `public/ui/battle-pass-profile.css`, `public/u.html`, `public/perfil.html` | Cartão compacto de estatísticas |
 | API | `server/routes/battle-pass.js`, `server/battle-pass-stats.js` | Autorização, transações, agregações e ranking opcional |
 | Integração | `server/index.js`, `server/routes/profile.js`, `public/js/shared.js` | Rotas, dados de perfil e navegação existente |

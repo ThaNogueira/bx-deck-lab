@@ -1,5 +1,6 @@
 import { BattlePassProtocol } from './protocol.mjs';
 import { renderLaunchChart } from './chart.mjs';
+import { BattlePassSpinner } from './spinner.mjs';
 import { BattlePassTransport,compatibility } from './transport.mjs';
 import { BattlePassSession } from './session.mjs';
 import { BattlePassStore,BattlePassSync } from './sync.mjs';
@@ -9,6 +10,7 @@ const number = value=>value==null?'—':Math.round(value).toLocaleString('pt-BR'
 const date = value=>new Date(value).toLocaleString('pt-BR',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
 const average = values=>values.length?values.reduce((a,b)=>a+b,0)/values.length:0;
 const support = compatibility();
+const spinner=new BattlePassSpinner($('bladeBtn'));
 let account,store,sync,current,demo=false,demoRows=[],rows=[],personalBest=0,page=1,pages=1,visibleRows=20;
 let savedRefresh,events=Promise.resolve(),demoTimer,initialized=false;
 let connectionState='disconnected';
@@ -48,6 +50,11 @@ const protocol=new BattlePassProtocol({
   onInvalid:notice,
   onEvent:event=>{
     const context=current;
+    if(context && !demo && event.type==='metadata') {
+      if(context.observedCounter!==undefined && event.counter!==context.observedCounter && event.state==='ready') spinner.launch(context.id+':'+event.counter);
+      context.observedCounter=event.counter;
+    }
+    if(context && !demo && event.type==='history' && event.values.length && (event.live || spinner.model.token===context.id+':'+event.counter)) spinner.launch(context.id+':'+event.counter,event.values.at(-1));
     if(context && !demo && event.type==='history' && event.values.length) setShootPower(event.values.at(-1),{animate:event.live && context.tracker.counter!==event.counter});
     if(context) enqueue(()=>receive(event,context));
   },
@@ -215,7 +222,7 @@ $('connectBtn').onclick=()=>{
 };
 function startConnection() {
   if(!initialized) return;
-  leaveDemo();notice();protocol.reset();rows=[];visibleRows=20;$('record').textContent='';renderTraining();
+  leaveDemo();spinner.stop();notice();protocol.reset();rows=[];visibleRows=20;$('record').textContent='';renderTraining();
   current={id:crypto.randomUUID(),startedAt:new Date().toISOString(),endedAt:null,tracker:new BattlePassSession()};
   transport.connect().catch(error=>notice(error.message));
 }
@@ -260,6 +267,7 @@ $('rankBest').onclick=()=>ranking('best');$('rankAverage').onclick=()=>ranking('
 function leaveDemo() {
   if(!demo) return;
   clearInterval(demoTimer);demo=false;demoRows=[];$('demoBtn').textContent='Experimentar demonstração';
+  spinner.stop();
   $('record').textContent='';notice();connection('disconnected');renderTraining();
   beyState('offline','Pronto para conectar');
 }
@@ -274,13 +282,14 @@ $('demoBtn').onclick=()=>{
   const tick=()=>{
     const sp=[4230,5184,4970,5682,5301,6128,5810,5543][count%8];
     demoRows.push({sp,counter:++count,source:'live',measuredAt:new Date().toISOString()});
+    spinner.launch('demo:'+count,sp);
     if(demoRows.length>50) demoRows.shift();
     beyState('launched','Lançamento simulado');renderTraining({animate:true});flash();
   };
   tick();demoTimer=setInterval(tick,2400);
 };
 window.addEventListener('online',()=>{sync?.flush();savedSessions().catch(()=>{});});
-window.addEventListener('pagehide',()=>{clearInterval(demoTimer);clearTimeout(revealTimer);clearTimeout(settleTimer);transport.disconnect();});
+window.addEventListener('pagehide',()=>{clearInterval(demoTimer);clearTimeout(revealTimer);clearTimeout(settleTimer);spinner.stop();transport.disconnect();});
 $('iosHelp').hidden=!support.ios;
 $('iosGuide').hidden=!support.ios;
 $('compatibility').textContent=support.supported?'Bluetooth disponível neste navegador.':support.reason;
@@ -288,6 +297,7 @@ connection('disconnected');
 
 try {
   account=await BX.me();
+  spinner.initialize(account).catch(()=>{ $('bladeBtn').onclick=()=>spinner.initialize(account).then(()=>spinner.picker()).catch(()=>notice('Não foi possível carregar as Blades. Tente novamente.')); });
   let owner=account?.id;
   if(!owner) {owner=localStorage.getItem('bx-battle-pass-guest')||'guest-'+crypto.randomUUID();localStorage.setItem('bx-battle-pass-guest',owner);}
   store=new BattlePassStore(owner);await store.read();

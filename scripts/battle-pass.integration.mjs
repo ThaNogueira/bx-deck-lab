@@ -20,6 +20,11 @@ const {chromium}=await import('playwright');
 let server,browser;
 try {
   const users=await Promise.all(['one','two','radio'].map(name=>prisma.user.create({data:{name:'Blader '+name,slug:'bp-'+name,email:name+'@battle-pass.invalid'}})));
+  const catalog=await fetch('https://beyxlab.com.br/api/parts-index',{signal:AbortSignal.timeout(10000)}).then(r=>r.json());
+  const blades=['dransword-2-0','cobaltdragoon'].map(slug=>catalog.parts.find(p=>p.slug===slug && p.kind==='BLADE' && !p.parentId));
+  assert.ok(blades.every(p=>p?.img));
+  for(const p of blades) await prisma.part.create({data:{id:p.id,slug:p.slug,kind:p.kind,name:p.name,displayName:p.display,imageUrl:p.img}});
+  await prisma.user.update({where:{id:users[2].id},data:{favoritePartId:blades[1].id}});
   const cookies=[];
   for(const user of users) await createSession({cookie:(name,value)=>cookies.push(name+'='+value)},user.id);
   const app=express();app.use(express.json());
@@ -28,7 +33,7 @@ try {
   app.get('/api/me',(req,res)=>res.json({user:publicUser(req.user)}));
   app.get('/api/site',(_req,res)=>res.json({site:{name:'BX LAB'}}));
   app.get('/api/cosmetics',(_req,res)=>res.json({cosmetics:[]}));
-  app.get('/api/parts-index',(_req,res)=>res.json({parts:[]}));
+  app.get('/api/parts-index',(_req,res)=>res.json({parts:[...blades,{id:'bit-test',name:'Needle',display:'Needle',kind:'BIT'}]}));
   app.get('/api/notifications/unread-count',(_req,res)=>res.json({unread:0}));
   app.use(routes,profile);
   app.get('/battle-pass',(_req,res)=>res.sendFile(path.resolve('public/battle-pass.html')));
@@ -112,6 +117,7 @@ try {
     window.__requests=0;window.__writes=[];
     window.__attach=()=>emit(fixture[0].slice(0,6)+'04'+fixture[0].slice(8));
     window.__detach=()=>emit(fixture[0]);
+    window.__beginLaunch=()=>{const header=bytes(fixture[0]);new DataView(header.buffer).setUint16(9,2,true);emit([...header].map(b=>b.toString(16).padStart(2,'0')).join(''));};
     Object.defineProperty(navigator,'bluetooth',{configurable:true,value:{async getDevices(){return localStorage.getItem('qa-bx-known')==='1'?[device]:[];},async requestDevice(){window.__requests++;return device;}}});
     window.__launch=(sp=6500,counter=2)=>{
       const data=new Uint8Array(128),view=new DataView(data.buffer);
@@ -125,6 +131,15 @@ try {
   },{fixture});
   const page=await context.newPage();await page.goto(base+'/battle-pass');
   await page.waitForFunction(()=>!document.querySelector('#connectBtn').disabled);
+  await page.waitForFunction(id=>document.querySelector('#bladeBtn').dataset.bladeId===id,blades[1].id);
+  await page.locator('#bladeBtn').click();
+  await page.getByRole('dialog',{name:'Escolher Blade',exact:true}).waitFor();
+  assert.equal(await page.locator('.bp-picker-grid>button').count(),2);
+  await page.getByRole('searchbox',{name:'Buscar Blade'}).fill('Dran');
+  assert.equal(await page.locator('.bp-picker-grid>button').count(),1);
+  await page.locator('.bp-picker-grid>button').click();
+  assert.equal(await page.locator('#bladeBtn').getAttribute('data-blade-id'),blades[0].id);
+  assert.equal(await page.locator('#bladeBtn').getAttribute('data-spinning'),'false');
   assert.equal(await page.evaluate(()=>window.__requests),0);
   await page.getByRole('button',{name:'Conectar Battle Pass',exact:true}).click();
   await page.waitForFunction(()=>document.querySelector('#launchCount').textContent==='1');
@@ -158,6 +173,9 @@ try {
   await page.evaluate(()=>window.__detach());
   await page.waitForFunction(()=>document.querySelector('#beyState').textContent==='Sem Bey encaixada');
   assert.equal(await page.evaluate(()=>window.__requests),1);
+  await page.emulateMedia({reducedMotion:'no-preference'});
+  const immediate=await page.evaluate(()=>{window.__beginLaunch();return {spinning:document.querySelector('#bladeBtn').dataset.spinning,value:document.querySelector('#lastSp').textContent};});
+  assert.equal(immediate.spinning,'true');assert.equal(immediate.value,'3.234');
   let offline=true;await context.route('**/api/battle-pass/sync',route=>offline?route.abort():route.continue());
   await page.evaluate(()=>window.__launch());
   await page.waitForFunction(()=>document.querySelector('#lastSp').textContent==='6.500');
@@ -165,6 +183,7 @@ try {
   assert.equal(await prisma.battlePassLaunch.count({where:{userId:users[2].id}}),1);
   await page.screenshot({path:'artifacts/battle-pass/390-offline.png',fullPage:true});
   await page.reload();offline=false;await page.evaluate(()=>dispatchEvent(new Event('online')));
+  await page.waitForFunction(id=>document.querySelector('#bladeBtn').dataset.bladeId===id,blades[0].id);
   await page.waitForFunction(()=>document.querySelector('.bp-page').dataset.sync==='saved');
   const records=await prisma.battlePassLaunch.findMany({where:{userId:users[2].id},orderBy:{counter:'asc'}});
   assert.equal(records.length,2);assert.equal(records[1].source,'live');assert.ok(records[1].measuredAt);
@@ -179,6 +198,7 @@ try {
   assert.match(await page.locator('.bp-profile-stats').innerText(),/6.500/);
   assert.match(await page.locator('.bp-profile-stats>div').first().innerText(),/Máximo/);
   assert.equal(await page.locator('.bp-profile-chart').count(),0);
+  assert.equal(await page.locator('.bp-profile-head, .bp-power-scale-head, .bp-power-scale>p').count(),0);
   assert.equal(await page.locator('[role="meter"]').getAttribute('aria-valuenow'),'6500');
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
   await page.locator('.bp-profile').scrollIntoViewIfNeeded();
@@ -205,7 +225,7 @@ try {
   await page.screenshot({path:'artifacts/battle-pass/390-power-reveal.png',fullPage:true});
   await page.goto(base+'/u/bp-radio');
   await page.locator('[role="meter"][aria-valuenow="20000"]').waitFor();
-  assert.match(await page.locator('.bp-power-scale-head').innerText(),/Profissional/);
+  assert.match(await page.locator('[role="meter"]').getAttribute('aria-valuetext'),/Profissional/);
   assert.equal(await page.locator('.bp-profile-max strong').getAttribute('data-power-tone'),'red');
   await page.screenshot({path:'artifacts/battle-pass/390-profile-professional.png',fullPage:true});
   await page.evaluate(()=>localStorage.setItem('qa-bx-known','1'));

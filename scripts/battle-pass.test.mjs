@@ -5,6 +5,7 @@ import {BattlePassProtocol,decodeHistory,decodeHeader,command,BATTLE_PASS} from 
 import {BattlePassSession} from '../public/js/battle-pass/session.mjs';
 import {BattlePassSync} from '../public/js/battle-pass/sync.mjs';
 import {BattlePassTransport,compatibility} from '../public/js/battle-pass/transport.mjs';
+import {MiniSpinModel,visualSpinSpeed} from '../public/js/battle-pass/spinner.mjs';
 const fixtures=JSON.parse(readFileSync(new URL('./fixtures/battle-pass.json',import.meta.url)));
 const bytes=hex=>Uint8Array.from(Buffer.from(hex,'hex'));
 const history=fixture=>decodeHistory(fixture.slice(1,9).map(bytes));
@@ -110,4 +111,19 @@ test('SP colors and profile progression use the requested exact thresholds',asyn
   assert.equal(tone(10999),'neutral');assert.equal(tone(11000),'green');assert.equal(tone(11999),'green');
   assert.equal(tone(12000),'orange');assert.equal(tone(14999),'orange');assert.equal(tone(15000),'red');
   assert.equal(level(0).label,'Iniciante');assert.equal(level(19999).label,'Habilidoso');assert.equal(level(20000).label,'Profissional');
+});
+
+test('mini Blade reacts before SP, refines force once, decelerates and settles independently of frame rate',()=>{
+  const a=new MiniSpinModel(),b=new MiniSpinModel();
+  assert.ok(visualSpinSpeed(20000)>visualSpinSpeed(5000));
+  assert.equal(a.impulse('launch-1',null),true);assert.ok(a.speed>0);const provisional=a.speed;
+  assert.equal(a.impulse('launch-1',20000),true);assert.ok(a.speed>provisional);
+  const speed=a.speed;assert.equal(a.impulse('launch-1',20000),false);assert.equal(a.speed,speed);
+  b.impulse('launch-1',20000);
+  for(let i=0;i<60;i++)a.advance(1/60);
+  for(let i=0;i<30;i++)b.advance(1/30);
+  assert.ok(Math.abs(a.speed-b.speed)<.00001);assert.ok(a.speed<speed);assert.ok(a.lean>0);
+  for(let i=0;i<1800;i++)a.advance(1/60);
+  assert.equal(a.speed,0);assert.equal(a.lean,0);assert.equal(a.advance(1/60),false);
+  assert.equal(a.impulse('launch-2',11000),true);assert.ok(a.speed>0);
 });
