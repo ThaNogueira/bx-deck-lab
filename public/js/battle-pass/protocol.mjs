@@ -8,7 +8,7 @@ export const BATTLE_PASS = Object.freeze({
 });
 
 export function command(name) {
-  const code = {metadata:0x51,history:0x74}[name];
+  const code = name==='metadata'?0x51:name==='history'?0x74:undefined;
   if (code===undefined) throw new Error('Comando de leitura inválido.');
   return Uint8Array.of(code);
 }

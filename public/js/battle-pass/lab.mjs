@@ -261,8 +261,9 @@ try {
   let owner=account?.id;
   if(!owner) {owner=localStorage.getItem('bx-battle-pass-guest')||'guest-'+crypto.randomUUID();localStorage.setItem('bx-battle-pass-guest',owner);}
   store=new BattlePassStore(owner);await store.read();
-  sync=new BattlePassSync(store,{request,authenticated:!!account,onStatus:state=>{
-    if(!demo) $('saveState').textContent={syncing:'Sincronizando…',pending:'Salvo no navegador · sincronização pendente',saved:'Salvo na sua conta'}[state];
+  sync=new BattlePassSync(store,{request,authenticated:!!account,onStatus:(state,detail)=>{
+    if(!demo) $('saveState').textContent={syncing:'Sincronizando…',pending:'Salvo no navegador · sincronização pendente',blocked:'Salvo no navegador · confira o aviso',saved:'Salvo na sua conta'}[state];
+    if(state==='blocked') notice(detail);
     if(state==='saved') {clearTimeout(savedRefresh);savedRefresh=setTimeout(()=>savedSessions().catch(()=>{}),500);}
   }});
   await savedSessions();initialized=true;connection(demo?'demo':'disconnected');sync.flush();

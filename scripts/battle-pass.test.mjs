@@ -63,6 +63,7 @@ test('idempotent repeated frames, reconnect cursor, counter wrap and external re
 test('only read commands exist; unsupported and insecure browsers detected',()=>{
   assert.deepEqual([...command('metadata')],[81]);assert.deepEqual([...command('history')],[116]);
   assert.throws(()=>command('erase'));assert.throws(()=>command('clear'));
+  assert.throws(()=>command('toString'));assert.throws(()=>command('constructor'));
   assert.equal(compatibility({isSecureContext:false,navigator:{bluetooth:{requestDevice(){}}}}).supported,false);
   assert.equal(compatibility({isSecureContext:true,navigator:{userAgent:'iPhone'}}).ios,true);
 });

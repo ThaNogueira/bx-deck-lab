@@ -92,6 +92,10 @@ export class BattlePassSync {
       this.onStatus(pending?'pending':'saved');
       if (pending) this.timer = setTimeout(()=>this.flush(),250);
     } catch (error) {
+      if ([401,403,409,422].includes(error.status)) {
+        this.onStatus('blocked',error.message);
+        return;
+      }
       this.onStatus('pending',error.message);
       this.timer = setTimeout(()=>this.flush(),Math.min(60000,2000*2**Math.min(this.retry++,5)));
     } finally { this.running = false; }
