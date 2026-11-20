@@ -1,6 +1,13 @@
 import { broadcastBladeSpin } from '../tournament-broadcast-blades.mjs';
 
 export const visualSpinSpeed = sp=>12+52*(1-Math.exp(-Math.max(0,sp)/16000));
+const renderUrl = source=>{
+  if(!source) return source;
+  const url=new URL(source,location.href);
+  // Keep this no-referrer request separate from older opaque hotlink errors in the site's image cache.
+  if(url.hostname==='img.beybladehub.app') url.searchParams.set('bxlab-render','1');
+  return url.href;
+};
 
 // Decorative dynamics only. SP is not converted to physical RPM.
 export class MiniSpinModel {
@@ -48,7 +55,7 @@ export class BattlePassSpinner {
     this.index=index;this.parts=index.list.filter(p=>p.kind==='BLADE');
     let saved;try {saved=localStorage.getItem('bx-battle-pass-blade:'+this.owner);}catch{}
     const selected=this.parts.find(p=>p.id===saved)??this.parts.find(p=>p.id===account?.favoritePartId)??
-      this.parts.find(p=>p.img && ['dransword-2-0','sword-dran'].includes(p.slug))??this.parts.find(p=>p.img)??this.parts[0];
+      this.parts.find(p=>p.img && p.slug==='dransword-2-0')??this.parts.find(p=>p.img && p.slug==='sword-dran')??this.parts.find(p=>p.img)??this.parts[0];
     if(selected) this.select(selected,false);
     this.button.onclick=()=>this.picker();
   }
@@ -61,8 +68,9 @@ export class BattlePassSpinner {
     this.button.setAttribute('aria-label','Escolher Blade: '+(part.display||part.name));
     const image=this.rotor.querySelector('img'),fallback=this.rotor.querySelector('svg');
     image.hidden=!part.img;fallback.hidden=!!part.img;
+    image.referrerPolicy='no-referrer';
     image.onerror=()=>{image.hidden=true;fallback.hidden=false;};
-    if(part.img) image.src=part.img;
+    if(part.img) image.src=renderUrl(part.img);
     if(reset) {cancelAnimationFrame(this.frame);this.frame=0;this.model.reset();this.lastTime=0;this.paint();}
     try {localStorage.setItem('bx-battle-pass-blade:'+this.owner,part.id);}catch{}
   }
@@ -92,7 +100,7 @@ export class BattlePassSpinner {
     const render=()=>{
       const query=BX.norm(dialog.querySelector('input').value);
       const parts=this.parts.filter(p=>BX.norm([p.display,p.name,...(p.aliases||[])].join(' ')).includes(query));
-      dialog.querySelector('.bp-picker-grid').innerHTML=parts.slice(0,limit).map(p=>`<button type="button" data-part="${BX.esc(p.id)}" aria-pressed="${p.id===this.selected?.id}">${BX.partThumb(p,62)}<span>${BX.esc(p.display||p.name)}</span></button>`).join('')||'<p>Nenhuma Blade encontrada.</p>';
+      dialog.querySelector('.bp-picker-grid').innerHTML=parts.slice(0,limit).map(p=>`<button type="button" data-part="${BX.esc(p.id)}" aria-pressed="${p.id===this.selected?.id}">${BX.partThumb({...p,img:renderUrl(p.img)},62).replace('<img ','<img referrerpolicy="no-referrer" ')}<span>${BX.esc(p.display||p.name)}</span></button>`).join('')||'<p>Nenhuma Blade encontrada.</p>';
       dialog.querySelector('.bp-picker-more').hidden=parts.length<=limit;
     };
     dialog.querySelector('input').oninput=()=>{limit=60;render();};

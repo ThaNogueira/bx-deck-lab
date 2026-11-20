@@ -139,6 +139,8 @@ try {
   assert.equal(await page.locator('.bp-picker-grid>button').count(),1);
   await page.locator('.bp-picker-grid>button').click();
   assert.equal(await page.locator('#bladeBtn').getAttribute('data-blade-id'),blades[0].id);
+  await page.waitForFunction(()=>document.querySelector('#bladeBtn img').naturalWidth>0);
+  assert.equal(await page.locator('#bladeBtn img').getAttribute('referrerpolicy'),'no-referrer');
   assert.equal(await page.locator('#bladeBtn').getAttribute('data-spinning'),'false');
   assert.equal(await page.evaluate(()=>window.__requests),0);
   await page.getByRole('button',{name:'Conectar Battle Pass',exact:true}).click();
