@@ -40,8 +40,10 @@ export class BattlePassSpinner {
     this.shadow=button.querySelector('.bp-mini-shadow');this.model=new MiniSpinModel();this.direction=1;
     this.motion=matchMedia('(prefers-reduced-motion: reduce)');
     this.visible=true;
-    this.observer=new IntersectionObserver(entries=>{this.visible=entries[0].isIntersecting;if(this.visible) this.schedule();else {cancelAnimationFrame(this.frame);this.frame=0;}});
-    this.observer.observe(button);
+    if('IntersectionObserver' in window) {
+      this.observer=new IntersectionObserver(entries=>{this.visible=entries[0].isIntersecting;if(this.visible) this.schedule();else {cancelAnimationFrame(this.frame);this.frame=0;}});
+      this.observer.observe(button);
+    }
     this.visibility=()=>{if(document.hidden){cancelAnimationFrame(this.frame);this.frame=0;}else this.schedule();};
     document.addEventListener('visibilitychange',this.visibility);
     this.tick=now=>{

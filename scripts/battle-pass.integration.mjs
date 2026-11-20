@@ -239,8 +239,25 @@ try {
   await ios.addInitScript(()=>Object.defineProperty(navigator,'bluetooth',{configurable:true,value:undefined}));
   const iphone=await ios.newPage();await iphone.goto(base+'/battle-pass');
   await iphone.waitForFunction(()=>document.querySelector('#compatibility').textContent.includes('indisponível'));
-  assert.ok(await iphone.locator('#connectBtn').isDisabled());
-  await iphone.getByRole('button',{name:'Como conectar',exact:true}).click();assert.ok(await iphone.locator('#iosHelp').isVisible());
+  assert.ok(await iphone.locator('#connectBtn').isEnabled());
+  await iphone.getByRole('button',{name:'Conectar Battle Pass',exact:true}).click();
+  assert.ok(await iphone.locator('#iosHelp').isVisible());assert.match(await iphone.locator('#notice').innerText(),/Bluefy/);
+  await iphone.evaluate(fixture=>{
+    const notify=new EventTarget();notify.startNotifications=async()=>{};
+    const emit=hex=>{notify.value=new DataView(Uint8Array.from(hex.match(/../g),b=>parseInt(b,16)).buffer);notify.dispatchEvent(new Event('characteristicvaluechanged'));};
+    const device=new EventTarget();device.name='BEYBLADE_TOOL01';device.id='ios-bridge';
+    const service={async getCharacteristic(uuid){
+      if(uuid.includes('f002'))return notify;
+      return {async writeValue(data){if(data[0]===81)emit(fixture[0]);else fixture.slice(1,9).forEach(emit);}};
+    }};
+    device.gatt={connected:false,disconnect(){this.connected=false;},async connect(){this.connected=true;return {async getPrimaryService(){return service;}};}};
+    window.__iosRequests=0;
+    Object.defineProperty(navigator,'bluetooth',{configurable:true,value:{async requestDevice(){window.__iosRequests++;return device;}}});
+  },fixture);
+  await iphone.getByRole('button',{name:'Conectar Battle Pass',exact:true}).click();
+  await iphone.waitForFunction(()=>document.querySelector('#connectBtn').dataset.connected==='true');
+  await iphone.waitForFunction(()=>document.querySelector('#lastSp').textContent==='3.234');
+  assert.equal(await iphone.evaluate(()=>window.__iosRequests),1);
   await ios.close();
   console.log('PASS: 1440/390/360 layouts, guide images, isolated demo, click-only BLE, live capture, IndexedDB reload, offline retry and sharing control.');
 } finally {

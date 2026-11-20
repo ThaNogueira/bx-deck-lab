@@ -9,12 +9,13 @@ const $ = id=>document.getElementById(id), esc = BX.esc;
 const number = value=>value==null?'—':Math.round(value).toLocaleString('pt-BR');
 const date = value=>new Date(value).toLocaleString('pt-BR',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
 const average = values=>values.length?values.reduce((a,b)=>a+b,0)/values.length:0;
-const support = compatibility();
+let support = compatibility();
 const spinner=new BattlePassSpinner($('bladeBtn'));
 let account,store,sync,current,demo=false,demoRows=[],rows=[],personalBest=0,page=1,pages=1,visibleRows=20;
 let savedRefresh,events=Promise.resolve(),demoTimer,initialized=false;
 let connectionState='disconnected';
 let lastDisplayed=null,revealTimer,settleTimer,chartValues=[],chartWidth=0,syncNotice=false;
+let initializationFailed=false;
 BX.renderTopbar('/battle-pass');
 
 function notice(message='') { $('notice').textContent=message;$('notice').hidden=!message; }
@@ -34,14 +35,16 @@ function connectionPanel(open) {
   $('connectBtn').setAttribute('aria-expanded',String(open));
 }
 function connection(state) {
+  support=compatibility();
   const changed=connectionState!==state;
   connectionState=state;
   const badge=$('connectionBadge');
-  $('connectBtn').dataset.connected=state==='connected';$('connectBtn').dataset.busy=state==='connecting';
-  badge.textContent=({connected:'Conectado',connecting:'Conectando…',demo:'Conectar',disconnected:'Conectar'}[state]??state);
-  $('connectBtn').setAttribute('aria-label',state==='connected'?'Opções do Battle Pass conectado':'Conectar Battle Pass');
+  const busy=state==='searching' || state==='connecting';
+  $('connectBtn').dataset.connected=state==='connected';$('connectBtn').dataset.busy=busy;
+  badge.textContent=({connected:'Conectado',searching:'Buscando…',connecting:'Conectando…',demo:'Conectar',disconnected:'Conectar'}[state]??state);
+  $('connectBtn').setAttribute('aria-label',state==='connected'?'Opções do Battle Pass conectado':busy?'Cancelar busca':'Conectar Battle Pass');
   $('connectBtn').title=state==='connected'?'Abrir opções de conexão':'';
-  $('connectBtn').disabled=!initialized || !support.supported || state==='connecting';
+  $('connectBtn').disabled=false;
   $('disconnectBtn').hidden=state!=='connected';
   $('readBtn').hidden=state!=='connected';
   if(changed) connectionPanel(false);
@@ -66,8 +69,9 @@ const transport=new BattlePassTransport({
     connection(state);
     if(state==='connected') {
       current.info=info;
+      document.querySelector('[data-tab="training"]').click();
       beyState('ready','Aguardando a Bey');
-    } else if(state==='connecting') beyState('offline','Selecione seu Battle Pass');
+    } else if(state==='searching' || state==='connecting') beyState('offline','Aguardando o Battle Pass');
     else if(state==='disconnected') {
       protocol.flush();protocol.reset();
       beyState('offline','Desconectado · registros preservados');
@@ -217,6 +221,17 @@ document.querySelectorAll('[data-tab]').forEach(button=>button.onclick=()=>{
   if(button.dataset.tab==='ranking') ranking();
 });
 $('connectBtn').onclick=()=>{
+  if(connectionState==='searching' || connectionState==='connecting') {transport.disconnect();return;}
+  support=compatibility();
+  if(!support.supported) {
+    $('iosHelp').hidden=!support.ios;$('iosGuide').hidden=!support.ios;
+    $('compatibility').textContent=support.reason;
+    document.querySelector('[data-tab="guide"]').click();
+    notice(support.ios?'Para conectar no iPhone, abra este site no Bluefy ou use o Safari com a extensão beacio ativada.':support.reason+' Use Chrome no Android ou Chrome/Edge no computador.');
+    return;
+  }
+  if(initializationFailed) {location.reload();return;}
+  if(!initialized) {notice('Preparando o treino. Toque novamente em Conectar em instantes.');return;}
   if(connectionState==='connected') {connectionPanel($('connectionPanel').inert);return;}
   startConnection();
 };
@@ -308,14 +323,16 @@ try {
     if(state==='blocked') notice(detail);
     if(state==='saved') {clearTimeout(savedRefresh);savedRefresh=setTimeout(()=>savedSessions().catch(()=>{}),500);}
   }});
-  await savedSessions();await transport.prepare();initialized=true;connection(demo?'demo':'disconnected');sync.flush();
-  if(transport.knownDevice && !demo) startConnection();
+  initialized=true;connection(demo?'demo':'disconnected');
+  savedSessions().catch(()=>{});sync.flush();
+  transport.prepare().then(()=>{if(transport.knownDevice && !demo && !current) startConnection();});
 } catch(error) {
+  initializationFailed=true;
   notice('Não foi possível preparar o salvamento: '+error.message+' Recarregue a página para tentar novamente.');
   connection('disconnected');
 }
 
-new ResizeObserver(entries=>{
+if('ResizeObserver' in window) new ResizeObserver(entries=>{
   const width=Math.round(entries[0].contentRect.width);
   if(width && width!==chartWidth) {chartWidth=width;renderLaunchChart($('chart'),chartValues);}
 }).observe($('chart'));

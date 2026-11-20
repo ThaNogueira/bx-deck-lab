@@ -5,7 +5,7 @@
   <meta name="theme-color" content="#10140e"><title>Battle Pass Lab — BX Lab</title>
   <meta name="description" content="Conecte seu Bey Battle Pass BX-09 e acompanhe o Shoot Power dos seus lançamentos no BX Lab.">
   <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'">
   <link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/design-system.css"><link rel="stylesheet" href="/ui/battle-pass.css">
   <link rel="stylesheet" href="/ui/battle-pass-power.css">
 </head>
@@ -15,7 +15,7 @@
     <nav class="bp-tabs" aria-label="Battle Pass Lab"><button aria-current="page" data-tab="training">Treinar</button><button data-tab="records">Registros</button><button data-tab="ranking">Ranking SP</button><button data-tab="guide">Como conectar</button></nav>
     <div class="bp-connection">
     <div class="bp-status-controls" role="group" aria-label="Estado do Battle Pass">
-      <button type="button" id="connectBtn" class="bp-status-control" aria-label="Conectar Battle Pass" aria-controls="connectionPanel" aria-expanded="false" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10-5 4V3l5 4L7 17"/></svg><span id="connectionBadge" aria-live="polite">Conectar</span><svg class="bp-connection-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></button>
+      <button type="button" id="connectBtn" class="bp-status-control" aria-label="Conectar Battle Pass" aria-controls="connectionPanel" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10-5 4V3l5 4L7 17"/></svg><span id="connectionBadge" aria-live="polite">Conectar</span><svg class="bp-connection-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></button>
       <div id="batteryState" class="bp-status-control" role="status" aria-label="Bateria: porcentagem indisponível" title="O protocolo ainda não fornece uma porcentagem de bateria validada."><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="6" width="17" height="12" rx="3"/><path d="M22 10v4M6 12h5"/></svg><span><small>Bateria</small><b>—</b></span></div>
       <div id="beyState" class="bp-status-control" role="status" data-state="offline"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 3 8 0 5 6-2 9-7 4-7-4-2-9Z"/><circle cx="12" cy="12" r="4"/></svg><span>Bey indisponível</span></div>
     </div>

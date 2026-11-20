@@ -76,13 +76,13 @@ test('transport requests permission only on connect, actual UUIDs, cancellation 
   const device=new Device();
   const scope={isSecureContext:true,navigator:{bluetooth:{requestDevice:async options=>{requests++;assert.deepEqual(options.filters,[{name:BATTLE_PASS.name}]);return device;}}}};
   const transport=new BattlePassTransport({onData(){},onState:s=>{states.push(s);if(s==='connected') setTimeout(()=>transport.disconnect(),5);}},scope);
-  assert.equal(requests,0);await assert.rejects(transport.connect(),/novamente/);
+  assert.equal(requests,0);await transport.connect();
   assert.equal(requests,1);assert.deepEqual(sent,[[81]]);assert.ok(disconnected);
   assert.ok(states.includes('disconnected'));assert.equal(transport.characteristic,null);
   scope.navigator.bluetooth.getDevices=async()=>[device];
   await transport.prepare();
   assert.equal(transport.knownDevice,device);
-  const count=requests;await assert.rejects(transport.connect(),/novamente/);assert.equal(requests,count);
+  const count=requests;await transport.connect();assert.equal(requests,count);
   transport.device=transport.knownDevice=null;
   scope.navigator.bluetooth.requestDevice=async()=>{throw Object.assign(new Error('cancel'),{name:'NotFoundError'});};
   await transport.connect();assert.equal(transport.connecting,false);
@@ -126,4 +126,24 @@ test('mini Blade reacts before SP, refines force once, decelerates and settles i
   for(let i=0;i<1800;i++)a.advance(1/60);
   assert.equal(a.speed,0);assert.equal(a.lean,0);assert.equal(a.advance(1/60),false);
   assert.equal(a.impulse('launch-2',11000),true);assert.ok(a.speed>0);
+});
+
+test('unresponsive discovery of permitted devices cannot block Connect', {timeout:3000},async()=>{
+  const transport=new BattlePassTransport({onData(){},onState(){}},{isSecureContext:true,navigator:{bluetooth:{requestDevice(){},getDevices(){return new Promise(()=>{});}}}});
+  assert.equal(await transport.prepare(),null);
+});
+
+test('search waits for an authorized Battle Pass to become available and can be cancelled', {timeout:6000},async()=>{
+  let attempts=0;const states=[],device=new EventTarget();device.name=BATTLE_PASS.name;device.id='known';
+  const notify=Object.assign(new EventTarget(),{startNotifications:async()=>{}});
+  device.gatt={connected:false,disconnect(){this.connected=false;},async connect(){
+    if(++attempts===1)throw Object.assign(new Error('not nearby'),{name:'NetworkError'});
+    this.connected=true;return {async getPrimaryService(){return {async getCharacteristic(id){return id===BATTLE_PASS.notify?notify:{async writeValueWithoutResponse(){}};}};}};
+  }};
+  const scope={isSecureContext:true,navigator:{bluetooth:{requestDevice(){throw new Error('already authorized');}}}};
+  const transport=new BattlePassTransport({onData(){},onState:s=>states.push(s)},scope);transport.knownDevice=device;
+  await transport.connect();assert.equal(attempts,2);assert.ok(states.includes('searching'));assert.ok(states.includes('connected'));transport.disconnect();
+  device.gatt.connect=async()=>{throw Object.assign(new Error('off'),{name:'NetworkError'});};
+  transport.knownDevice=device;const pending=transport.connect();setTimeout(()=>transport.disconnect(),20);await pending;
+  assert.equal(transport.connecting,false);assert.equal(device.gatt.connected,false);
 });
