@@ -78,6 +78,11 @@ test('transport requests permission only on connect, actual UUIDs, cancellation 
   assert.equal(requests,0);await assert.rejects(transport.connect(),/novamente/);
   assert.equal(requests,1);assert.deepEqual(sent,[[81]]);assert.ok(disconnected);
   assert.ok(states.includes('disconnected'));assert.equal(transport.characteristic,null);
+  scope.navigator.bluetooth.getDevices=async()=>[device];
+  await transport.prepare();
+  assert.equal(transport.knownDevice,device);
+  const count=requests;await assert.rejects(transport.connect(),/novamente/);assert.equal(requests,count);
+  transport.device=transport.knownDevice=null;
   scope.navigator.bluetooth.requestDevice=async()=>{throw Object.assign(new Error('cancel'),{name:'NotFoundError'});};
   await transport.connect();assert.equal(transport.connecting,false);
 });
@@ -97,4 +102,12 @@ test('offline durable outbox, retry after reload, deduplication, batched synchro
   const guest=new BattlePassSync(store,{request,authenticated:false});
   await guest.add(session,device,rows,{counter:119,epoch:0});assert.equal(durable.sessions[0].launches.length,120);
   await guest.flush();guest.stop();assert.equal(posts.length,2);
+});
+
+test('SP colors and profile progression use the requested exact thresholds',async()=>{
+  globalThis.BX={};await import('../public/js/battle-pass/power.js');
+  const {tone,level}=BX.shootPower;
+  assert.equal(tone(10999),'neutral');assert.equal(tone(11000),'green');assert.equal(tone(11999),'green');
+  assert.equal(tone(12000),'orange');assert.equal(tone(14999),'orange');assert.equal(tone(15000),'red');
+  assert.equal(level(0).label,'Iniciante');assert.equal(level(19999).label,'Habilidoso');assert.equal(level(20000).label,'Profissional');
 });

@@ -1,4 +1,5 @@
-import { BattlePassProtocol,hex } from './protocol.mjs';
+import { BattlePassProtocol } from './protocol.mjs';
+import { renderLaunchChart } from './chart.mjs';
 import { BattlePassTransport,compatibility } from './transport.mjs';
 import { BattlePassSession } from './session.mjs';
 import { BattlePassStore,BattlePassSync } from './sync.mjs';
@@ -10,51 +11,54 @@ const average = values=>values.length?values.reduce((a,b)=>a+b,0)/values.length:
 const support = compatibility();
 let account,store,sync,current,demo=false,demoRows=[],rows=[],personalBest=0,page=1,pages=1,visibleRows=20;
 let savedRefresh,events=Promise.resolve(),demoTimer,initialized=false;
-const packets=[];
+let connectionState='disconnected';
+let lastDisplayed=null,revealTimer,settleTimer,chartValues=[],chartWidth=0,syncNotice=false;
 BX.renderTopbar('/battle-pass');
 
 function notice(message='') { $('notice').textContent=message;$('notice').hidden=!message; }
-function diagnostic(message) {
-  packets.push(new Date().toISOString()+' '+message);
-  if(packets.length>120) packets.shift();
-  if($('diagnostic').open) $('packetLog').textContent=packets.join('\n');
-}
 function enqueue(action) {
-  events=events.then(action).catch(error=>{notice(error.message);diagnostic('Erro: '+error.message);});
+  events=events.then(action).catch(error=>notice(error.message));
   return events;
 }
 function beyState(state,text) {
   $('beyState').dataset.state=state;
-  $('beyState').lastElementChild.textContent=text;
+  $('beyState').title=text;
+  $('beyState').lastElementChild.textContent=state==='attached'?'Bey encaixada':state==='offline' || state==='unknown'?'Bey indisponível':demo?'Bey simulada':'Sem Bey encaixada';
+}
+function connectionPanel(open) {
+  $('connectionPanel').classList.toggle('is-collapsed',!open);
+  $('connectionPanel').inert=!open;
+  $('connectionPanel').setAttribute('aria-hidden',String(!open));
+  $('connectBtn').setAttribute('aria-expanded',String(open));
 }
 function connection(state) {
+  const changed=connectionState!==state;
+  connectionState=state;
   const badge=$('connectionBadge');
-  badge.dataset.connected=state==='connected';badge.dataset.busy=state==='connecting';
-  badge.innerHTML='<i></i> '+({connected:'Conectado',connecting:'Conectando…',demo:'Demonstração',disconnected:'Desconectado'}[state]??state);
-  $('connectBtn').hidden=state==='connected';
+  $('connectBtn').dataset.connected=state==='connected';$('connectBtn').dataset.busy=state==='connecting';
+  badge.textContent=({connected:'Conectado',connecting:'Conectando…',demo:'Conectar',disconnected:'Conectar'}[state]??state);
+  $('connectBtn').setAttribute('aria-label',state==='connected'?'Opções do Battle Pass conectado':'Conectar Battle Pass');
+  $('connectBtn').title=state==='connected'?'Abrir opções de conexão':'';
   $('connectBtn').disabled=!initialized || !support.supported || state==='connecting';
   $('disconnectBtn').hidden=state!=='connected';
   $('readBtn').hidden=state!=='connected';
-  $('endBtn').hidden=state!=='connected';
+  if(changed) connectionPanel(false);
 }
 const protocol=new BattlePassProtocol({
-  onPacket:page=>diagnostic('RX '+hex(page)),
-  onInvalid:message=>{diagnostic(message);notice(message);},
+  onInvalid:notice,
   onEvent:event=>{
     const context=current;
-    if(context && !demo && event.type==='history' && event.values.length) $('lastSp').textContent=number(event.values.at(-1));
+    if(context && !demo && event.type==='history' && event.values.length) setShootPower(event.values.at(-1),{animate:event.live && context.tracker.counter!==event.counter});
     if(context) enqueue(()=>receive(event,context));
   },
 });
 const transport=new BattlePassTransport({
-  onData:value=>protocol.feed(value),onDiagnostic:diagnostic,
+  onData:value=>protocol.feed(value),
   onState:(state,info)=>{
     if(state==='reading') { protocol.expectHistory();return; }
     connection(state);
     if(state==='connected') {
       current.info=info;
-      $('deviceName').textContent=info.name;
-      $('pairingHint').textContent='Conectado. Encaixe a Bey no lançador e faça seu lançamento no estádio.';
       beyState('ready','Aguardando a Bey');
     } else if(state==='connecting') beyState('offline','Selecione seu Battle Pass');
     else if(state==='disconnected') {
@@ -83,8 +87,6 @@ async function receive(event,context) {
       attached:'Bey encaixada · pronta para lançar',ready:'Lançador pronto · encaixe a Bey',
       cancelled:'Bey retirada · lançamento cancelado',unknown:'Aguardando lançamento',
     }[state]);
-    $('deviceCounter').textContent='Contador do acessório: '+number(event.counter);
-    $('deviceBest').textContent='Recorde do acessório: '+number(event.best)+' SP';
     return;
   }
   if(event.type==='device-reset') {notice('O acessório informou uma reinicialização. Confira o contador ao reler o histórico.');return;}
@@ -94,16 +96,36 @@ async function receive(event,context) {
   const saved=await sync.add(context,context.device,entries,cursor(context));
   if(current!==context || demo) return;
   rows=saved.launches;personalBest=Math.max(personalBest,...entries.map(r=>r.sp));
-  $('deviceCounter').textContent='Contador do acessório: '+number(event.counter);
-  $('deviceBest').textContent='Recorde do acessório: '+number(event.best)+' SP';
   renderTraining();
-  if(!rows.length && event.values.length) $('lastSp').textContent=number(event.values.at(-1));
+  if(!rows.length && event.values.length) setShootPower(event.values.at(-1));
   if(entries.some(r=>r.source==='live')) {
     if(!context.endedAt) beyState('launched','Lançamento recebido · encaixe a próxima Bey');
-    $('record').textContent=entries.at(-1).sp>oldBest?'Novo recorde pessoal!':'Lançamento registrado';
+    $('record').textContent=entries.at(-1).sp>oldBest?'Novo recorde pessoal!':'';
     flash();
   }
-  if(!account) $('saveState').textContent='Salvo neste navegador · entre para sincronizar';
+  if(!account) notice('Lançamentos salvos neste aparelho. Entre na sua conta para sincronizar.');
+}
+
+function setShootPower(value,{animate=false}={}) {
+  if(value===lastDisplayed && !animate) return;
+  lastDisplayed=value;clearTimeout(revealTimer);clearTimeout(settleTimer);
+  const output=$('lastSp'),label=$('powerLabel'),formatted=number(value);
+  output.classList.remove('bp-calculating');
+  output.dataset.powerTone=BX.shootPower.tone(value??0);
+  output.setAttribute('aria-label',value==null?'Nenhum lançamento':formatted+' SP');
+  label.textContent='ÚLTIMO LANÇAMENTO';
+  if(!animate || matchMedia('(prefers-reduced-motion: reduce)').matches || value==null) {output.textContent=formatted;return;}
+  label.textContent='CALCULANDO FORÇA';output.classList.add('bp-calculating');
+  revealTimer=setTimeout(()=>{
+    output.classList.remove('bp-calculating');label.textContent='ÚLTIMO LANÇAMENTO';
+    output.innerHTML=Array.from(formatted,(digit,i)=>{
+      if(digit==='.') return '<span class="bp-slot-separator">.</span>';
+      let reel=Array.from({length:10},(_,n)=>String((n+i*3)%10));reel.push(digit);
+      if(i%2) reel.reverse();
+      return `<span aria-hidden="true" class="bp-slot-digit${i%2?' is-reverse':''}" data-reel="${reel.join('&#10;')}" style="--slot-time:${450+i*40}ms">${digit}</span>`;
+    }).join('');
+    settleTimer=setTimeout(()=>{output.textContent=formatted;},800);
+  },130);
 }
 
 function flash() {
@@ -111,16 +133,18 @@ function flash() {
   element.dataset.flash='false';requestAnimationFrame(()=>element.dataset.flash='true');
 }
 function historyRow(row) {
-  return `<li><b>${number(row.sp)} <small>SP</small></b><span class="${row.source==='live'?'bp-source-live':''}">${row.source==='live'?'Ao vivo':'Importado do BX-09'}<time>${row.measuredAt?esc(date(row.measuredAt)):'Horário original indisponível'}</time></span><small>#${row.counter}${row.synced===false?' · local':''}</small></li>`;
+  return `<li><b class="bp-power-number" data-power-tone="${BX.shootPower.tone(row.sp)}">${number(row.sp)} <small>SP</small></b><span class="${row.source==='live'?'bp-source-live':''}">${row.source==='live'?'Ao vivo':'Importado do BX-09'}<time>${row.measuredAt?esc(date(row.measuredAt)):'Horário original indisponível'}</time></span><small>#${row.counter}${row.synced===false?' · local':''}</small></li>`;
 }
-function renderTraining() {
+function renderTraining({animate=false}={}) {
   const list=demo?demoRows:rows, values=list.map(r=>r.sp), recent=values.slice(-10), prior=values.slice(-20,-10);
   const avg=average(values), recentAvg=average(recent);
   const variation=recent.length>=2 && recentAvg?Math.round(Math.sqrt(average(recent.map(sp=>(sp-recentAvg)**2)))/recentAvg*100):null;
   const trend=prior.length===10 && recent.length===10?(recentAvg-average(prior))/average(prior)*100:null;
-  $('lastSp').textContent=number(values.at(-1));
+  setShootPower(values.at(-1)??null,{animate});
   $('bestSp').textContent=number(demo?(values.length?Math.max(...values):null):personalBest||null);
   $('averageSp').textContent=number(values.length?avg:null);$('launchCount').textContent=number(values.length);
+  $('bestSp').dataset.powerTone=BX.shootPower.tone(demo?Math.max(0,...values):personalBest);
+  $('averageSp').dataset.powerTone=BX.shootPower.tone(avg);
   $('minimumSp').textContent=number(values.length?Math.min(...values):null);
   $('recentAverage').textContent=number(recent.length?recentAvg:null);
   $('variation').textContent=variation==null?'—':variation+'%';
@@ -128,8 +152,8 @@ function renderTraining() {
   $('sessionEmpty').hidden=!!list.length;
   $('currentHistory').innerHTML=list.slice().reverse().slice(0,visibleRows).map(historyRow).join('');
   $('moreCurrent').hidden=list.length<=visibleRows;
-  const chart=values.slice(-20),max=Math.max(...chart,1);
-  $('chart').innerHTML=chart.length?chart.map((sp,i)=>`<figure aria-label="Lançamento ${values.length-chart.length+i+1}: ${number(sp)} SP"><div style="height:${Math.max(3,sp/max*135)}px"></div><figcaption>${number(sp)}</figcaption></figure>`).join(''):'<p>Seus lançamentos vão aparecer aqui.</p>';
+  chartValues=values;renderLaunchChart($('chart'),values);
+  $('chartSummary').textContent=values.length?number(values.length)+' lançamentos':'';
 }
 
 async function request(path,options={}) {
@@ -166,7 +190,7 @@ async function savedSessions() {
   $('savedHistory').innerHTML=sessions.length?sessions.map(s=>`<details data-session="${esc(s.id)}"><summary><span>${esc(date(s.startedAt))}</span><span>${number(s.launchCount)} lançamentos</span><b>Média ${number(s.averageSp)} · Recorde ${number(s.bestSp)} SP</b></summary><p class="bp-note">${esc(s.device.name)} · ${s.endedAt?'Encerrada '+esc(date(s.endedAt)):'Sessão iniciada '+esc(date(s.startedAt))}</p><ol class="bp-history">${s.launches.slice(0,30).map(historyRow).join('')}</ol>${s.launchCount>30?`<button class="btn" data-more-session="${esc(s.id)}" data-page="1" data-local="${s.local?'true':'false'}">Mais lançamentos</button>`:''}</details>`).join(''):'<p class="bp-empty">Seu histórico começa no primeiro lançamento.</p>';
   $('pageNumber').textContent=pages>1?`${page} / ${pages}`:'';
   $('previousPage').hidden=page<=1;$('nextPage').hidden=page>=pages;
-  if(!demo) $('bestSp').textContent=number(personalBest||null);
+  if(!demo) {$('bestSp').textContent=number(personalBest||null);$('bestSp').dataset.powerTone=BX.shootPower.tone(personalBest);}
 }
 
 async function ranking(sort='best') {
@@ -186,12 +210,24 @@ document.querySelectorAll('[data-tab]').forEach(button=>button.onclick=()=>{
   if(button.dataset.tab==='ranking') ranking();
 });
 $('connectBtn').onclick=()=>{
+  if(connectionState==='connected') {connectionPanel($('connectionPanel').inert);return;}
+  startConnection();
+};
+function startConnection() {
   if(!initialized) return;
   leaveDemo();notice();protocol.reset();rows=[];visibleRows=20;$('record').textContent='';renderTraining();
   current={id:crypto.randomUUID(),startedAt:new Date().toISOString(),endedAt:null,tracker:new BattlePassSession()};
   transport.connect().catch(error=>notice(error.message));
-};
-$('disconnectBtn').onclick=$('endBtn').onclick=()=>transport.disconnect();
+}
+$('disconnectBtn').onclick=()=>transport.disconnect();
+document.addEventListener('click',event=>{
+  if(connectionState==='connected' && !event.target.closest('.bp-connection')) connectionPanel(false);
+});
+document.addEventListener('keydown',event=>{
+  if(event.key==='Escape' && connectionState==='connected' && !$('connectionPanel').inert) {
+    connectionPanel(false);$('connectBtn').focus();
+  }
+});
 $('readBtn').onclick=async()=>{
   $('readBtn').disabled=true;
   try {await transport.readHistory();} catch(error){notice(error.message);}
@@ -224,35 +260,29 @@ $('rankBest').onclick=()=>ranking('best');$('rankAverage').onclick=()=>ranking('
 function leaveDemo() {
   if(!demo) return;
   clearInterval(demoTimer);demo=false;demoRows=[];$('demoBtn').textContent='Experimentar demonstração';
-  $('record').textContent='';$('saveState').textContent='';notice();connection('disconnected');renderTraining();
+  $('record').textContent='';notice();connection('disconnected');renderTraining();
   beyState('offline','Pronto para conectar');
 }
 $('demoBtn').onclick=()=>{
   if(demo) {leaveDemo();return;}
   if(transport.device?.gatt?.connected) transport.disconnect();
   demo=true;demoRows=[];connection('demo');
+  document.querySelector('[data-tab="training"]').click();
   $('demoBtn').textContent='Sair da demonstração';
   notice('Demonstração · dados simulados. Estes lançamentos não são salvos nem enviados ao perfil ou ranking.');
-  $('saveState').textContent='Simulação · sem sincronização';
   let count=0;
   const tick=()=>{
     const sp=[4230,5184,4970,5682,5301,6128,5810,5543][count%8];
     demoRows.push({sp,counter:++count,source:'live',measuredAt:new Date().toISOString()});
     if(demoRows.length>50) demoRows.shift();
-    beyState('launched','Lançamento simulado');renderTraining();flash();
+    beyState('launched','Lançamento simulado');renderTraining({animate:true});flash();
   };
   tick();demoTimer=setInterval(tick,2400);
 };
-$('diagnostic').ontoggle=()=>{if($('diagnostic').open) $('packetLog').textContent=packets.join('\n');};
-if(new URLSearchParams(location.search).has('diagnostico')) $('diagnostic').open=true;
-$('clearLog').onclick=()=>{packets.length=0;$('packetLog').textContent='';};
-$('downloadLog').onclick=()=>{
-  const url=URL.createObjectURL(new Blob([packets.join('\n')],{type:'text/plain'})),link=document.createElement('a');
-  link.href=url;link.download='bx09-diagnostico.txt';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
-};
 window.addEventListener('online',()=>{sync?.flush();savedSessions().catch(()=>{});});
-window.addEventListener('pagehide',()=>{clearInterval(demoTimer);transport.disconnect();});
+window.addEventListener('pagehide',()=>{clearInterval(demoTimer);clearTimeout(revealTimer);clearTimeout(settleTimer);transport.disconnect();});
 $('iosHelp').hidden=!support.ios;
+$('iosGuide').hidden=!support.ios;
 $('compatibility').textContent=support.supported?'Bluetooth disponível neste navegador.':support.reason;
 connection('disconnected');
 
@@ -262,12 +292,20 @@ try {
   if(!owner) {owner=localStorage.getItem('bx-battle-pass-guest')||'guest-'+crypto.randomUUID();localStorage.setItem('bx-battle-pass-guest',owner);}
   store=new BattlePassStore(owner);await store.read();
   sync=new BattlePassSync(store,{request,authenticated:!!account,onStatus:(state,detail)=>{
-    if(!demo) $('saveState').textContent={syncing:'Sincronizando…',pending:'Salvo no navegador · sincronização pendente',blocked:'Salvo no navegador · confira o aviso',saved:'Salvo na sua conta'}[state];
+    document.querySelector('.bp-page').dataset.sync=state;
+    if(state==='pending' && !demo) {syncNotice=true;notice('Sem conexão. Seus lançamentos estão salvos neste aparelho e serão sincronizados.');}
+    if(state==='saved' && syncNotice) {syncNotice=false;notice();}
     if(state==='blocked') notice(detail);
     if(state==='saved') {clearTimeout(savedRefresh);savedRefresh=setTimeout(()=>savedSessions().catch(()=>{}),500);}
   }});
-  await savedSessions();initialized=true;connection(demo?'demo':'disconnected');sync.flush();
+  await savedSessions();await transport.prepare();initialized=true;connection(demo?'demo':'disconnected');sync.flush();
+  if(transport.knownDevice && !demo) startConnection();
 } catch(error) {
   notice('Não foi possível preparar o salvamento: '+error.message+' Recarregue a página para tentar novamente.');
   connection('disconnected');
 }
+
+new ResizeObserver(entries=>{
+  const width=Math.round(entries[0].contentRect.width);
+  if(width && width!==chartWidth) {chartWidth=width;renderLaunchChart($('chart'),chartValues);}
+}).observe($('chart'));

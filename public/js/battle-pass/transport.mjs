@@ -20,6 +20,16 @@ export class BattlePassTransport {
     };
   }
 
+  async prepare() {
+    if(!compatibility(this.scope).supported || !this.scope.navigator.bluetooth.getDevices) return null;
+    try {
+      const devices=await this.scope.navigator.bluetooth.getDevices();
+      const preferred=this.scope.localStorage?.getItem('bx-battle-pass-device');
+      this.knownDevice=devices.find(d=>d.name===BATTLE_PASS.name && d.id===preferred)??devices.find(d=>d.name===BATTLE_PASS.name)??null;
+      return this.knownDevice;
+    } catch {return null;}
+  }
+
   async connect() {
     if (this.connecting || this.device?.gatt?.connected) return;
     if (!compatibility(this.scope).supported) throw new Error(compatibility(this.scope).reason);
@@ -27,11 +37,13 @@ export class BattlePassTransport {
     this.onState('connecting');
     try {
       // requestDevice stays in the click's activation, before any other asynchronous work.
-      const device = await this.scope.navigator.bluetooth.requestDevice({
+      const device = this.device??this.knownDevice??await this.scope.navigator.bluetooth.requestDevice({
         filters:[{name:BATTLE_PASS.name}],optionalServices:[BATTLE_PASS.service],
       });
       this.device?.removeEventListener('gattserverdisconnected',this.lost);
       this.device = device;
+      this.knownDevice=device;
+      try {this.scope.localStorage?.setItem('bx-battle-pass-device',device.id);} catch {}
       device.addEventListener('gattserverdisconnected',this.lost);
       const generation = this.generation;
       const step = async promise=>{
@@ -58,7 +70,8 @@ export class BattlePassTransport {
       await this.readHistory();
     } catch (error) {
       this.disconnect();
-      if (error.name==='NotFoundError') return;
+      if (error.name==='NotFoundError' && !this.device) return;
+      if (['SecurityError','NotAllowedError'].includes(error.name)) this.device=this.knownDevice=null;
       throw new Error(error.name==='SecurityError' ? 'Permita Bluetooth neste site e tente novamente.' : error.message);
     } finally { this.connecting = false; }
   }

@@ -7,32 +7,36 @@
   <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap">
   <link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/design-system.css"><link rel="stylesheet" href="/ui/battle-pass.css">
+  <link rel="stylesheet" href="/ui/battle-pass-power.css">
 </head>
 <body>
   <div class="noise"></div><header id="topbar"></header>
-  <main class="bp-page">
-    <header class="bp-heading"><div><p class="eyebrow">BX LAB / TREINO CONECTADO</p><h1>Battle Pass <em>Lab</em></h1><p>Cada lançamento, uma nova marca.</p></div><span id="connectionBadge" class="bp-badge"><i></i> Desconectado</span></header>
+  <main class="bp-page" aria-label="Battle Pass Lab">
     <nav class="bp-tabs" aria-label="Battle Pass Lab"><button aria-current="page" data-tab="training">Treinar</button><button data-tab="records">Registros</button><button data-tab="ranking">Ranking SP</button><button data-tab="guide">Como conectar</button></nav>
+    <div class="bp-connection">
+    <div class="bp-status-controls" role="group" aria-label="Estado do Battle Pass">
+      <button type="button" id="connectBtn" class="bp-status-control" aria-label="Conectar Battle Pass" aria-controls="connectionPanel" aria-expanded="false" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10-5 4V3l5 4L7 17"/></svg><span id="connectionBadge" aria-live="polite">Conectar</span><svg class="bp-connection-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></button>
+      <div id="batteryState" class="bp-status-control" role="status" aria-label="Bateria: porcentagem indisponível" title="O protocolo ainda não fornece uma porcentagem de bateria validada."><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="6" width="17" height="12" rx="3"/><path d="M22 10v4M6 12h5"/></svg><span><small>Bateria</small><b>—</b></span></div>
+      <div id="beyState" class="bp-status-control" role="status" data-state="offline"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 3 8 0 5 6-2 9-7 4-7-4-2-9Z"/><circle cx="12" cy="12" r="4"/></svg><span>Bey indisponível</span></div>
+    </div>
+    <div id="connectionPanel" class="bp-connection-panel is-collapsed" inert aria-hidden="true"><div class="bp-connection-inner">
+    <section class="bp-connect" aria-label="Conexão com o Battle Pass">
+      <div class="bp-actions"><button class="btn" id="disconnectBtn" type="button" hidden>Desconectar</button><button class="btn" id="readBtn" type="button" hidden>Atualizar histórico</button></div>
+    </section>
+    </div></div></div>
     <div id="notice" class="bp-notice" role="status" hidden></div>
     <div data-view="training">
-    <section class="bp-connect" aria-label="Conexão com o Battle Pass">
-      <div class="bp-connect-info"><span class="bp-bluetooth" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m7 7 10 10-5 4V3l5 4L7 17"/></svg></span><div><strong id="deviceName">Seu próximo recorde começa aqui</strong><p id="pairingHint">Ligue o BX-09, retire a Bey e segure o botão por cerca de 1 segundo. Selecione BEYBLADE_TOOL01.</p><p id="compatibility"></p></div></div>
-      <div class="bp-actions"><button class="btn primary" id="connectBtn" type="button">Conectar Battle Pass</button><button class="btn" id="disconnectBtn" type="button" hidden>Desconectar</button><button class="btn" id="demoBtn" type="button">Experimentar demonstração</button></div>
-      <p class="bp-ios" id="iosHelp" hidden>No iPhone, teste pelo <a href="https://bluefy.app/" target="_blank" rel="noopener">Bluefy</a> ou instale a extensão <a href="https://beacio.com/" target="_blank" rel="noopener">beacio</a> no Safari. O suporte é experimental. Ative a extensão para este site e recarregue a página.</p>
-    </section>
-    <div class="bp-session-bar"><span id="beyState" role="status" data-state="offline"><i class="bp-bey-indicator" aria-hidden="true"></i><span>Pronto para conectar</span></span><span id="saveState" role="status"></span><button class="btn" id="endBtn" hidden>Encerrar sessão</button></div>
     <section class="bp-dashboard" aria-label="Estatísticas dos lançamentos">
-      <article class="bp-latest"><span>ÚLTIMO SHOOT POWER</span><div><output id="lastSp">—</output><b>SP</b></div><p id="record" role="status"></p></article>
+      <article class="bp-latest bp-metal"><span id="powerLabel">ÚLTIMO LANÇAMENTO</span><div><output id="lastSp" class="bp-power-number" aria-live="polite">—</output><b>SP</b></div><p id="record" role="status"></p></article>
       <div class="bp-stats">
-        <article><span>Melhor pessoal</span><strong id="bestSp">—</strong><small>SP</small></article>
-        <article><span>Média da sessão</span><strong id="averageSp">—</strong><small>SP</small></article>
-        <article><span>Lançamentos da sessão</span><strong id="launchCount">0</strong></article>
+        <article class="bp-metal"><span>Máximo pessoal</span><strong id="bestSp" class="bp-power-number">—</strong><small>SP</small></article>
+        <article class="bp-metal"><span>Média da sessão</span><strong id="averageSp" class="bp-power-number">—</strong><small>SP</small></article>
+        <article class="bp-metal"><span>Lançamentos</span><strong id="launchCount">0</strong></article>
       </div>
     </section>
-    <div class="bp-device-data"><span id="deviceCounter">Contador do acessório: —</span><span id="deviceBest">Recorde do acessório: —</span><span>Unidade: Shoot Power · SP</span></div>
-    <section class="bp-insights" aria-label="Análise da sessão"><article><span>Menor SP</span><strong id="minimumSp">—</strong></article><article><span>Média dos últimos 10</span><strong id="recentAverage">—</strong></article><article><span>Variação dos últimos 10</span><strong id="variation">—</strong><small>Menor = mais regular</small></article><article><span>Evolução da média</span><strong id="trend">—</strong><small>Últimos 10 × 10 anteriores</small></article></section>
-    <section class="bp-panel"><div class="bp-section-head"><h2>Evolução da sessão</h2><span>Últimos 20 lançamentos</span></div><div id="chart" class="bp-chart"><p>Seus lançamentos vão aparecer aqui.</p></div></section>
-    <section class="bp-panel"><div class="bp-section-head"><h2>Esta sessão</h2><button class="btn" id="readBtn" type="button" hidden>Ler histórico do BX-09</button></div><p class="bp-note" id="sessionEmpty">Conecte o Battle Pass para começar.</p><ol id="currentHistory" class="bp-history"></ol><button class="btn" id="moreCurrent" hidden>Mostrar mais lançamentos</button></section>
+    <section class="bp-insights" aria-label="Análise da sessão"><article class="bp-metal"><span>Menor SP</span><strong id="minimumSp">—</strong></article><article class="bp-metal"><span>Média recente</span><strong id="recentAverage">—</strong></article><article class="bp-metal" title="Desvio relativo dos últimos 10 lançamentos. Menor significa mais regularidade."><span>Regularidade</span><strong id="variation">—</strong></article><article class="bp-metal" title="Média dos últimos 10 lançamentos comparada com a dos 10 anteriores."><span>Evolução</span><strong id="trend">—</strong></article></section>
+    <section class="bp-panel"><div class="bp-section-head"><h2>Evolução da sessão</h2><span id="chartSummary"></span></div><div id="chart" class="bp-chart"><p>Nenhum lançamento nesta sessão.</p></div></section>
+    <section class="bp-panel"><div class="bp-section-head"><h2>Esta sessão</h2></div><p class="bp-note" id="sessionEmpty">Conecte o Battle Pass para começar.</p><ol id="currentHistory" class="bp-history"></ol><button class="btn" id="moreCurrent" hidden>Mostrar mais lançamentos</button></section>
     </div>
     <div data-view="records" hidden>
     <section class="bp-panel bp-lifetime"><div class="bp-section-head"><h2>Seu histórico de treino</h2><a href="/perfil">Meu perfil</a></div><div id="lifetimeStats" class="bp-insights"></div><label class="bp-sharing"><input type="checkbox" id="publicStats" disabled><span>Mostrar minhas estatísticas no perfil e no ranking SP<small>Ranking de treino, com pelo menos 10 registros. Sem efeito no elo.</small></span></label></section>
@@ -40,16 +44,16 @@
     </div>
     <section data-view="ranking" class="bp-panel" hidden><div class="bp-section-head"><div><p class="eyebrow">TREINO / COMUNIDADE</p><h2>Ranking de Shoot Power</h2></div><div class="bp-segment" aria-label="Ordenação do ranking"><button id="rankBest" aria-pressed="true">Recorde</button><button id="rankAverage" aria-pressed="false">Média</button></div></div><p class="bp-note">Top 50 · mínimo de 10 lançamentos · participação opcional. Dados enviados pelo navegador, sem validação competitiva.</p><div id="rankingList"></div></section>
     <section data-view="guide" class="bp-panel" hidden><div class="bp-section-head"><div><p class="eyebrow">PRIMEIRA CONEXÃO</p><h2>Do lançador para o Lab</h2></div><span>BX-09 · Bluetooth LE</span></div>
+      <p class="bp-note" id="compatibility"></p><p class="bp-ios bp-note" id="iosHelp" hidden>No iPhone, teste pelo <a href="https://bluefy.app/" target="_blank" rel="noopener">Bluefy</a> ou instale a extensão <a href="https://beacio.com/" target="_blank" rel="noopener">beacio</a> no Safari. Ative a extensão para este site e recarregue a página.</p>
       <div class="bp-guide-grid">
         <article><div class="bp-official-image"><img src="/battle-pass/bx09-mounted.png" alt="Bey Battle Pass instalado no lançador, imagem oficial Takara Tomy" loading="lazy" width="375" height="454"></div><b>1. Prepare o Battle Pass</b><p>Instale duas pilhas AAA, encaixe o BX-09 no lançador e ligue com o botão por cerca de 1 segundo. O LED fica verde. Retire a Bey antes de conectar.</p></article>
         <article><div class="bp-official-image"><img src="/battle-pass/bx09-product.png" alt="BX-09 com o botão de comunicação visível, imagem oficial Takara Tomy" loading="lazy" width="375" height="454"></div><b>2. Ative o pareamento</b><p>Pressione o botão por cerca de 1 segundo: o LED alterna verde e laranja. Ative o Bluetooth do aparelho e feche outros apps conectados ao BX-09.</p></article>
         <article><div class="bp-guide-connect" aria-hidden="true"><svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="3"><rect x="25" y="8" width="50" height="84" rx="9"/><path d="m40 39 22 22-12 9V29l12 10-22 22M44 81h12"/></svg><span>BEYBLADE_TOOL01</span></div><b>3. Conecte e lance</b><p>Toque em <strong>Conectar Battle Pass</strong>, escolha BEYBLADE_TOOL01 e autorize. Depois, encaixe a Bey e lance no estádio. O Lab recebe e salva o SP automaticamente.</p></article>
       </div><p class="bp-note">Imagens © TOMY / BBXProject, usadas para identificar o acessório. <a href="https://beyblade.takaratomy.co.jp/beyblade-x/lineup/bx09.html" target="_blank" rel="noopener">Produto e manual oficiais</a>. Os passos do Lab substituem a conexão ao aplicativo japonês.</p>
       <details class="bp-help"><summary>Não aparece na lista?</summary><p>Aproxime o acessório, retire a Bey e repita o pareamento. Permita Bluetooth para o navegador nas configurações do aparelho. Verifique as pilhas e feche o app oficial ou qualquer outra conexão com o BX-09.</p></details>
-      <details class="bp-help"><summary>Android, computador e iPhone</summary><p>Use Chrome no Android ou Chrome/Edge no computador, com Bluetooth ativo e o site por HTTPS. Safari e Chrome no iPhone não oferecem Web Bluetooth nativamente: experimente <a href="https://bluefy.app/" target="_blank" rel="noopener">Bluefy</a> ou <a href="https://beacio.com/" target="_blank" rel="noopener">beacio</a>. O funcionamento no iOS depende da ponte Bluetooth e ainda precisa de teste real.</p></details>
+      <details class="bp-help"><summary>Navegadores compatíveis</summary><p>Use Chrome no Android ou Chrome/Edge no computador, com Bluetooth ativo e o site por HTTPS.</p><p id="iosGuide" hidden>Safari e Chrome no iPhone não oferecem Web Bluetooth nativamente: experimente <a href="https://bluefy.app/" target="_blank" rel="noopener">Bluefy</a> ou <a href="https://beacio.com/" target="_blank" rel="noopener">beacio</a>. O funcionamento no iOS depende da ponte Bluetooth e ainda precisa de teste real.</p></details>
+      <button class="btn" id="demoBtn" type="button">Experimentar demonstração</button>
     </section>
-    <details class="bp-panel bp-diagnostic" id="diagnostic"><summary>Diagnóstico Bluetooth</summary><p>Recepção de pacotes e validação do protocolo. Nenhuma leitura apaga o histórico do acessório.</p><div class="bp-actions"><button class="btn" id="downloadLog">Baixar diagnóstico</button><button class="btn" id="clearLog">Limpar tela do diagnóstico</button></div><pre id="packetLog" aria-label="Pacotes recebidos"></pre></details>
-    <p class="bp-footnote">Integração experimental. SP é o valor reportado pelo acessório. A conexão com um BX-09 real ainda depende de validação em hardware. <a href="/battle-pass/THIRD-PARTY.txt">Créditos do protocolo</a></p>
   </main>
-  <script src="/js/shared.js"></script><script type="module" src="/js/battle-pass/lab.mjs"></script>
+  <script src="/js/shared.js"></script><script src="/js/battle-pass/power.js"></script><script type="module" src="/js/battle-pass/lab.mjs"></script>
 </body></html>

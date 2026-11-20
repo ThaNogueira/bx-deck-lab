@@ -6,13 +6,14 @@ Não exige aplicativo próprio nem Bluetooth no servidor.
 
 ## Uso e interface
 
-- **Treinar:** conexão explícita, estados desconectado/conectando/conectado, Bey encaixada, retirada sem lançamento e lançamento recebido. Último SP, recorde pessoal registrado, média e quantidade da sessão, menor SP, média recente, variação e evolução. Contador e recorde informados pelo acessório aparecem separadamente.
+- **Treinar:** tela direta nas abas, três indicadores compactos (Bluetooth, bateria indisponível e Bey encaixada), último SP, máximo, média, quantidade e evolução. Opções de conexão ficam num painel recolhido. O gráfico SVG liga todos os lançamentos da sessão, sem limitar aos 20 últimos. Não há cabeçalho promocional, confirmação constante de salvamento, contadores técnicos, diagnóstico ou rodapé na interface.
 - **Registros:** média geral, recorde, quantidade e sessões pessoais. Sessões expansíveis, 10 por página, lançamentos de 30 em 30. Importações preservam `measuredAt = null`; o início da sessão indica a captura/importação, não a hora de lançamentos antigos.
 - **Ranking SP:** top 50 por recorde ou média, mínimo de 10 registros e participação opcional. Inclui apenas usuários ativos que habilitaram o compartilhamento. Não altera o elo. Dados de treino enviados pelo navegador, sem prova criptográfica; não representam resultado competitivo homologado. Suspensão/banimento existente remove o usuário da lista. Uma competição oficial exigirá moderação dos lançamentos e regras adicionais contra fraude.
 - **Como conectar:** instruções baseadas no manual Takara Tomy, imagens oficiais do BX-09, compatibilidade e solução de problemas.
-- **Perfil:** média, recorde, quantidade, sessões, contagem ao vivo/importada e gráfico recente. O proprietário vê seus dados; visitantes só os veem após habilitar o compartilhamento em Registros. Nenhum endereço BLE ou histórico individual fica público no perfil ou ranking.
+- **Perfil:** máximo em primeiro, média e quantidade, sem barras de lançamentos. Uma régua marca o máximo nas faixas Iniciante (0), Aprendiz (6.000), Intermediário (11.000), Habilidoso (15.000) e Profissional (20.000 SP). Faixas visuais de treino do BX Lab, não classificação oficial. O proprietário vê seus dados; visitantes só os veem após habilitar o compartilhamento em Registros.
 - **Demonstração:** dados temporários em memória, identificados como simulação. Não chama a fila de gravação e não alimenta banco, perfil ou ranking.
-- **Diagnóstico:** abra `/battle-pass?diagnostico=1`. Exibe os pacotes recebidos e os comandos de leitura; permite baixar um arquivo local. Esse arquivo pode conter o identificador do acessório. Não é enviado automaticamente a terceiros.
+- **Animações:** etapa visual breve de cálculo e dígitos em rolos alternados a cada lançamento, inclusive quando o SP é igual ao anterior. Verde a partir de 11.000, laranja a partir de 12.000, vermelho a partir de 15.000. Reflexos metálicos e fundo espacial suave usam animações de transformação; a preferência de reduzir movimento é respeitada.
+- **Reconexão:** `getDevices()` recupera somente permissões já concedidas; um BX-09 autorizado pode reconectar diretamente ao abrir o Lab ou ao tocar no Bluetooth. Na primeira conexão `requestDevice()` continua exigindo o seletor nativo e um gesto do usuário. Não existe varredura sem autorização. Conexões conhecidas indisponíveis geram erro recuperável, sem tentativas infinitas.
 
 ## Arquitetura e arquivos
 
@@ -22,7 +23,8 @@ Não exige aplicativo próprio nem Bluetooth no servidor.
 | Protocolo | `public/js/battle-pass/protocol.mjs` | Fragmentos, páginas, little endian, checksum e eventos decodificados |
 | Sessão | `public/js/battle-pass/session.mjs` | Estados, contador, FIFO de 50, rollover/reinicialização e deduplicação |
 | Persistência | `public/js/battle-pass/sync.mjs` | IndexedDB por conta, fila durável, lotes de 100, repetição com espera progressiva |
-| Interface | `public/battle-pass.html`, `public/ui/battle-pass.css`, `public/js/battle-pass/lab.mjs` | Quatro abas, gráficos leves em HTML, estados, tutorial, demo e diagnóstico |
+| Interface | `public/battle-pass.html`, `public/ui/battle-pass.css`, `public/js/battle-pass/lab.mjs`, `public/js/battle-pass/chart.mjs` | Abas, gráfico SVG completo, estados, tutorial e demo |
+| Escala SP | `public/js/battle-pass/power.js`, `public/ui/battle-pass-power.css` | Cores, faixas de treino, régua e reflexos compartilhados com o perfil |
 | Perfil | `public/js/battle-pass/profile.js`, `public/ui/battle-pass-profile.css`, `public/u.html`, `public/perfil.html` | Cartão compacto de estatísticas |
 | API | `server/routes/battle-pass.js`, `server/battle-pass-stats.js` | Autorização, transações, agregações e ranking opcional |
 | Integração | `server/index.js`, `server/routes/profile.js`, `public/js/shared.js` | Rotas, dados de perfil e navegação existente |
@@ -49,7 +51,7 @@ Convidados podem capturar dados localmente, mas a sincronização requer entrar 
 - Cada dispositivo é associado à conta usando SHA-256 do identificador reportado. O ID de navegador é apenas metadado local; não serve como chave entre navegadores.
 - A época local distingue rollover do contador de 16 bits e regressões após reset. Um histórico que atravessa o rollover também é tratado na primeira conexão. Ausência prolongada, múltiplos rollovers ou reset externo não documentado ainda podem criar ambiguidades e precisam de validação física. Um conflito não sobrescreve registros automaticamente.
 
-Não se apresenta bateria: o significado e a escala do byte sugerido por engenharia reversa não estão validados. SP não é declarado como RPM e não se inventa conversão. O recorde do acessório pode ser maior que o recorde registrado no Lab porque o dispositivo só preserva os últimos 50 SP individuais.
+O indicador de bateria mostra `—`: o significado e a escala do byte sugerido por engenharia reversa não estão validados. Não se apresenta uma porcentagem inventada. SP não é declarado como RPM. O recorde do acessório pode ser maior que o recorde registrado no Lab porque o dispositivo só preserva os últimos 50 SP individuais; os dados técnicos continuam no protocolo, sem ocupar a tela de treino.
 
 ## Banco e API
 
@@ -94,12 +96,12 @@ A integração cria um banco SQLite temporário, aplica todas as migrações e u
 
 ## Teste obrigatório com BX-09 físico
 
-O desenvolvimento usou payloads reais publicados e rádio simulado. **Ainda não houve teste físico de GATT, Notify ou lançamento em um BX-09 nesta implementação.** A prova de conceito de diagnóstico está disponível; sua etapa física não é declarada concluída.
+O desenvolvimento usou payloads reais publicados e rádio simulado. **Ainda não houve teste físico de GATT, Notify ou lançamento em um BX-09 nesta implementação.** A área visual de diagnóstico foi removida a pedido do usuário; instrumentação de bancada pode usar os callbacks `onPacket`/`onInvalid` do protocolo e `onDiagnostic` do transporte.
 
-1. Abra `/battle-pass?diagnostico=1` por HTTPS no Chrome Android ou Chrome/Edge desktop. Faça login antes de lançar. Verifique que não há solicitação de Bluetooth ao abrir a página.
+1. Abra `/battle-pass` por HTTPS no Chrome Android ou Chrome/Edge desktop. Faça login antes de lançar. Sem permissão anterior, não deve surgir solicitação ao abrir a página. Com permissão anterior e BX-09 disponível, confira a reconexão direta sem seletor.
 2. Coloque pilhas boas, instale o BX-09 corretamente e retire a Bey. Ligue: botão por cerca de 1 segundo, LED verde. Depois, pressione por cerca de 1 segundo para alternar verde e laranja. Não mantenha pressionado por 3 segundos, pois isso pode encerrar a comunicação.
 3. Toque **Conectar Battle Pass**, selecione `BEYBLADE_TOOL01` e autorize. Confirme o serviço e as características reais. Feche outro app que esteja usando a conexão.
-4. Confirme no diagnóstico o envio apenas de `51` e `74`, recepção de `A0` e `B0`–`B7`, checksum e importação. Verifique no dispositivo que a leitura não apagou o histórico.
+4. Com instrumentação de bancada, confira o envio apenas de `51` e `74`, recepção de `A0` e `B0`–`B7`, checksum e importação. Verifique no dispositivo que a leitura não apagou o histórico.
 5. Encaixe a Bey: confira o indicador de encaixe. Retire sem lançar: confira cancelamento e ausência de novo registro. Encaixe novamente e lance dentro do estádio: confira SP, contador, páginas `70`–`73`, animação e gravação.
 6. Compare os SP com a leitura oficial/DiZZi sem manter os dois conectados simultaneamente. Teste várias notificações e os intervalos reais. O timeout de quadros parciais é 1,5 s; o fluxo completo aguarda até 350 ms pelas páginas finais de sensores.
 7. Faça mais de 50 lançamentos e releia: a FIFO deve importar somente os ainda não registrados. Desconecte e reconecte; o total salvo não deve aumentar sem novos SP.
@@ -107,7 +109,7 @@ O desenvolvimento usou payloads reais publicados e rádio simulado. **Ainda não
 9. Encerre a sessão e confira os registros. Abra seu perfil e habilite o compartilhamento se quiser aparecer publicamente. Dez registros são necessários para o ranking.
 10. No iPhone, repita no Bluefy com Bluetooth autorizado. Teste também beacio instalado e habilitado para o site no Safari, após recarregar. Safari/Chrome sem ponte devem oferecer orientação e consulta ao histórico, sem prometer conexão nativa. WebViews sem `navigator.bluetooth` também exibem esse fallback.
 
-Downloads de diagnóstico e discrepâncias de checksum/contador permitem refinar o protocolo sem adivinhar campos. Rollover físico, reset, dispositivos de versões diferentes, suspensão da aba e reconexão após bloqueio da tela são pendências específicas para bancada.
+Capturas de bancada e discrepâncias de checksum/contador permitem refinar o protocolo sem adivinhar campos. Rollover físico, reset, dispositivos de versões diferentes, suspensão da aba e reconexão após bloqueio da tela são pendências específicas para bancada. Os testes também cobrem as três fronteiras de cor, 100 pontos no gráfico, repetição do mesmo SP, Profissional em 20.000 SP e reconexão automática sem chamar `requestDevice()` novamente.
 
 ## Fontes e licenças
 
@@ -117,6 +119,7 @@ Downloads de diagnóstico e discrepâncias de checksum/contador permitem refinar
 - Referência web: https://battlebey.com/en/battlespin
 - Serviço GATT confirmado como constante usada em `optionalServices`/`getPrimaryService` no bundle público consultado em 19/11/2026: https://battlebey.com/_next/static/chunks/app/%5Blocale%5D/battlespin/page-3456d4449cc1f9d1.js . Nenhum layout ou código de implementação proprietário foi copiado.
 - Web Bluetooth: https://developer.chrome.com/docs/capabilities/bluetooth
+- Permissões e dispositivos autorizados: https://bluetooth.spec.whatwg.org/
 - Produto, imagens e manual oficiais: https://beyblade.takaratomy.co.jp/beyblade-x/lineup/bx09.html
 - Manual oficial de comunicação: https://beyblade.takaratomy.co.jp/beyblade-x/manual/BX-09_manual.pdf
 - Manual físico: https://www.takaratomy.co.jp/support/manual/items/4904810905240%20BX-09%20%E3%83%99%E3%82%A4%E3%83%90%E3%83%88%E3%83%AB%E3%83%91%E3%82%B9_%E5%8F%96%E6%89%B1%E8%AA%AC%E6%98%8E%E6%9B%B8.pdf

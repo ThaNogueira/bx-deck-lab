@@ -6,7 +6,8 @@ let count = 0;
 for (const file of readdirSync('public').filter(name => name.endsWith('.html'))) {
   if(file==='battle-pass.html') {
     const html=readFileSync(`public/${file}`,'utf8');
-    for(const hook of ['id="topbar"','/js/shared.js','/js/battle-pass/lab.mjs','id="connectBtn"','id="lastSp"','id="diagnostic"','data-view="guide"']) assert(html.includes(hook),hook);
+    for(const hook of ['id="topbar"','/js/shared.js','/js/battle-pass/lab.mjs','id="connectBtn"','id="lastSp"','id="batteryState"','data-view="guide"']) assert(html.includes(hook),hook);
+    for(const removed of ['id="diagnostic"','bp-heading','id="saveState"','bp-footnote','id="deviceCounter"']) assert(!html.includes(removed),removed);
     continue;
   }
   if(file==='admin.html'){

@@ -81,6 +81,10 @@ try {
     const context=await browser.newContext({viewport:{width,height:1000},reducedMotion:'reduce'});
     const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
     await page.goto(base+'/battle-pass');
+    assert.ok(await page.locator('#iosHelp').isHidden());
+    assert.ok(await page.locator('#iosGuide').isHidden());
+    assert.equal(await page.locator('.bp-heading, #diagnostic, .bp-footnote, #saveState, .bp-device-data').count(),0);
+    await page.getByRole('button',{name:'Como conectar',exact:true}).click();
     await page.getByRole('button',{name:'Experimentar demonstração'}).click();
     await page.waitForFunction(()=>document.querySelector('#lastSp').textContent==='4.230');
     await page.screenshot({path:`artifacts/battle-pass/${width}-training.png`,fullPage:true});
@@ -106,13 +110,15 @@ try {
       return {async writeValueWithoutResponse(data){window.__writes.push(data[0]);if(data[0]===81) emit(fixture[0]);else fixture.slice(1,9).forEach(emit);}};
     }}}};}};
     window.__requests=0;window.__writes=[];
-    Object.defineProperty(navigator,'bluetooth',{configurable:true,value:{async requestDevice(){window.__requests++;return device;}}});
-    window.__launch=()=>{
+    window.__attach=()=>emit(fixture[0].slice(0,6)+'04'+fixture[0].slice(8));
+    window.__detach=()=>emit(fixture[0]);
+    Object.defineProperty(navigator,'bluetooth',{configurable:true,value:{async getDevices(){return localStorage.getItem('qa-bx-known')==='1'?[device]:[];},async requestDevice(){window.__requests++;return device;}}});
+    window.__launch=(sp=6500,counter=2)=>{
       const data=new Uint8Array(128),view=new DataView(data.buffer);
-      view.setUint16(0,3234,true);view.setUint16(2,6500,true);view.setUint16(102,6500,true);view.setUint16(104,2,true);view.setUint16(106,2,true);
+      view.setUint16(0,3234,true);view.setUint16(2,sp,true);view.setUint16(102,Math.max(3234,sp),true);view.setUint16(104,counter,true);view.setUint16(106,2,true);
       data[127]=data.slice(0,127).reduce((a,b)=>a+b,0)%256;
       const hex=bytes=>[...bytes].map(b=>b.toString(16).padStart(2,'0')).join('');
-      emit('a03a0000ff00006419020035b40451c4da');
+      const header=bytes(fixture[0]);new DataView(header.buffer).setUint16(7,Math.max(3234,sp),true);new DataView(header.buffer).setUint16(9,counter,true);emit(hex(header));
       for(let i=0;i<8;i++) emit(hex([176+i,...data.slice(i*16,(i+1)*16)]));
       fixture.slice(9).forEach(emit);
     };
@@ -123,15 +129,43 @@ try {
   await page.getByRole('button',{name:'Conectar Battle Pass',exact:true}).click();
   await page.waitForFunction(()=>document.querySelector('#launchCount').textContent==='1');
   assert.deepEqual(await page.evaluate(()=>window.__writes),[81,116]);
-  await page.waitForFunction(()=>document.querySelector('#saveState').textContent==='Salvo na sua conta');
+  await page.waitForFunction(()=>document.querySelector('.bp-page').dataset.sync==='saved');
+  assert.equal(await page.locator('#connectBtn').getAttribute('data-connected'),'true');
+  assert.equal(await page.locator('#connectionBadge').innerText(),'Conectado');
+  assert.equal(await page.locator('#connectBtn').getAttribute('aria-expanded'),'false');
+  assert.ok(await page.locator('#disconnectBtn').isHidden());
+  assert.equal(await page.locator('#batteryState b').innerText(),'—');
+  for(const width of [390,360,1440]) {
+    await page.setViewportSize({width,height:1000});
+    const geometry=await page.evaluate(()=>({
+      tops:[...document.querySelectorAll('.bp-status-controls>.bp-status-control')].map(el=>el.getBoundingClientRect().top),
+      panel:document.querySelector('#connectionPanel').getBoundingClientRect().height,
+      output:document.querySelector('.bp-latest').getBoundingClientRect().top,
+      overflow:document.documentElement.scrollWidth>innerWidth+1,
+    }));
+    assert.equal(geometry.tops.length,3);assert.equal(new Set(geometry.tops).size,1);
+    assert.equal(geometry.panel,0);assert.ok(geometry.output<480);assert.equal(geometry.overflow,false);
+    await page.screenshot({path:`artifacts/battle-pass/${width}-connected.png`,fullPage:true});
+  }
+  await page.setViewportSize({width:390,height:1000});
+  await page.getByRole('button',{name:'Opções do Battle Pass conectado'}).click();
+  await page.locator('#disconnectBtn').waitFor({state:'visible'});
+  assert.ok(await page.locator('#disconnectBtn').isVisible());
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('#connectBtn').getAttribute('aria-expanded'),'false');
+  await page.evaluate(()=>window.__attach());
+  await page.waitForFunction(()=>document.querySelector('#beyState').textContent==='Bey encaixada');
+  await page.evaluate(()=>window.__detach());
+  await page.waitForFunction(()=>document.querySelector('#beyState').textContent==='Sem Bey encaixada');
+  assert.equal(await page.evaluate(()=>window.__requests),1);
   let offline=true;await context.route('**/api/battle-pass/sync',route=>offline?route.abort():route.continue());
   await page.evaluate(()=>window.__launch());
   await page.waitForFunction(()=>document.querySelector('#lastSp').textContent==='6.500');
-  await page.waitForFunction(()=>document.querySelector('#saveState').textContent.includes('pendente'));
+  await page.waitForFunction(()=>document.querySelector('.bp-page').dataset.sync==='pending');
   assert.equal(await prisma.battlePassLaunch.count({where:{userId:users[2].id}}),1);
   await page.screenshot({path:'artifacts/battle-pass/390-offline.png',fullPage:true});
   await page.reload();offline=false;await page.evaluate(()=>dispatchEvent(new Event('online')));
-  await page.waitForFunction(()=>document.querySelector('#saveState').textContent==='Salvo na sua conta');
+  await page.waitForFunction(()=>document.querySelector('.bp-page').dataset.sync==='saved');
   const records=await prisma.battlePassLaunch.findMany({where:{userId:users[2].id},orderBy:{counter:'asc'}});
   assert.equal(records.length,2);assert.equal(records[1].source,'live');assert.ok(records[1].measuredAt);
   await page.getByRole('button',{name:'Registros',exact:true}).click();
@@ -143,15 +177,48 @@ try {
   await page.locator('.bp-profile-stats').waitFor();
   assert.match(await page.locator('.bp-profile-stats').innerText(),/4.867/);
   assert.match(await page.locator('.bp-profile-stats').innerText(),/6.500/);
+  assert.match(await page.locator('.bp-profile-stats>div').first().innerText(),/Máximo/);
+  assert.equal(await page.locator('.bp-profile-chart').count(),0);
+  assert.equal(await page.locator('[role="meter"]').getAttribute('aria-valuenow'),'6500');
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
   await page.locator('.bp-profile').scrollIntoViewIfNeeded();
   await page.screenshot({path:'artifacts/battle-pass/390-profile.png',fullPage:true});
+  await page.goto(base+'/battle-pass');
+  await page.waitForFunction(()=>!document.querySelector('#connectBtn').disabled);
+  await page.getByRole('button',{name:'Conectar Battle Pass',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelector('#launchCount').textContent==='1');
+  await page.emulateMedia({reducedMotion:'no-preference'});
+  for(const [sp,tone,counter] of [[11000,'green',2],[12000,'orange',3],[15000,'red',4],[20000,'red',5]]) {
+    await page.evaluate(([sp,counter])=>window.__launch(sp,counter),[sp,counter]);
+    await page.locator('.bp-slot-digit').first().waitFor();
+    assert.equal(await page.locator('#lastSp').getAttribute('data-power-tone'),tone);
+    await page.waitForFunction(sp=>document.querySelector('#lastSp').textContent===sp.toLocaleString('pt-BR') && !document.querySelector('.bp-slot-digit'),sp);
+  }
+  await page.evaluate(()=>window.__launch(20000,6));
+  await page.locator('.bp-slot-digit').first().waitFor();
+  await page.waitForFunction(()=>!document.querySelector('.bp-slot-digit'));
+  await page.waitForFunction(()=>document.querySelector('.bp-page').dataset.sync==='saved');
+  await page.evaluate(async()=>{const {renderLaunchChart}=await import('/js/battle-pass/chart.mjs');renderLaunchChart(document.querySelector('#chart'),Array.from({length:100},(_,i)=>4000+i*140+Math.sin(i/3)*1200));});
+  assert.equal(await page.locator('.bp-chart-point').count(),100);
+  assert.equal(await page.locator('.bp-chart-line').count(),1);
+  assert.equal(await page.locator('#chart figure').count(),0);
+  await page.screenshot({path:'artifacts/battle-pass/390-power-reveal.png',fullPage:true});
+  await page.goto(base+'/u/bp-radio');
+  await page.locator('[role="meter"][aria-valuenow="20000"]').waitFor();
+  assert.match(await page.locator('.bp-power-scale-head').innerText(),/Profissional/);
+  assert.equal(await page.locator('.bp-profile-max strong').getAttribute('data-power-tone'),'red');
+  await page.screenshot({path:'artifacts/battle-pass/390-profile-professional.png',fullPage:true});
+  await page.evaluate(()=>localStorage.setItem('qa-bx-known','1'));
+  await page.goto(base+'/battle-pass');
+  await page.waitForFunction(()=>document.querySelector('#connectBtn').dataset.connected==='true');
+  assert.equal(await page.evaluate(()=>window.__requests),0);
   await context.close();
   const ios=await browser.newContext({viewport:{width:390,height:844},userAgent:'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Safari/604.1'});
   await ios.addInitScript(()=>Object.defineProperty(navigator,'bluetooth',{configurable:true,value:undefined}));
   const iphone=await ios.newPage();await iphone.goto(base+'/battle-pass');
   await iphone.waitForFunction(()=>document.querySelector('#compatibility').textContent.includes('indisponível'));
-  assert.ok(await iphone.locator('#connectBtn').isDisabled());assert.ok(await iphone.locator('#iosHelp').isVisible());
+  assert.ok(await iphone.locator('#connectBtn').isDisabled());
+  await iphone.getByRole('button',{name:'Como conectar',exact:true}).click();assert.ok(await iphone.locator('#iosHelp').isVisible());
   await ios.close();
   console.log('PASS: 1440/390/360 layouts, guide images, isolated demo, click-only BLE, live capture, IndexedDB reload, offline retry and sharing control.');
 } finally {
