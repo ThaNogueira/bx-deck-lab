@@ -77,6 +77,9 @@ export async function missionState(userId,now=new Date()) {
     collection:collection.map(c=>({cadence:c.cadence,count:c._sum.insignias??0})),rewards:unread.map(rewardDto),
     periods:periods.map(p=>{
       const saved=stored.find(s=>s.cadence===p.cadence && s.period===p.key),metrics={count:saved?.count??0,sets:saved?.sets??0,days:parse(saved?.daysJson??'[]').length};
-      return {...p,missions:MISSION_RULES.filter(m=>m.cadence===p.cadence).map(m=>({...m,progress:Math.min(m.target,metrics[m.metric]),done:earned.some(e=>e.missionKey===m.id && e.cadence===p.cadence && e.period===p.key)}))};
+      return {...p,missions:MISSION_RULES.filter(m=>m.cadence===p.cadence).map(m=>{
+        const done=earned.some(e=>e.missionKey===m.id && e.cadence===p.cadence && e.period===p.key);
+        return {...m,progress:done?m.target:Math.min(m.target,metrics[m.metric]),done};
+      })};
     })};
 }

@@ -5,6 +5,7 @@ Implementadas na aba **Missões**, dentro de `/battle-pass`. A correção de con
 ## Regras
 
 - Quatro missões diárias, quatro semanais e quatro mensais, com metas de lançamentos, dias ativos e regularidade.
+- Metas aumentadas em 10%, com arredondamento para cima na unidade de cada missão (lançamento, trio ou dia). XP e insígnias permanecem iguais; missões já concluídas conservam o crédito e aparecem completas.
 - Dia e mês seguem `America/Sao_Paulo`; a semana começa segunda-feira. O prazo aparece na aba.
 - Apenas lançamentos novos ao vivo, com horário conhecido, entram nas missões. Importações do histórico, demonstrações e registros duplicados não geram progresso nem recompensas. Não há recálculo retroativo dos lançamentos antigos do banco.
 - A fila offline preserva a data do lançamento. Registros ao vivo sincronizados até 35 dias depois entram no período original; datas futuras além da tolerância de cinco minutos são rejeitadas pela API. Dentro dessa tolerância, o calendário é limitado ao horário atual do servidor.
