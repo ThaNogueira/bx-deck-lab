@@ -26,6 +26,15 @@ test('real first launch and FIFO 50 after 55 launches; full checksum',()=>{
   assert.equal(entries[0].counter,6);assert.equal(entries.at(-1).counter,55);
   assert.ok(entries.every(r=>r.measuredAt===null && r.source==='history'));
 });
+test('battery uses the documented A0 byte as an estimate, including zero and full scale',()=>{
+  for(const [raw,percent] of [[0,0],[1,0],[127,50],[128,50],[218,85],[245,96],[255,100]]) {
+    const header=bytes(fixtures.attached);header[4]=raw;
+    const decoded=decodeHeader(header);
+    assert.deepEqual(decoded.battery,{raw,percent,estimated:true});
+    assert.equal(decoded.counter,29);assert.equal(decoded.state,'attached');
+  }
+  assert.throws(()=>decodeHeader(bytes('a03a0004ff')),/incompleto/);
+});
 test('fragmented and coalesced BLE notifications, sensor pages identify live capture',()=>{
   const received=[],invalid=[],decoder=new BattlePassProtocol({onEvent:e=>received.push(e),onInvalid:e=>invalid.push(e)});
   const payload=Buffer.from(fixtures.first.join(''),'hex');

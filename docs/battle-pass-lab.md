@@ -6,7 +6,7 @@ Não exige aplicativo próprio nem Bluetooth no servidor.
 
 ## Uso e interface
 
-- **Treinar:** tela direta nas abas, três indicadores compactos (Bluetooth, bateria indisponível e Bey encaixada), último SP, máximo, média, quantidade e evolução. Opções de conexão ficam num painel recolhido. O gráfico SVG liga todos os lançamentos da sessão, sem limitar aos 20 últimos. Não há cabeçalho promocional, confirmação constante de salvamento, contadores técnicos, diagnóstico ou rodapé na interface.
+- **Treinar:** tela direta nas abas, três indicadores compactos (Bluetooth, bateria estimada e Bey encaixada), último SP, máximo, média, quantidade e evolução. Opções de conexão ficam num painel recolhido. O gráfico SVG liga todos os lançamentos da sessão, sem limitar aos 20 últimos. Não há cabeçalho promocional, confirmação constante de salvamento, contadores técnicos, diagnóstico ou rodapé na interface.
 - **Registros:** média geral, recorde, quantidade e sessões pessoais. Sessões expansíveis, 10 por página, lançamentos de 30 em 30. Importações preservam `measuredAt = null`; o início da sessão indica a captura/importação, não a hora de lançamentos antigos.
 - **Ranking SP:** top 50 por recorde ou média, mínimo de 10 registros e participação opcional. Inclui apenas usuários ativos que habilitaram o compartilhamento. Não altera o elo. Dados de treino enviados pelo navegador, sem prova criptográfica; não representam resultado competitivo homologado. Suspensão/banimento existente remove o usuário da lista. Uma competição oficial exigirá moderação dos lançamentos e regras adicionais contra fraude.
 - **Como conectar:** instruções baseadas no manual Takara Tomy, imagens oficiais do BX-09, compatibilidade e solução de problemas.
@@ -45,15 +45,16 @@ Convidados podem capturar dados localmente, mas a sincronização requer entrar 
 - Write without response: `55c4f001-f8eb-11ec-b939-0242ac120002`.
 - Únicos comandos implementados: metadados `0x51` e histórico `0x74`. O comando destrutivo `0x75` não é implementado nem transmitido.
 - `A0`, 17 bytes: estado no byte 3; recorde SP no offset 7; contador no offset 9; endereço em 11–16, invertido. Inteiros de 16 bits little endian. `4` indica Bey encaixada e `0` estado pronto. Retirada sem incremento de contador é tratada como cancelamento.
+- Bateria estimada: offset 4 do `A0`, escala bruta de 0–255; conversão `round(byte × 100 / 255)` usada pelo decoder aberto do DiZZi. A interface mostra `Bateria` e `N%`, inclusive quando o byte vale zero. Clicar no indicador abre a explicação de que é uma estimativa sem calibração de carga restante, que pode oscilar. Atualiza ao receber metadados na conexão, no encaixe e no lançamento; desconexão, nova busca e demo limpam a leitura. Nenhum comando adicional é enviado.
 - `B0` a `B7`, 17 bytes cada: 1 tag e 16 bytes de dados. Após remover as tags, os primeiros 100 bytes guardam até 50 valores SP, do mais antigo ao mais recente; offsets 102/104/106 guardam recorde, contador e quantidade. O último byte, 127, é a soma dos 127 anteriores módulo 256. Tags não entram no checksum.
 - `70` a `73`: páginas de sensores. São preservadas no diagnóstico e identificam o fluxo ao vivo. Não há conversão validada para gráficos de aceleração ou RPM.
 - `A1`: sinal de reinicialização reconhecido, sem envio de comandos de reset.
 - Notificações fragmentadas e várias páginas em uma notificação são aceitas. Quadros incompletos, páginas fora de sequência, checksum inválido e valores vazios são descartados. A leitura pode ser repetida sem apagar o acessório.
-- Um lançamento é marcado ao vivo somente no fluxo com sensores e contador novo. Os demais registros são importados, com horário original desconhecido.
+- Um lançamento é marcado ao vivo com sensores e contador novo ou quando há avanço observado no contador A0, mesmo sem sensores. A primeira leitura e os demais registros antigos são importados, com horário original desconhecido.
 - Cada dispositivo é associado à conta usando SHA-256 do identificador reportado. O ID de navegador é apenas metadado local; não serve como chave entre navegadores.
 - A época local distingue rollover do contador de 16 bits e regressões após reset. Um histórico que atravessa o rollover também é tratado na primeira conexão. Ausência prolongada, múltiplos rollovers ou reset externo não documentado ainda podem criar ambiguidades e precisam de validação física. Um conflito não sobrescreve registros automaticamente.
 
-O indicador de bateria mostra `—`: o significado e a escala do byte sugerido por engenharia reversa não estão validados. Não se apresenta uma porcentagem inventada. SP não é declarado como RPM. O recorde do acessório pode ser maior que o recorde registrado no Lab porque o dispositivo só preserva os últimos 50 SP individuais; os dados técnicos continuam no protocolo, sem ocupar a tela de treino.
+O indicador de bateria apresenta uma estimativa do nível bruto, não uma medição calibrada de carga restante. A engenharia reversa identifica o byte que diminui com o uso, mas registra oscilações entre repouso e lançamento; o DiZZi o normaliza linearmente, e BeyGear/Bey Power Meter também descrevem suas leituras como estimadas. A fórmula não prevê autonomia nem foi calibrada por esta implementação com pilhas físicas em diferentes estados. Sem A0 válido, aparece `—`; não se reutiliza o valor de outra conexão. SP não é declarado como RPM. O recorde do acessório pode ser maior que o recorde registrado no Lab porque o dispositivo só preserva os últimos 50 SP individuais; os dados técnicos continuam no protocolo, sem ocupar a tela de treino.
 
 ## Banco e API
 
@@ -117,6 +118,8 @@ Capturas de bancada e discrepâncias de checksum/contador permitem refinar o pro
 
 - Engenharia reversa: https://blog.simone.computer/reverse-beyblade-launch-tracker
 - DiZZi (MIT), commit `ea18b7b3e5b18a00e2557537acfcf8753b0d5c33`: https://github.com/syxanash/DiZZi
+- Estimativa de bateria no decoder do DiZZi: https://github.com/syxanash/DiZZi/blob/main/backend/decoder.js
+- Leituras descritas como estimativas pelos desenvolvedores: https://beygear.app/bey-battle-pass/ e https://note.com/keikeiplaygames/n/nf168dbf97f88?hl=en
 - Arquivos de protocolo: `backend/decoder.js` e `backend/scanner.js`. Aviso MIT preservado em `public/battle-pass/THIRD-PARTY.txt`.
 - Referência web: https://battlebey.com/en/battlespin
 - Serviço GATT confirmado como constante usada em `optionalServices`/`getPrimaryService` no bundle público consultado em 19/11/2026: https://battlebey.com/_next/static/chunks/app/%5Blocale%5D/battlespin/page-3456d4449cc1f9d1.js . Nenhum layout ou código de implementação proprietário foi copiado.

@@ -21,6 +21,7 @@ export function decodeHeader(bytes) {
   if (bytes.length!==17 || bytes[0]!==0xa0) throw new Error('Cabeçalho incompleto.');
   return {
     type:'metadata',counter:u16(bytes,9),best:u16(bytes,7),
+    battery:{raw:bytes[4],percent:Math.round(bytes[4]*100/255),estimated:true},
     state:bytes[3]===4?'attached':bytes[3]===0?'ready':'unknown',
     address:Array.from(bytes.slice(11,17)).reverse().map(b=>b.toString(16).padStart(2,'0')).join(''),
   };

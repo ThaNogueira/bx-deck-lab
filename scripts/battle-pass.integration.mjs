@@ -119,6 +119,7 @@ try {
     window.__requests=0;window.__writes=[];
     window.__attach=()=>emit(fixture[0].slice(0,6)+'04'+fixture[0].slice(8));
     window.__detach=()=>emit(fixture[0]);
+    window.__battery=raw=>{const header=bytes(fixture[0]);header[4]=raw;emit([...header].map(b=>b.toString(16).padStart(2,'0')).join(''));};
     window.__beginLaunch=()=>{const header=bytes(fixture[0]);new DataView(header.buffer).setUint16(9,2,true);emit([...header].map(b=>b.toString(16).padStart(2,'0')).join(''));};
     Object.defineProperty(navigator,'bluetooth',{configurable:true,value:{async getDevices(){return localStorage.getItem('qa-bx-known')==='1'?[device]:[];},async requestDevice(){window.__requests++;return device;}}});
     window.__launch=(sp=6500,counter=2,sensors=true)=>{
@@ -156,7 +157,18 @@ try {
   assert.equal(await page.locator('#connectionBadge').innerText(),'Conectado');
   assert.equal(await page.locator('#connectBtn').getAttribute('aria-expanded'),'false');
   assert.ok(await page.locator('#disconnectBtn').isHidden());
-  assert.equal(await page.locator('#batteryState b').innerText(),'—');
+  assert.equal(await page.locator('#batteryState b').innerText(),'100%');
+  await page.evaluate(()=>window.__battery(218));
+  assert.equal(await page.locator('#batteryState b').innerText(),'85%');
+  assert.match(await page.locator('#batteryState').getAttribute('aria-label'),/Bateria: 85/);
+  assert.doesNotMatch(await page.locator('#batteryState').innerText(),/estimad|≈/);
+  await page.locator('#batteryState').click();
+  await page.getByRole('dialog',{name:'Sobre a bateria'}).waitFor();
+  assert.match(await page.getByRole('dialog',{name:'Sobre a bateria'}).innerText(),/estimativa/);
+  await page.getByRole('button',{name:'Fechar detalhes da bateria'}).click();
+  assert.ok(await page.getByRole('dialog',{name:'Sobre a bateria'}).isHidden());
+  await page.evaluate(()=>window.__battery(0));
+  assert.equal(await page.locator('#batteryState b').innerText(),'0%');
   for(const width of [390,360,1440]) {
     await page.setViewportSize({width,height:1000});
     const geometry=await page.evaluate(()=>({
@@ -177,6 +189,7 @@ try {
   assert.equal(await page.locator('#connectBtn').getAttribute('aria-expanded'),'false');
   await page.evaluate(()=>window.__attach());
   await page.waitForFunction(()=>document.querySelector('#beyState').textContent==='Bey encaixada');
+  assert.equal(await page.locator('#batteryState b').innerText(),'100%');
   await page.evaluate(()=>window.__detach());
   await page.waitForFunction(()=>document.querySelector('#beyState').textContent==='Sem Bey encaixada');
   assert.equal(await page.evaluate(()=>window.__requests),1);
@@ -332,6 +345,9 @@ try {
   await training.waitForFunction(()=>document.querySelector('.mm-toast')?.textContent.includes('Aquecimento'));
   assert.ok(await training.locator('[data-view="guide"]').isVisible());
   assert.equal((await api('/api/battle-pass/missions',{who:1})).data.totalXp,380);
+  await training.getByRole('button',{name:'Opções do Battle Pass conectado'}).click();
+  await training.locator('#disconnectBtn').click();
+  assert.equal(await training.locator('#batteryState b').innerText(),'—');
   assert.deepEqual(missionErrors,[]);
   await missionContext.close();
   console.log('PASS: achievements in Training without visiting Missions, sensor-less launches in every tab, SP notices, no tab switches, duplicates and daily/weekly/monthly progress.');
@@ -357,6 +373,7 @@ try {
   await iphone.getByRole('button',{name:'Conectar Battle Pass',exact:true}).click();
   await iphone.waitForFunction(()=>document.querySelector('#connectBtn').dataset.connected==='true');
   await iphone.waitForFunction(()=>document.querySelector('#lastSp').textContent==='3.234');
+  assert.equal(await iphone.locator('#batteryState b').innerText(),'100%');
   assert.equal(await iphone.evaluate(()=>window.__iosRequests),1);
   await ios.close();
   console.log('PASS: 1440/390/360 layouts, guide images, isolated demo, click-only BLE, live capture, IndexedDB reload, offline retry and sharing control.');

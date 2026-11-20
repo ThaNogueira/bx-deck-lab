@@ -23,6 +23,11 @@ let initializationFailed=false;
 BX.renderTopbar('/battle-pass');
 
 function notice(message='') { $('notice').textContent=message;$('notice').hidden=!message; }
+function batteryState(battery) {
+  const value=battery?.percent,known=Number.isInteger(value) && value>=0 && value<=100;
+  $('batteryState').querySelector('b').textContent=known?value+'%':'—';
+  $('batteryState').setAttribute('aria-label',known?'Bateria: '+value+' por cento. Abrir detalhes.':'Bateria: leitura indisponível. Abrir detalhes.');
+}
 function enqueue(action) {
   events=events.then(action).catch(error=>notice(error.message));
   return events;
@@ -51,6 +56,7 @@ function connection(state) {
   $('connectBtn').disabled=false;
   $('disconnectBtn').hidden=state!=='connected';
   $('readBtn').hidden=state!=='connected';
+  if(state!=='connected') batteryState(null);
   if(changed) connectionPanel(false);
 }
 const protocol=new BattlePassProtocol({
@@ -58,6 +64,7 @@ const protocol=new BattlePassProtocol({
   onEvent:event=>{
     const context=current;
     if(context && !demo && event.type==='metadata') {
+      batteryState(event.battery);
       if(context.observedCounter!==undefined && event.counter!==context.observedCounter && event.state==='ready') spinner.launch(context.id+':'+event.counter);
       context.observedCounter=event.counter;
     }
@@ -88,6 +95,7 @@ const transport=new BattlePassTransport({
   },
 });
 const cursor=context=>({counter:context.tracker.counter,epoch:context.tracker.epoch});
+$('batteryState').onclick=()=>$('batteryHelp').showModal();
 
 async function receive(event,context) {
   if(event.type==='metadata') {
