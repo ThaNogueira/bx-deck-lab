@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg">
+ <symbol id="daily" viewBox="0 0 64 64"><path d="M32 4 55 18v28L32 60 9 46V18Z" fill="currentColor" fill-opacity=".12" stroke="currentColor" stroke-width="3"/><path d="m36 14-16 21h12l-4 15 17-23H33Z" fill="currentColor"/></symbol>
+ <symbol id="weekly" viewBox="0 0 64 64"><path d="M32 4 55 18v28L32 60 9 46V18Z" fill="currentColor" fill-opacity=".12" stroke="currentColor" stroke-width="3"/><circle cx="32" cy="32" r="16" fill="none" stroke="currentColor" stroke-width="3"/><path d="m32 19 9 13-9 13-9-13Z" fill="currentColor"/><path d="m12 48 40-32" stroke="currentColor" stroke-width="3"/></symbol>
+ <symbol id="monthly" viewBox="0 0 64 64"><path d="M32 4 55 18v28L32 60 9 46V18Z" fill="currentColor" fill-opacity=".12" stroke="currentColor" stroke-width="3"/><path d="m32 15 5 10 12 2-9 9 2 12-10-6-10 6 2-12-9-9 12-2Z" fill="currentColor"/></symbol>
+ <symbol id="level" viewBox="0 0 64 64"><path d="M32 4 55 18v28L32 60 9 46V18Z" fill="currentColor" fill-opacity=".1" stroke="currentColor" stroke-width="3"/><path d="m18 39 14-17 14 17M24 46l8-10 8 10" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+</svg>

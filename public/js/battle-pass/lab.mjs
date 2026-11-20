@@ -1,6 +1,7 @@
 import { BattlePassProtocol } from './protocol.mjs';
 import { renderLaunchChart } from './chart.mjs';
 import { BattlePassSpinner } from './spinner.mjs';
+import { BattlePassMissions } from './missions.mjs';
 import { BattlePassTransport,compatibility } from './transport.mjs';
 import { BattlePassSession } from './session.mjs';
 import { BattlePassStore,BattlePassSync } from './sync.mjs';
@@ -11,6 +12,7 @@ const date = value=>new Date(value).toLocaleString('pt-BR',{day:'2-digit',month:
 const average = values=>values.length?values.reduce((a,b)=>a+b,0)/values.length:0;
 let support = compatibility();
 const spinner=new BattlePassSpinner($('bladeBtn'));
+const missions=new BattlePassMissions($('missionsView'),request);
 let account,store,sync,current,demo=false,demoRows=[],rows=[],personalBest=0,page=1,pages=1,visibleRows=20;
 let savedRefresh,events=Promise.resolve(),demoTimer,initialized=false;
 let connectionState='disconnected';
@@ -219,6 +221,7 @@ document.querySelectorAll('[data-tab]').forEach(button=>button.onclick=()=>{
   document.querySelectorAll('[data-view]').forEach(view=>view.hidden=view.dataset.view!==button.dataset.tab);
   if(button.dataset.tab==='records') savedSessions().catch(error=>notice(error.message));
   if(button.dataset.tab==='ranking') ranking();
+  if(button.dataset.tab==='missions') missions.load();
 });
 $('connectBtn').onclick=()=>{
   if(connectionState==='searching' || connectionState==='connecting') {transport.disconnect();return;}
@@ -312,11 +315,12 @@ connection('disconnected');
 
 try {
   account=await BX.me();
+  missions.initialize(account);
   spinner.initialize(account).catch(()=>{ $('bladeBtn').onclick=()=>spinner.initialize(account).then(()=>spinner.picker()).catch(()=>notice('Não foi possível carregar as Blades. Tente novamente.')); });
   let owner=account?.id;
   if(!owner) {owner=localStorage.getItem('bx-battle-pass-guest')||'guest-'+crypto.randomUUID();localStorage.setItem('bx-battle-pass-guest',owner);}
   store=new BattlePassStore(owner);await store.read();
-  sync=new BattlePassSync(store,{request,authenticated:!!account,onStatus:(state,detail)=>{
+  sync=new BattlePassSync(store,{request,authenticated:!!account,onProgress:data=>missions.receive(data),onStatus:(state,detail)=>{
     document.querySelector('.bp-page').dataset.sync=state;
     if(state==='pending' && !demo) {syncNotice=true;notice('Sem conexão. Seus lançamentos estão salvos neste aparelho e serão sincronizados.');}
     if(state==='saved' && syncNotice) {syncNotice=false;notice();}

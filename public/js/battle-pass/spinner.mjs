@@ -56,8 +56,7 @@ export class BattlePassSpinner {
     const index=await BX.partsIndex();
     this.index=index;this.parts=index.list.filter(p=>p.kind==='BLADE');
     let saved;try {saved=localStorage.getItem('bx-battle-pass-blade:'+this.owner);}catch{}
-    const selected=this.parts.find(p=>p.id===saved)??this.parts.find(p=>p.id===account?.favoritePartId)??
-      this.parts.find(p=>p.img && p.slug==='dransword-2-0')??this.parts.find(p=>p.img && p.slug==='sword-dran')??this.parts.find(p=>p.img)??this.parts[0];
+    const selected=this.parts.find(p=>p.id===saved)??this.parts.find(p=>p.id===account?.favoritePartId);
     if(selected) this.select(selected,false);
     this.button.onclick=()=>this.picker();
   }
@@ -68,7 +67,7 @@ export class BattlePassSpinner {
     this.button.dataset.bladeId=part.id;
     this.button.title=part.display||part.name;
     this.button.setAttribute('aria-label','Escolher Blade: '+(part.display||part.name));
-    const image=this.rotor.querySelector('img'),fallback=this.rotor.querySelector('svg');
+    const image=this.rotor.querySelector('img'),fallback=this.rotor.querySelector('.bp-mini-empty');
     image.hidden=!part.img;fallback.hidden=!!part.img;
     image.referrerPolicy='no-referrer';
     image.onerror=()=>{image.hidden=true;fallback.hidden=false;};

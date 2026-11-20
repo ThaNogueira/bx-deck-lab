@@ -8,11 +8,12 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'">
   <link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/design-system.css"><link rel="stylesheet" href="/ui/battle-pass.css">
   <link rel="stylesheet" href="/ui/battle-pass-power.css">
+  <link rel="stylesheet" href="/ui/battle-pass-missions.css">
 </head>
 <body>
   <div class="noise"></div><header id="topbar"></header>
   <main class="bp-page" aria-label="Battle Pass Lab">
-    <nav class="bp-tabs" aria-label="Battle Pass Lab"><button aria-current="page" data-tab="training">Treinar</button><button data-tab="records">Registros</button><button data-tab="ranking">Ranking SP</button><button data-tab="guide">Como conectar</button></nav>
+    <nav class="bp-tabs" aria-label="Battle Pass Lab"><button aria-current="page" data-tab="training">Treinar</button><button data-tab="missions">Missões</button><button data-tab="records">Registros</button><button data-tab="ranking">Ranking SP</button><button data-tab="guide">Como conectar</button></nav>
     <div class="bp-connection">
     <div class="bp-status-controls" role="group" aria-label="Estado do Battle Pass">
       <button type="button" id="connectBtn" class="bp-status-control" aria-label="Conectar Battle Pass" aria-controls="connectionPanel" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10-5 4V3l5 4L7 17"/></svg><span id="connectionBadge" aria-live="polite">Conectar</span><svg class="bp-connection-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></button>
@@ -27,7 +28,7 @@
     <div id="notice" class="bp-notice" role="status" hidden></div>
     <div data-view="training">
     <section class="bp-dashboard" aria-label="Estatísticas dos lançamentos">
-      <article class="bp-latest bp-metal"><span id="powerLabel">ÚLTIMO LANÇAMENTO</span><div class="bp-launch-layout"><div class="bp-power-value"><output id="lastSp" class="bp-power-number" aria-live="polite">—</output><b>SP</b></div><button type="button" class="bp-mini-bey" id="bladeBtn" aria-label="Escolher Blade" title="Escolher Blade"><span class="bp-mini-aura" aria-hidden="true"></span><span class="bp-mini-shadow" aria-hidden="true"></span><span class="bp-mini-body" aria-hidden="true"><span class="bp-mini-rotor"><img alt="" hidden decoding="async"><svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="3"><path d="m50 5 15 12 20 2 0 20 11 17-17 12-5 21-21-3-19 9-10-18L5 65l10-19-2-21 21-3Z"/><circle cx="50" cy="50" r="25"/><circle cx="50" cy="50" r="10"/></svg></span></span></button></div><p id="record" role="status"></p></article>
+      <article class="bp-latest bp-metal"><span id="powerLabel">ÚLTIMO LANÇAMENTO</span><div class="bp-launch-layout"><div class="bp-power-value"><output id="lastSp" class="bp-power-number" aria-live="polite">—</output><b>SP</b></div><button type="button" class="bp-mini-bey" id="bladeBtn" aria-label="Escolher Blade" title="Escolher Blade"><span class="bp-mini-aura" aria-hidden="true"></span><span class="bp-mini-shadow" aria-hidden="true"></span><span class="bp-mini-body" aria-hidden="true"><span class="bp-mini-rotor"><img alt="" hidden decoding="async"><span class="bp-mini-empty"></span></span></span></button></div><p id="record" role="status"></p></article>
       <div class="bp-stats">
         <article class="bp-metal"><span>Máximo pessoal</span><strong id="bestSp" class="bp-power-number">—</strong><small>SP</small></article>
         <article class="bp-metal"><span>Média da sessão</span><strong id="averageSp" class="bp-power-number">—</strong><small>SP</small></article>
@@ -38,6 +39,7 @@
     <section class="bp-panel"><div class="bp-section-head"><h2>Evolução da sessão</h2><span id="chartSummary"></span></div><div id="chart" class="bp-chart"><p>Nenhum lançamento nesta sessão.</p></div></section>
     <section class="bp-panel"><div class="bp-section-head"><h2>Esta sessão</h2></div><p class="bp-note" id="sessionEmpty">Conecte o Battle Pass para começar.</p><ol id="currentHistory" class="bp-history"></ol><button class="btn" id="moreCurrent" hidden>Mostrar mais lançamentos</button></section>
     </div>
+    <section data-view="missions" id="missionsView" hidden aria-label="Missões de treino"></section>
     <div data-view="records" hidden>
     <section class="bp-panel bp-lifetime"><div class="bp-section-head"><h2>Seu histórico de treino</h2><a href="/perfil">Meu perfil</a></div><div id="lifetimeStats" class="bp-insights"></div><label class="bp-sharing"><input type="checkbox" id="publicStats" disabled><span>Mostrar minhas estatísticas no perfil e no ranking SP<small>Ranking de treino, com pelo menos 10 registros. Sem efeito no elo.</small></span></label></section>
     <section class="bp-panel"><div class="bp-section-head"><h2>Suas sessões</h2><span id="savedSummary"></span></div><div id="accountState"></div><div id="savedHistory"></div><nav class="bp-pagination" aria-label="Páginas das sessões"><button class="btn" id="previousPage" hidden>Anterior</button><span id="pageNumber"></span><button class="btn" id="nextPage" hidden>Próxima</button></nav></section>

@@ -86,6 +86,8 @@ try {
     const context=await browser.newContext({viewport:{width,height:1000},reducedMotion:'reduce'});
     const page=await context.newPage(),errors=[];page.on('pageerror',error=>errors.push(error.message));
     await page.goto(base+'/battle-pass');
+    assert.ok(await page.locator('.bp-mini-empty').isVisible());
+    assert.equal(await page.locator('.bp-mini-rotor svg').count(),0);
     assert.ok(await page.locator('#iosHelp').isHidden());
     assert.ok(await page.locator('#iosGuide').isHidden());
     assert.equal(await page.locator('.bp-heading, #diagnostic, .bp-footnote, #saveState, .bp-device-data').count(),0);
@@ -132,6 +134,7 @@ try {
   const page=await context.newPage();await page.goto(base+'/battle-pass');
   await page.waitForFunction(()=>!document.querySelector('#connectBtn').disabled);
   await page.waitForFunction(id=>document.querySelector('#bladeBtn').dataset.bladeId===id,blades[1].id);
+  assert.ok(await page.locator('.bp-mini-empty').isHidden());
   await page.locator('#bladeBtn').click();
   await page.getByRole('dialog',{name:'Escolher Blade',exact:true}).waitFor();
   assert.equal(await page.locator('.bp-picker-grid>button').count(),2);
@@ -141,6 +144,7 @@ try {
   assert.equal(await page.locator('#bladeBtn').getAttribute('data-blade-id'),blades[0].id);
   await page.waitForFunction(()=>document.querySelector('#bladeBtn img').naturalWidth>0);
   assert.equal(await page.locator('#bladeBtn img').getAttribute('referrerpolicy'),'no-referrer');
+  assert.ok(await page.locator('.bp-mini-empty').isHidden());
   assert.equal(await page.locator('#bladeBtn').getAttribute('data-spinning'),'false');
   assert.equal(await page.evaluate(()=>window.__requests),0);
   await page.getByRole('button',{name:'Conectar Battle Pass',exact:true}).click();
@@ -189,6 +193,23 @@ try {
   await page.waitForFunction(()=>document.querySelector('.bp-page').dataset.sync==='saved');
   const records=await prisma.battlePassLaunch.findMany({where:{userId:users[2].id},orderBy:{counter:'asc'}});
   assert.equal(records.length,2);assert.equal(records[1].source,'live');assert.ok(records[1].measuredAt);
+  await page.getByRole('button',{name:'Missões',exact:true}).click();
+  await page.locator('.mm-progress').waitFor();
+  assert.equal(await page.locator('.mm-mission').count(),4);
+  assert.equal(await page.locator('[data-mission-id="d-first"].is-complete').count(),1);
+  assert.match(await page.locator('.mm-xp-label').innerText(),/80 \/ 100 XP/);
+  await page.getByRole('button',{name:'Semanais',exact:true}).click();
+  assert.equal(await page.locator('[data-mission-id^="w-"]').count(),4);
+  await page.getByRole('button',{name:'Mensais',exact:true}).click();
+  assert.equal(await page.locator('[data-mission-id^="m-"]').count(),4);
+  await page.getByRole('button',{name:'Som de conquistas'}).click();
+  assert.equal(await page.getByRole('button',{name:'Som de conquistas'}).getAttribute('aria-pressed'),'false');
+  for(const width of [390,360,1440]) {
+    await page.setViewportSize({width,height:1000});
+    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+    await page.screenshot({path:`artifacts/battle-pass/${width}-missions.png`,fullPage:true});
+  }
+  await page.setViewportSize({width:390,height:1000});
   await page.getByRole('button',{name:'Registros',exact:true}).click();
   await page.waitForFunction(()=>!document.querySelector('#publicStats').disabled);
   await page.getByRole('checkbox').check();

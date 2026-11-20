@@ -46,6 +46,9 @@ model User {
   battlePassDevices BattlePassDevice[]
   battlePassSessions BattlePassTraining[]
   battlePassLaunches BattlePassLaunch[]
+  battlePassProgress BattlePassProgress?
+  battlePassMissionPeriods BattlePassMissionPeriod[]
+  battlePassMissionRewards BattlePassMissionReward[]
   collection     CollectionItem[]
   combos         Combo[]
   tournaments    Tournament[]      @relation("organizer")
@@ -125,6 +128,43 @@ model BattlePassLaunch {
   @@unique([userId, deviceId, epoch, counter])
   @@index([userId, syncedAt])
   @@index([sessionId])
+}
+
+model BattlePassProgress {
+  userId String @id
+  totalXp Int @default(0)
+  insignias Int @default(0)
+  missionsCompleted Int @default(0)
+  updatedAt DateTime @updatedAt
+  user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+}
+
+model BattlePassMissionPeriod {
+  id String @id @default(cuid())
+  userId String
+  cadence String
+  period String
+  count Int @default(0)
+  sets Int @default(0)
+  daysJson String @default("[]")
+  samplesJson String @default("[]")
+  user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+  @@unique([userId,cadence,period])
+}
+
+model BattlePassMissionReward {
+  id String @id @default(cuid())
+  userId String
+  cadence String
+  period String
+  missionKey String
+  xp Int
+  insignias Int
+  awardedAt DateTime @default(now())
+  announcedAt DateTime?
+  user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+  @@unique([userId,cadence,period,missionKey])
+  @@index([userId,announcedAt])
 }
 
 model AuthSession {

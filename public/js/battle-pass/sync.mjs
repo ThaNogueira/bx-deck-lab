@@ -29,8 +29,8 @@ export class BattlePassStore {
 }
 
 export class BattlePassSync {
-  constructor(store,{request,authenticated,onStatus=()=>{}}) {
-    Object.assign(this,{store,request,authenticated,onStatus});
+  constructor(store,{request,authenticated,onStatus=()=>{},onProgress=()=>{}}) {
+    Object.assign(this,{store,request,authenticated,onStatus,onProgress});
     this.retry = 0;
   }
 
@@ -75,10 +75,11 @@ export class BattlePassSync {
         if (!pending.length && !session.dirty) continue;
         const rows = pending.slice(0,100);
         this.onStatus('syncing');
-        await this.request('/api/battle-pass/sync',{method:'POST',body:{
+        const result=await this.request('/api/battle-pass/sync',{method:'POST',body:{
           accountId:this.store.owner,
           device:session.device,session:{id:session.id,startedAt:session.startedAt,endedAt:session.endedAt},launches:rows,
         }});
+        if(result?.progression) {try{this.onProgress(result.progression);}catch{/* UI feedback does not invalidate an accepted sync. */}}
         await this.store.change(saved=>{
           const current = saved.sessions.find(s=>s.id===session.id);
           for (const row of current.launches) if (rows.some(sent=>sent.key===row.key)) row.synced = true;

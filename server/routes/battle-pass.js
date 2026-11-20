@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { prisma } from '../db.js';
 import { requireUser } from '../auth.js';
 import { battlePassStats } from '../battle-pass-stats.js';
+import { advanceMissions,missionState } from '../battle-pass-missions.js';
 
 const router = Router();
 const ah = handler => (req,res,next)=>handler(req,res).catch(next);
@@ -40,6 +41,13 @@ router.patch('/api/battle-pass/preferences',ah(async(req,res)=>{
   if (typeof req.body.public!=='boolean') return res.status(422).json({error:'Preferência inválida.'});
   await prisma.user.update({where:{id:req.user.id},data:{battlePassPublic:req.body.public}});
   res.json({public:req.body.public});
+}));
+
+router.get('/api/battle-pass/missions',ah(async(req,res)=>res.json(await missionState(req.user.id))));
+router.post('/api/battle-pass/missions/ack',ah(async(req,res)=>{
+  if(!Array.isArray(req.body.ids) || req.body.ids.length>100 || req.body.ids.some(id=>typeof id!=='string' || id.length>80)) return res.status(422).json({error:'Conquistas inválidas.'});
+  await prisma.battlePassMissionReward.updateMany({where:{userId:req.user.id,id:{in:req.body.ids},announcedAt:null},data:{announcedAt:new Date()}});
+  res.json({ok:true});
 }));
 
 router.get('/api/battle-pass',ah(async(req,res)=>{
@@ -100,7 +108,7 @@ router.post('/api/battle-pass/sync',ah(async(req,res)=>{
     const training = await tx.battlePassTraining.upsert({where:{id:session.id},
       create:{id:session.id,userId,deviceId:dev.id,startedAt:start,endedAt:end},
       update:{...(end?{endedAt:end}:{})}});
-    let inserted = 0;
+    let inserted = 0;const fresh=[];
     for (const row of launches) {
       const identity = {userId,deviceId:dev.id,epoch:row.epoch,counter:row.counter};
       const saved = await tx.battlePassLaunch.findUnique({where:{userId_deviceId_epoch_counter:identity}});
@@ -108,8 +116,8 @@ router.post('/api/battle-pass/sync',ah(async(req,res)=>{
         if (saved.sp!==row.sp) throw Object.assign(new Error('O contador já possui outro SP. Reconecte e leia o histórico.'),{battlePassConflict:true});
         continue;
       }
-      await tx.battlePassLaunch.create({data:{...identity,sessionId:training.id,sp:row.sp,source:row.source,
-        measuredAt:row.measuredAt ? new Date(row.measuredAt) : null,comboJson:row.combo?JSON.stringify({label:row.combo}):null}});
+      fresh.push(await tx.battlePassLaunch.create({data:{...identity,sessionId:training.id,sp:row.sp,source:row.source,
+        measuredAt:row.measuredAt ? new Date(row.measuredAt) : null,comboJson:row.combo?JSON.stringify({label:row.combo}):null}}));
       inserted++;
     }
     const stats = await tx.battlePassLaunch.aggregate({where:{sessionId:training.id},_count:{_all:true},_avg:{sp:true},_max:{sp:true}});
@@ -117,7 +125,8 @@ router.post('/api/battle-pass/sync',ah(async(req,res)=>{
       launchCount:stats._count._all,averageSp:stats._avg.sp??0,bestSp:stats._max.sp??0}});
     const latest = await tx.battlePassLaunch.findFirst({where:{userId,deviceId:dev.id},orderBy:[{epoch:'desc'},{counter:'desc'}]});
     if (latest) await tx.battlePassDevice.update({where:{id:dev.id},data:{lastCounter:latest.counter,epoch:latest.epoch}});
-    return {inserted};
+    const progression=await advanceMissions(tx,userId,fresh);
+    return {inserted,progression};
   })).catch(error=>{
     if (error.battlePassConflict) return {conflict:error.message};
     throw error;
