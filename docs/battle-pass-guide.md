@@ -6,18 +6,34 @@ deslize, setas e teclado. O botão Conectar chama a mesma ação da página,
 diretamente no toque, para preservar a autorização Bluetooth do navegador.
 
 As indicações do botão e LED sobre as fotos são elementos SVG. A primeira
-ilustração é uma recriação colorida, não uma fotografia oficial. Os demais
-créditos e o manual de referência estão em `public/battle-pass/THIRD-PARTY.txt`.
+imagem combina a ilustração do lançador com a fotografia oficial da Dran Sword
+3-60F. A Bey não é gerada por IA: seu render original é exibido como uma camada
+SVG, com enquadramento e máscara suave apenas no fundo ao redor do produto.
+Formato, peças e emblema vêm diretamente da fotografia oficial.
 
-## Ilustração colorida
+## Arquivos e referências
 
-Arquivo final: `public/battle-pass/bx09-guide-remove-color.webp` (1200 × 800).
-Gerada com a ferramenta integrada de imagens; saída original 1536 × 1024.
-Exportada em WebP para reduzir o download no celular.
+- `public/battle-pass/bx09-guide-launcher.webp`: lançador ilustrado, sem Bey,
+  1200 × 800. Exportado em WebP para reduzir o download no celular.
+- `public/battle-pass/bx01-dransword-official.png`: fotografia oficial completa,
+  586 × 709, copiada sem alterações. O site enquadra só a Bey e preserva a
+  perspectiva da fotografia.
+- `public/js/battle-pass/connection-guide.mjs`: composição, máscara e indicações.
 
-Referências: painel 14, página 2 do manual BX-09 (posição do lançador e Bey
-retirada), `bx09-mounted.png` (cores do conjunto) e `bx09-product.png` (acessório).
+Fonte da Dran Sword 3-60F:
+https://beyblade.takaratomy.co.jp/beyblade-x/lineup/bx01.html
+
+Imagem original:
+https://beyblade.takaratomy.co.jp/beyblade-x/lineup/_image/BX01@1.png
+
+Demais créditos e manual em `public/battle-pass/THIRD-PARTY.txt`.
+
+## Limpeza da ilustração
+
+A ferramenta integrada de imagens removeu a Bey inventada da ilustração
+anterior. Nenhuma Bey foi sintetizada nessa correção; a substituta é o render
+oficial, composto pelo site. Saída original da limpeza: 1536 × 1024.
 
 Prompt usado:
 
-> Use case: sketch-to-render. Asset type: first picture of a short Bey Battle Pass BX-09 connection tutorial. Edit target: image 1 (the black-and-white manual drawing). Supporting color and physical product references: image 2 (launcher with accessory and blue Bey) and image 3 (close-up of the white/black BX-09 Battle Pass). Recreate image 1 as a clean full-color product illustration matching the soft, realistic product-photo style of images 2 and 3. Keep the same understandable 3/4 view: a matte black Beyblade X ripcord launcher with long black ripcord projecting toward upper left and pull handle at right, the white/silver BX-09 Battle Pass mounted on top, and one metallic silver/cobalt-blue Bey clearly detached directly below the launcher, separated by a small visible gap. The launcher must visibly be empty underneath, showing that the Bey has been removed before Bluetooth pairing. Match the actual white accessory with lime-yellow accents and black rectangular front button. Composition: centered in a landscape 3:2 frame, product occupies the central 70%, Bey below near x55% y74%, generous clean margins for UI labels, plain very pale cool gray #f4f4fa background, soft contact shadows, sharp readable edges. Remove all original manual labels, text, diagram inset, borders and arrows. No phones, hands, batteries, additional products, lights, scene, arrows or explanatory text. Faithful hardware shape, not an invented sci-fi launcher. Only remake this single tutorial picture in color.
+> Use case: precise-object-edit. Edit target: provided landscape BX-09 tutorial image. Remove ONLY the detached blue/silver Beyblade at the bottom center (and its contact shadow). Fill that vacated area with the same uniform pale cool gray background as around it. Preserve the complete launcher, ripcord, handle, Battle Pass accessory, printed details, perspective, position, scale, light, shadows and the 3:2 canvas exactly unchanged. Do not move or recreate the launcher. Do not put any replacement object in the blank area. No new Beyblade, no text, no arrows or borders. The vacated bottom center must be empty background because a genuine official product photograph will be composited there by the website.
