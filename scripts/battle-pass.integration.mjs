@@ -97,9 +97,27 @@ try {
     await page.screenshot({path:`artifacts/battle-pass/${width}-training.png`,fullPage:true});
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
     await page.getByRole('button',{name:'Como conectar',exact:true}).click();
-    await page.locator('.bp-official-image img').first().waitFor();
-    await page.evaluate(async()=>{await Promise.all([...document.querySelectorAll('.bp-official-image img')].map(img=>img.decode()));});
-    await page.screenshot({path:`artifacts/battle-pass/${width}-guide.png`,fullPage:true});
+    await page.locator('#connectionGuide').waitFor();
+    assert.equal(await page.locator('[data-guide-slide]').count(),4);
+    assert.doesNotMatch(await page.locator('#connectionGuide').innerText(),/pilhas|Ligue o Battle Pass/i);
+    await page.evaluate(async()=>{const urls=[...new Set([...document.querySelectorAll('#connectionGuide image')].map(img=>img.getAttribute('href')))];await Promise.all(urls.map(async url=>{const img=new Image();img.src=url;await img.decode();}));});
+    for(let step=1;step<=4;step++) {
+      await page.locator(`[data-guide-step="${step-1}"]`).click();
+      await page.waitForFunction(step=>{
+        const root=document.querySelector('#connectionGuide'),viewport=root.querySelector('.bp-guide-viewport');
+        const slide=root.querySelector(`[data-guide-slide="${step-1}"]`);
+        return root.dataset.step===String(step) && Math.abs(slide.getBoundingClientRect().left-viewport.getBoundingClientRect().left)<2;
+      },step);
+      assert.equal(await page.locator('[data-guide-slide][aria-hidden="false"]').count(),1);
+      assert.equal(await page.locator('[data-guide-previous]').isDisabled(),step===1);
+      assert.equal(await page.locator('[data-guide-next]').isDisabled(),step===4);
+      await page.screenshot({path:`artifacts/battle-pass/${width}-guide-${step}.png`});
+    }
+    await page.locator('.bp-guide-viewport').focus();await page.keyboard.press('ArrowLeft');
+    await page.waitForFunction(()=>document.querySelector('#connectionGuide').dataset.step==='3');
+    await page.locator('[data-guide-step="0"]').click();
+    await page.evaluate(()=>{const viewport=document.querySelector('.bp-guide-viewport');viewport.scrollLeft=viewport.clientWidth;});
+    await page.waitForFunction(()=>document.querySelector('#connectionGuide').dataset.step==='2');
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
     assert.deepEqual(errors,[]);
     assert.equal(await prisma.battlePassLaunch.count({where:{userId:users[2].id}}),0);
@@ -121,7 +139,7 @@ try {
     window.__detach=()=>emit(fixture[0]);
     window.__battery=raw=>{const header=bytes(fixture[0]);header[4]=raw;emit([...header].map(b=>b.toString(16).padStart(2,'0')).join(''));};
     window.__beginLaunch=()=>{const header=bytes(fixture[0]);new DataView(header.buffer).setUint16(9,2,true);emit([...header].map(b=>b.toString(16).padStart(2,'0')).join(''));};
-    Object.defineProperty(navigator,'bluetooth',{configurable:true,value:{async getDevices(){return localStorage.getItem('qa-bx-known')==='1'?[device]:[];},async requestDevice(){window.__requests++;return device;}}});
+    Object.defineProperty(navigator,'bluetooth',{configurable:true,value:{async getDevices(){return localStorage.getItem('qa-bx-known')==='1'?[device]:[];},async requestDevice(){window.__requests++;window.__activation=navigator.userActivation?.isActive;return device;}}});
     window.__launch=(sp=6500,counter=2,sensors=true)=>{
       const data=new Uint8Array(128),view=new DataView(data.buffer);
       view.setUint16(0,3234,true);view.setUint16(2,sp,true);view.setUint16(102,Math.max(3234,sp),true);view.setUint16(104,counter,true);view.setUint16(106,2,true);
@@ -149,11 +167,16 @@ try {
   assert.ok(await page.locator('.bp-mini-empty').isHidden());
   assert.equal(await page.locator('#bladeBtn').getAttribute('data-spinning'),'false');
   assert.equal(await page.evaluate(()=>window.__requests),0);
-  await page.getByRole('button',{name:'Conectar Battle Pass',exact:true}).click();
+  await page.locator('[data-tab="guide"]').click();
+  await page.locator('[data-guide-step="2"]').click();
+  await page.locator('[data-guide-connect]').click();
   await page.waitForFunction(()=>document.querySelector('#launchCount').textContent==='1');
   assert.deepEqual(await page.evaluate(()=>window.__writes),[81,116]);
   await page.waitForFunction(()=>document.querySelector('.bp-page').dataset.sync==='saved');
   assert.equal(await page.locator('#connectBtn').getAttribute('data-connected'),'true');
+  assert.equal(await page.locator('#connectionGuide').getAttribute('data-step'),'4');
+  assert.equal(await page.evaluate(()=>window.__activation),true);
+  await page.locator('[data-guide-train]').click();
   assert.equal(await page.locator('#connectionBadge').innerText(),'Conectado');
   assert.equal(await page.locator('#connectBtn').getAttribute('aria-expanded'),'false');
   assert.ok(await page.locator('#disconnectBtn').isHidden());

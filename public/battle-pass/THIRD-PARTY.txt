@@ -34,3 +34,13 @@ https://beyblade.takaratomy.co.jp/beyblade-x/lineup/_image/BX09_01_list.png
 Copyright TOMY / Homura Kawamoto, Hikaru Muno, Posuka Demizu, BBXProject.
 Source: https://beyblade.takaratomy.co.jp/beyblade-x/lineup/bx09.html
 Used as official accessory illustrations in the connection tutorial.
+
+Connection guide reference:
+https://www.takaratomy.co.jp/support/manual/items/4904810905240%20BX-09%20%E3%83%99%E3%82%A4%E3%83%90%E3%83%88%E3%83%AB%E3%83%91%E3%82%B9_%E5%8F%96%E6%89%B1%E8%AA%AC%E6%98%8E%E6%9B%B8.pdf
+Page 2, panel 14: launcher with the Bey removed.
+Copyright TOMY / BBXProject. The first tutorial picture is a full-color
+AI-generated instructional recreation based on this panel and the official
+product photographs, not an official photograph. See docs/battle-pass-guide.md
+for its creation prompt. The other product photographs are unchanged;
+Portuguese arrows, labels and LED animation are independent HTML/SVG overlays
+by BX Lab.

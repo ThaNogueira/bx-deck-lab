@@ -1,0 +1,34 @@
+const arrow=id=>`<defs><marker id="${id}" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0 0 8 4 0 8Z" fill="#087c9d"/></marker></defs>`;
+const label=(x,y,w,text)=>`<g class="bp-guide-label"><rect x="${x}" y="${y}" width="${w}" height="44" rx="14"/><text x="${x+w/2}" y="${y+29}" text-anchor="middle">${text}</text></g>`;
+const frame=(content,alt)=>`<svg viewBox="0 0 600 400" role="img" aria-label="${alt}">${content}</svg>`;
+const product=`<image href="/battle-pass/bx09-product.png" x="0" y="-145" width="600" height="726.4"/>`;
+const actionPhoto=`<svg x="154" y="0" width="247" height="400" viewBox="0 55 210 340" overflow="hidden"><image href="/battle-pass/bx09-mounted.png" width="375" height="454"/></svg>`;
+const slides=[
+  {title:'Retire a Bey.',body:'Deixe o lançador sem Bey.',art:frame(`${arrow('bp-remove-arrow')}<image href="/battle-pass/bx09-guide-remove-color.webp" width="600" height="400"/>${label(32,284,160,'Bey fora')}<path class="bp-guide-arrow" d="M195 306 227 306" marker-end="url(#bp-remove-arrow)"/><circle class="bp-guide-ring" cx="304" cy="309" r="73"/>`,'Ilustração colorida: Bey azul retirada, separada da parte de baixo do lançador.')},
+  {title:'Segure o botão por 1 segundo.',body:'Solte quando piscar verde e laranja.',art:frame(`${arrow('bp-pair-arrow')}<defs><linearGradient id="bp-guide-led-split"><stop offset="50%" stop-color="#29b961"/><stop offset="50%" stop-color="#f4a22a"/></linearGradient></defs>${product}<circle class="bp-guide-ring" cx="376" cy="207" r="27"/>${label(35,56,200,'Segure 1 s')}<path class="bp-guide-arrow" d="M192 100 271 100 343 187" marker-end="url(#bp-pair-arrow)"/>${label(325,55,244,'Verde ↔ laranja')}<path class="bp-guide-arrow" d="M450 102 429 143" marker-end="url(#bp-pair-arrow)"/><ellipse cx="424" cy="162" rx="13" ry="6" class="bp-guide-led"/>`,'Foto oficial: botão preto na frente e LED na janela estreita acima dele. Segure por um segundo; o LED alterna verde e laranja.')},
+  {title:'Toque em Conectar.',body:'Ative o Bluetooth. Escolha BEYBLADE_TOOL01.',connect:true,art:frame(`${arrow('bp-device-arrow')}${product}<g transform="translate(72 42)"><rect width="456" height="85" rx="17" fill="#102d40"/><path d="m27 22 30 34-16 12V10l16 12-30 34" fill="none" stroke="#8be0f2" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/><text x="86" y="51" fill="#e7f7ff" font-family="Inter,sans-serif" font-size="26" font-weight="600">BEYBLADE_TOOL01</text></g><path class="bp-guide-arrow" d="M300 154 300 125" marker-end="url(#bp-device-arrow)"/>`,'Foto oficial do acessório e seu nome na lista Bluetooth: BEYBLADE_TOOL01.')},
+  {title:'Encaixe a Bey e lance.',body:'Seu SP aparece em Treinar.',finish:true,art:frame(`${arrow('bp-launch-arrow')}${actionPhoto}${label(350,236,198,'Encaixe a Bey')}<path class="bp-guide-arrow" d="M350 258 316 258" marker-end="url(#bp-launch-arrow)"/>${label(30,327,126,'Puxe')}<path class="bp-guide-arrow" d="M157 347 199 311" marker-end="url(#bp-launch-arrow)"/>`,'Foto oficial do lançamento: Bey embaixo do lançador e mão puxando a corda.')},
+];
+
+export function initConnectionGuide(root,{onConnect,onTrain}) {
+  let index=0,width=0,scrollTimer;
+  root.innerHTML=`<div class="bp-guide-heading"><h2>Como conectar</h2><span data-guide-count aria-live="polite">1 / ${slides.length}</span></div><div class="bp-guide-progress" aria-label="Passos do tutorial">${slides.map((_,i)=>`<button type="button" data-guide-step="${i}" aria-label="Ir para o passo ${i+1}"><span></span></button>`).join('')}</div><div class="bp-guide-viewport" tabindex="0" aria-label="Etapas de conexão"><div class="bp-guide-track">${slides.map((s,i)=>`<article class="bp-guide-slide" data-guide-slide="${i}" role="group" aria-roledescription="passo" aria-label="${i+1} de ${slides.length}"><div class="bp-guide-art">${s.art}</div><h3>${s.title}</h3><p>${s.body}</p>${s.connect?'<button type="button" class="btn primary" data-guide-connect>Conectar Battle Pass</button>':''}${s.finish?'<button type="button" class="btn secondary" data-guide-train>Ir para Treinar</button>':''}</article>`).join('')}</div></div><div class="bp-guide-navigation"><button type="button" data-guide-previous aria-label="Passo anterior"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg></button><span>Passe para o lado</span><button type="button" data-guide-next aria-label="Próximo passo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button></div>`;
+  root.setAttribute('role','region');root.setAttribute('aria-roledescription','carrossel');root.setAttribute('aria-label','Tutorial de conexão do Battle Pass');
+  const viewport=root.querySelector('.bp-guide-viewport');
+  const update=next=>{
+    index=Math.max(0,Math.min(slides.length-1,next));root.dataset.step=String(index+1);
+    root.querySelector('[data-guide-count]').textContent=`${index+1} / ${slides.length}`;
+    root.querySelectorAll('[data-guide-slide]').forEach((slide,i)=>{slide.setAttribute('aria-hidden',String(i!==index));slide.inert=i!==index;slide.classList.toggle('is-active',i===index);});
+    root.querySelectorAll('[data-guide-step]').forEach((button,i)=>{if(i===index)button.setAttribute('aria-current','step');else button.removeAttribute('aria-current');button.classList.toggle('is-done',i<=index);});
+    root.querySelector('[data-guide-previous]').disabled=index===0;root.querySelector('[data-guide-next]').disabled=index===slides.length-1;
+  };
+  const go=next=>{clearTimeout(scrollTimer);update(next);viewport.scrollTo({left:index*viewport.clientWidth,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});};
+  root.querySelectorAll('[data-guide-step]').forEach(button=>button.onclick=()=>go(Number(button.dataset.guideStep)));
+  root.querySelector('[data-guide-previous]').onclick=()=>go(index-1);root.querySelector('[data-guide-next]').onclick=()=>go(index+1);
+  root.querySelector('[data-guide-connect]').onclick=onConnect;root.querySelector('[data-guide-train]').onclick=onTrain;
+  viewport.addEventListener('scroll',()=>{clearTimeout(scrollTimer);scrollTimer=setTimeout(()=>{if(viewport.clientWidth)update(Math.round(viewport.scrollLeft/viewport.clientWidth));},90);},{passive:true});
+  root.addEventListener('keydown',event=>{if(event.key==='ArrowRight' || event.key==='ArrowLeft'){event.preventDefault();go(index+(event.key==='ArrowRight'?1:-1));}});
+  new ResizeObserver(()=>{const next=viewport.clientWidth;if(next>0 && width!==next){clearTimeout(scrollTimer);width=next;viewport.scrollTo({left:index*width,behavior:'auto'});}}).observe(viewport);
+  update(0);
+  return {setConnection(state){const button=root.querySelector('[data-guide-connect]');button.disabled=state==='connected';button.textContent=state==='connected'?'Conectado':state==='searching' || state==='connecting'?'Cancelar busca':'Conectar Battle Pass';if(state==='connected' && index===2)go(3);}};
+}

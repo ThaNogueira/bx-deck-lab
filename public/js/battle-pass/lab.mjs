@@ -4,6 +4,7 @@ import { BattlePassSpinner } from './spinner.mjs';
 import { BattlePassMissions } from './missions.mjs';
 import { LaunchFeedback } from './launch-feedback.mjs';
 import { SessionHistory } from './session-history.mjs';
+import { initConnectionGuide } from './connection-guide.mjs';
 import { BattlePassTransport,compatibility } from './transport.mjs';
 import { BattlePassSession } from './session.mjs';
 import { BattlePassStore,BattlePassSync } from './sync.mjs';
@@ -17,6 +18,7 @@ const spinner=new BattlePassSpinner($('bladeBtn'));
 const missions=new BattlePassMissions($('missionsView'),request);
 const launchFeedback=new LaunchFeedback(()=>document.querySelector('[data-tab="training"]').click());
 const sessionHistory=new SessionHistory($('savedHistory'),{request,getAccount:()=>account,getStore:()=>store,getLevel:()=>missions.state?.level??1});
+const connectionGuide=initConnectionGuide($('connectionGuide'),{onConnect:()=>$('connectBtn').click(),onTrain:()=>document.querySelector('[data-tab="training"]').click()});
 let account,store,sync,current,demo=false,demoRows=[],rows=[],personalBest=0,page=1,pages=1,visibleRows=20;
 let savedRefresh,events=Promise.resolve(),demoTimer,initialized=false;
 let connectionState='disconnected';
@@ -47,6 +49,8 @@ function connectionPanel(open) {
 }
 function connection(state) {
   support=compatibility();
+  $('compatibility').hidden=support.supported;$('compatibility').textContent=support.supported?'':support.reason;
+  $('iosHelp').hidden=!support.ios || support.supported;$('iosGuide').hidden=!support.ios;
   const changed=connectionState!==state;
   connectionState=state;
   const badge=$('connectionBadge');
@@ -60,6 +64,7 @@ function connection(state) {
   $('readBtn').hidden=state!=='connected';
   if(state!=='connected') batteryState(null);
   if(changed) connectionPanel(false);
+  connectionGuide.setConnection(state);
 }
 const protocol=new BattlePassProtocol({
   onInvalid:notice,
@@ -245,8 +250,9 @@ $('connectBtn').onclick=()=>{
   if(!support.supported) {
     $('iosHelp').hidden=!support.ios;$('iosGuide').hidden=!support.ios;
     $('compatibility').textContent=support.reason;
+    $('compatibility').hidden=false;
     document.querySelector('[data-tab="guide"]').click();
-    notice(support.ios?'Para conectar no iPhone, abra este site no Bluefy ou use o Safari com a extensão beacio ativada.':support.reason+' Use Chrome no Android ou Chrome/Edge no computador.');
+    notice(support.ios?'No iPhone, abra este site no Bluefy.':'Use Chrome no Android ou Chrome/Edge no computador.');
     return;
   }
   if(initializationFailed) {location.reload();return;}
@@ -310,9 +316,6 @@ $('demoBtn').onclick=()=>{
 };
 window.addEventListener('online',()=>{sync?.flush();savedSessions().catch(()=>{});});
 window.addEventListener('pagehide',()=>{clearInterval(demoTimer);clearTimeout(revealTimer);clearTimeout(settleTimer);spinner.stop();transport.disconnect();});
-$('iosHelp').hidden=!support.ios;
-$('iosGuide').hidden=!support.ios;
-$('compatibility').textContent=support.supported?'Bluetooth disponível neste navegador.':support.reason;
 connection('disconnected');
 
 try {

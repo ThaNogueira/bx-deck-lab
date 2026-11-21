@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="/ui/battle-pass-power.css">
   <link rel="stylesheet" href="/ui/battle-pass-missions.css">
   <link rel="stylesheet" href="/ui/battle-pass-sessions.css">
+  <link rel="stylesheet" href="/ui/battle-pass-guide.css">
 </head>
 <body>
   <div class="noise"></div><header id="topbar"></header>
@@ -47,15 +48,11 @@
     <section class="bp-panel"><div class="bp-section-head"><h2>Suas sessões</h2><span id="savedSummary"></span></div><div id="accountState"></div><div id="savedHistory"></div><nav class="bp-pagination" aria-label="Páginas das sessões"><button class="btn" id="previousPage" hidden>Anterior</button><span id="pageNumber"></span><button class="btn" id="nextPage" hidden>Próxima</button></nav></section>
     </div>
     <section data-view="ranking" class="bp-panel" hidden><div class="bp-section-head"><h2>Ranking SP</h2><div class="bp-segment" aria-label="Ordenação do ranking"><button id="rankBest" aria-pressed="true">Recorde</button><button id="rankAverage" aria-pressed="false">Média</button></div></div><div class="bp-rank-head" hidden><span>#</span><span>Jogador</span><span>Recorde</span><span>Média</span></div><div id="rankingList"></div></section>
-    <section data-view="guide" class="bp-panel" hidden><div class="bp-section-head"><div><p class="eyebrow">PRIMEIRA CONEXÃO</p><h2>Do lançador para o Lab</h2></div><span>BX-09 · Bluetooth LE</span></div>
-      <p class="bp-note" id="compatibility"></p><p class="bp-ios bp-note" id="iosHelp" hidden>No iPhone, teste pelo <a href="https://bluefy.app/" target="_blank" rel="noopener">Bluefy</a> ou instale a extensão <a href="https://beacio.com/" target="_blank" rel="noopener">beacio</a> no Safari. Ative a extensão para este site e recarregue a página.</p>
-      <div class="bp-guide-grid">
-        <article><div class="bp-official-image"><img src="/battle-pass/bx09-mounted.png" alt="Bey Battle Pass instalado no lançador, imagem oficial Takara Tomy" loading="lazy" width="375" height="454"></div><b>1. Prepare o Battle Pass</b><p>Instale duas pilhas AAA, encaixe o BX-09 no lançador e ligue com o botão por cerca de 1 segundo. O LED fica verde. Retire a Bey antes de conectar.</p></article>
-        <article><div class="bp-official-image"><img src="/battle-pass/bx09-product.png" alt="BX-09 com o botão de comunicação visível, imagem oficial Takara Tomy" loading="lazy" width="375" height="454"></div><b>2. Ative o pareamento</b><p>Pressione o botão por cerca de 1 segundo: o LED alterna verde e laranja. Ative o Bluetooth do aparelho e feche outros apps conectados ao BX-09.</p></article>
-        <article><div class="bp-guide-connect" aria-hidden="true"><svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="3"><rect x="25" y="8" width="50" height="84" rx="9"/><path d="m40 39 22 22-12 9V29l12 10-22 22M44 81h12"/></svg><span>BEYBLADE_TOOL01</span></div><b>3. Conecte e lance</b><p>Toque em <strong>Conectar Battle Pass</strong>, escolha BEYBLADE_TOOL01 e autorize. Depois, encaixe a Bey e lance no estádio. O Lab recebe e salva o SP automaticamente.</p></article>
-      </div><p class="bp-note">Imagens © TOMY / BBXProject, usadas para identificar o acessório. <a href="https://beyblade.takaratomy.co.jp/beyblade-x/lineup/bx09.html" target="_blank" rel="noopener">Produto e manual oficiais</a>. Os passos do Lab substituem a conexão ao aplicativo japonês.</p>
-      <details class="bp-help"><summary>Não aparece na lista?</summary><p>Aproxime o acessório, retire a Bey e repita o pareamento. Permita Bluetooth para o navegador nas configurações do aparelho. Verifique as pilhas e feche o app oficial ou qualquer outra conexão com o BX-09.</p></details>
-      <details class="bp-help"><summary>Navegadores compatíveis</summary><p>Use Chrome no Android ou Chrome/Edge no computador, com Bluetooth ativo e o site por HTTPS.</p><p id="iosGuide" hidden>Safari e Chrome no iPhone não oferecem Web Bluetooth nativamente: experimente <a href="https://bluefy.app/" target="_blank" rel="noopener">Bluefy</a> ou <a href="https://beacio.com/" target="_blank" rel="noopener">beacio</a>. O funcionamento no iOS depende da ponte Bluetooth e ainda precisa de teste real.</p></details>
+    <section data-view="guide" class="bp-panel bp-guide-shell" hidden>
+      <p class="bp-guide-compat" id="compatibility" hidden></p><p id="iosHelp" hidden>No iPhone, abra no <a href="https://bluefy.app/" target="_blank" rel="noopener">Bluefy</a>.</p>
+      <div id="connectionGuide"></div>
+      <details class="bp-help"><summary>Não conecta?</summary><p>Retire a Bey. Feche outros apps do Battle Pass. Aproxime e tente de novo.</p><p id="iosGuide" hidden>iPhone: <a href="https://bluefy.app/" target="_blank" rel="noopener">Bluefy</a> com Bluetooth autorizado.</p></details>
+      <div class="bp-guide-source"><span>Fotos © TOMY / BBXProject · Ilustração BX Lab</span><a href="https://www.takaratomy.co.jp/support/manual/beyblade/2024022113988.html" target="_blank" rel="noopener">Manual oficial ↗</a></div>
       <button class="btn" id="demoBtn" type="button">Experimentar demonstração</button>
     </section>
   </main>
