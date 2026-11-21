@@ -25,7 +25,7 @@ model User {
   bannerUrl      String?
   stadiumName    String?
   stadiumAvatarUrl String?
-  battlePassPublic Boolean @default(false)
+  battlePassPublic Boolean @default(true)
   bio            String?
   whatsapp       String? // só dígitos com DDI, ex.: 5511999998888
   role           String    @default("USER") // USER | ORGANIZER | MOD | ADMIN

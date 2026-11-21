@@ -20,6 +20,7 @@ const {chromium}=await import('playwright');
 let server,browser;
 try {
   const users=await Promise.all(['one','two','radio'].map(name=>prisma.user.create({data:{name:'Blader '+name,slug:'bp-'+name,email:name+'@battle-pass.invalid'}})));
+  assert.ok(users.every(user=>user.battlePassPublic===true));
   const catalog=await fetch('https://beyxlab.com.br/api/parts-index',{signal:AbortSignal.timeout(10000)}).then(r=>r.json());
   const blades=['dransword-2-0','cobaltdragoon'].map(slug=>catalog.parts.find(p=>p.slug===slug && p.kind==='BLADE' && !p.parentId));
   assert.ok(blades.every(p=>p?.img));
@@ -46,6 +47,8 @@ try {
     const response=await fetch(base+url,{method,headers:{'Content-Type':'application/json',...(who===null?{}:{Cookie:cookies[who]})},...(body?{body:JSON.stringify(body)}:{})});
     return {status:response.status,data:await response.json()};
   }
+  assert.equal((await api('/api/battle-pass')).data.public,true);
+  assert.equal((await api('/api/battle-pass/ranking',{who:null})).data.entries.length,0);
   const device={key:'a'.repeat(64),name:'BEYBLADE_TOOL01'};
   const payload={accountId:users[0].id,device,session:{id:'training-http-001',startedAt:new Date().toISOString(),endedAt:null},
     launches:Array.from({length:50},(_,i)=>({sp:3000+i*10,counter:i+1,epoch:0,source:'history',measuredAt:null}))};
@@ -67,8 +70,11 @@ try {
     const body={...payload,launches:[{...payload.launches[0],...bad}]};assert.equal((await api('/api/battle-pass/sync',{method:'POST',body})).status,422);
   }
   assert.equal((await api('/api/battle-pass/sync',{method:'POST',body:{...payload,launches:Array(101).fill(payload.launches[0])}})).status,422);
-  assert.equal((await api('/api/users/bp-one',{who:null})).data.battlePass,null);
+  assert.equal((await api('/api/users/bp-one',{who:null})).data.battlePass.average,3245);
   assert.equal((await api('/api/users/bp-one')).data.battlePass.average,3245);
+  assert.equal((await api('/api/battle-pass/ranking',{who:null})).data.entries[0].user.id,users[0].id);
+  await api('/api/battle-pass/preferences',{method:'PATCH',body:{accountId:users[0].id,public:false}});
+  assert.equal((await api('/api/users/bp-one',{who:null})).data.battlePass,null);
   assert.equal((await api('/api/battle-pass/ranking',{who:null})).data.entries.length,0);
   await api('/api/battle-pass/preferences',{method:'PATCH',body:{accountId:users[0].id,public:true}});
   const ranking=await api('/api/battle-pass/ranking?sort=average',{who:null});assert.equal(ranking.data.entries[0].average,3245);
@@ -77,6 +83,21 @@ try {
   await prisma.user.update({where:{id:users[0].id},data:{status:'BANNED'}});
   assert.equal((await api('/api/battle-pass/ranking',{who:null})).data.entries.length,0);
   await prisma.user.update({where:{id:users[0].id},data:{status:'ACTIVE'}});
+  // Legacy zero rows must neither qualify a player nor lower a valid SP average.
+  const zeroDevice=await prisma.battlePassDevice.create({data:{userId:users[1].id,key:'b'.repeat(64),name:'BEYBLADE_TOOL01'}});
+  const zeroSession=await prisma.battlePassTraining.create({data:{id:'training-zero-001',userId:users[1].id,deviceId:zeroDevice.id,startedAt:new Date()}});
+  await prisma.battlePassLaunch.createMany({data:Array.from({length:15},(_,i)=>({userId:users[1].id,deviceId:zeroDevice.id,sessionId:zeroSession.id,sp:0,counter:i,epoch:0,source:'history'}))});
+  for(const sort of ['best','average']) {
+    const data=(await api('/api/battle-pass/ranking?sort='+sort,{who:null})).data;
+    assert.equal(data.entries.length,1);assert.equal(data.entries[0].user.id,users[0].id);
+  }
+  await prisma.battlePassLaunch.updateMany({where:{sessionId:zeroSession.id,counter:{lt:9}},data:{sp:1000}});
+  assert.equal((await api('/api/battle-pass/ranking',{who:null})).data.entries.length,1);
+  await prisma.battlePassLaunch.updateMany({where:{sessionId:zeroSession.id,counter:9},data:{sp:1000}});
+  const qualified=(await api('/api/battle-pass/ranking?sort=average',{who:null})).data.entries.find(r=>r.user.id===users[1].id);
+  assert.equal(qualified.count,10);assert.equal(qualified.average,1000);assert.equal(qualified.best,1000);
+  await prisma.battlePassTraining.delete({where:{id:zeroSession.id}});
+  await prisma.battlePassDevice.delete({where:{id:zeroDevice.id}});
   console.log('PASS: migrations, auth, ownership, account switch, concurrent idempotency, validation, pagination, profile privacy and ranking.');
 
   browser=await chromium.launch({headless:true,channel:'msedge'});
@@ -252,6 +273,10 @@ try {
   await page.setViewportSize({width:390,height:1000});
   await page.getByRole('button',{name:'Registros',exact:true}).click();
   await page.waitForFunction(()=>!document.querySelector('#publicStats').disabled);
+  assert.ok(await page.getByRole('checkbox').isChecked());
+  await page.getByRole('checkbox').uncheck();
+  await page.waitForFunction(()=>!document.querySelector('#publicStats').disabled);
+  assert.equal((await prisma.user.findUnique({where:{id:users[2].id}})).battlePassPublic,false);
   await page.getByRole('checkbox').check();
   await page.waitForFunction(()=>!document.querySelector('#publicStats').disabled);
   assert.equal((await prisma.user.findUnique({where:{id:users[2].id}})).battlePassPublic,true);

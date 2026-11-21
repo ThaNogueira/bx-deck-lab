@@ -26,7 +26,7 @@ router.use('/api/battle-pass',(_req,res,next)=>{res.set('Cache-Control','no-stor
 router.get('/api/battle-pass/ranking',ah(async(req,res)=>{
   const mode = req.query.sort==='average'?'average':'best';
   const groups = await prisma.battlePassLaunch.groupBy({by:['userId'],
-    where:{user:{battlePassPublic:true,status:'ACTIVE'}},having:{sp:{_count:{gte:10}}},
+    where:{sp:{gt:0},user:{battlePassPublic:true,status:'ACTIVE'}},having:{sp:{_count:{gte:10}}},
     _max:{sp:true},_avg:{sp:true},_count:{_all:true},
     orderBy:mode==='average'?[{_avg:{sp:'desc'}},{userId:'asc'}]:[{_max:{sp:'desc'}},{userId:'asc'}],take:50});
   const users = await prisma.user.findMany({where:{id:{in:groups.map(g=>g.userId)}},select:{id:true,name:true,slug:true,avatarUrl:true}});

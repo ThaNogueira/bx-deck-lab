@@ -8,9 +8,9 @@ Não exige aplicativo próprio nem Bluetooth no servidor.
 
 - **Treinar:** tela direta nas abas, três indicadores compactos (Bluetooth, bateria estimada e Bey encaixada), último SP, máximo, média, quantidade e evolução. Opções de conexão ficam num painel recolhido. O gráfico SVG liga todos os lançamentos da sessão, sem limitar aos 20 últimos. Não há cabeçalho promocional, confirmação constante de salvamento, contadores técnicos, diagnóstico ou rodapé na interface.
 - **Registros:** média geral, recorde, quantidade e sessões pessoais. Sessões expansíveis, 10 por página, lançamentos de 30 em 30. Importações preservam `measuredAt = null`; o início da sessão indica a captura/importação, não a hora de lançamentos antigos.
-- **Ranking SP:** top 50 por recorde ou média, mínimo de 10 registros e participação opcional. Inclui apenas usuários ativos que habilitaram o compartilhamento. Não altera o elo. Dados de treino enviados pelo navegador, sem prova criptográfica; não representam resultado competitivo homologado. Suspensão/banimento existente remove o usuário da lista. Uma competição oficial exigirá moderação dos lançamentos e regras adicionais contra fraude.
+- **Ranking SP:** top 50 por recorde ou média, mínimo de 10 lançamentos com SP positivo e compartilhamento ativado por padrão para todas as contas. Inclui apenas usuários ativos; quem desmarca a opção sai do ranking. Contas sem lançamentos ou somente com zeros não aparecem. Zeros não entram na contagem nem na média do ranking. Não altera o elo. Dados de treino enviados pelo navegador, sem prova criptográfica; não representam resultado competitivo homologado. Suspensão/banimento existente remove o usuário da lista. Uma competição oficial exigirá moderação dos lançamentos e regras adicionais contra fraude.
 - **Como conectar:** instruções baseadas no manual Takara Tomy, imagens oficiais do BX-09, compatibilidade e solução de problemas.
-- **Perfil:** máximo em primeiro, média e quantidade, sem barras de lançamentos. Uma régua marca o máximo nas faixas Iniciante (0), Aprendiz (6.000), Intermediário (11.000), Habilidoso (15.000) e Profissional (20.000 SP). Faixas visuais de treino do BX Lab, não classificação oficial. O proprietário vê seus dados; visitantes só os veem após habilitar o compartilhamento em Registros.
+- **Perfil:** máximo em primeiro, média e quantidade, sem barras de lançamentos. Uma régua marca o máximo nas faixas Iniciante (0), Aprendiz (6.000), Intermediário (11.000), Habilidoso (15.000) e Profissional (20.000 SP). Faixas visuais de treino do BX Lab, não classificação oficial. O proprietário vê seus dados; visitantes veem os agregados enquanto o compartilhamento estiver ativado em Registros (padrão).
 - **Demonstração:** dados temporários em memória, identificados como simulação. Não chama a fila de gravação e não alimenta banco, perfil ou ranking.
 - **Animações:** etapa visual breve de cálculo e dígitos em rolos alternados a cada lançamento, inclusive quando o SP é igual ao anterior. Verde a partir de 11.000, laranja a partir de 12.000, vermelho a partir de 15.000. Reflexos metálicos e fundo espacial suave usam animações de transformação; a preferência de reduzir movimento é respeitada.
 - **Reconexão:** `getDevices()` recupera somente permissões já concedidas; um BX-09 autorizado pode reconectar diretamente ao abrir o Lab ou ao tocar no Bluetooth. Na primeira conexão `requestDevice()` continua exigindo o seletor nativo e um gesto do usuário. Não existe varredura sem autorização. Conexões conhecidas indisponíveis geram erro recuperável, sem tentativas infinitas.
@@ -60,7 +60,7 @@ O indicador de bateria apresenta uma estimativa do nível bruto, não uma mediç
 
 Migração: `prisma/migrations/20261119000000_battle_pass_lab/migration.sql`.
 
-Adiciona `User.battlePassPublic` (padrão `false`) e os modelos:
+Adiciona `User.battlePassPublic` e os modelos abaixo. A migração `20261120030000_battle_pass_public_default` altera o padrão para `true` e ativa uma vez o compartilhamento nas contas existentes. Desmarcações posteriores continuam sendo respeitadas.
 
 - `BattlePassDevice`: proprietário, chave, nome, identificador local, último uso e cursor.
 - `BattlePassTraining`: sessão, proprietário, dispositivo, início/fim e contagem/média/recorde.
@@ -75,7 +75,7 @@ Todas as relações com usuário/dispositivo/sessão usam exclusão em cascata. 
 | `POST /api/battle-pass/devices` | Conta correspondente: associação e cursor |
 | `POST /api/battle-pass/sync` | Conta correspondente: lote idempotente |
 | `PATCH /api/battle-pass/preferences` | Conta correspondente: compartilhamento público |
-| `GET /api/battle-pass/ranking?sort=best` ou `average` | Somente agregados de usuários que optaram por compartilhar |
+| `GET /api/battle-pass/ranking?sort=best` ou `average` | Agregados de contas ativas com compartilhamento ligado e pelo menos 10 SP positivos |
 | `GET /api/users/:slug` | Cartão agregado conforme privacidade, sem histórico BLE individual |
 
 Aplicação da migração segue o deploy existente: `prisma generate` durante o build e `prisma migrate deploy` na inicialização do contêiner. Não requer novas variáveis, serviços ou dependências.
@@ -88,6 +88,7 @@ Médias usam registros SP individuais, incluindo importações válidas. A médi
 
 ```text
 node --test scripts/battle-pass.test.mjs
+node --test scripts/battle-pass-public.migration.test.mjs
 node scripts/battle-pass.integration.mjs
 node scripts/check-frontend-contracts.mjs
 node node_modules/typescript/bin/tsc --noEmit
@@ -109,7 +110,7 @@ O desenvolvimento usou payloads reais publicados e rádio simulado. **Ainda não
 6. Compare os SP com a leitura oficial/DiZZi sem manter os dois conectados simultaneamente. Teste várias notificações e os intervalos reais. O timeout de quadros parciais é 1,5 s; o fluxo completo aguarda até 350 ms pelas páginas finais de sensores.
 7. Faça mais de 50 lançamentos e releia: a FIFO deve importar somente os ainda não registrados. Desconecte e reconecte; o total salvo não deve aumentar sem novos SP.
 8. Desative apenas a internet, mantendo Bluetooth ligado. Lance novamente; veja indicação de salvamento local. Recarregue e reative a rede; confira a retomada sem duplicatas.
-9. Encerre a sessão e confira os registros. Abra seu perfil e habilite o compartilhamento se quiser aparecer publicamente. Dez registros são necessários para o ranking.
+9. Encerre a sessão e confira os registros. O compartilhamento vem marcado em Registros; desmarcar oculta os agregados para visitantes e retira a conta do ranking. Dez lançamentos com SP positivo são necessários para o ranking.
 10. No iPhone, repita no Bluefy com Bluetooth autorizado. Teste também beacio instalado e habilitado para o site no Safari, após recarregar. Safari/Chrome sem ponte devem oferecer orientação e consulta ao histórico, sem prometer conexão nativa. WebViews sem `navigator.bluetooth` também exibem esse fallback.
 
 Capturas de bancada e discrepâncias de checksum/contador permitem refinar o protocolo sem adivinhar campos. Rollover físico, reset, dispositivos de versões diferentes, suspensão da aba e reconexão após bloqueio da tela são pendências específicas para bancada. Os testes também cobrem as três fronteiras de cor, 100 pontos no gráfico, repetição do mesmo SP, Profissional em 20.000 SP e reconexão automática sem chamar `requestDevice()` novamente.
