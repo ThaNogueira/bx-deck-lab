@@ -50,7 +50,7 @@ router.post('/api/battle-pass/push',ah(async(req,res)=>{
   if(await prisma.webPushSubscription.count({where:{userId:req.user.id}})>=10 && !await prisma.webPushSubscription.findFirst({where:{userId:req.user.id,installationId}}))return res.status(422).json({error:'Limite de aparelhos atingido.'});
   await prisma.$transaction(async tx=>{
     await tx.webPushSubscription.deleteMany({where:{OR:[{userId:req.user.id,installationId},{endpoint:subscription.endpoint}]}});
-    await tx.webPushSubscription.create({data:{userId:req.user.id,authSessionId:auth.id,installationId,endpoint:subscription.endpoint,...subscription.keys}});
+    await tx.webPushSubscription.create({data:{userId:req.user.id,authSessionId:auth.id,installationId,endpoint:subscription.endpoint,p256dh:subscription.keys.p256dh,auth:subscription.keys.auth}});
   });res.json({enabled:true});
 }));
 router.delete('/api/battle-pass/push',ah(async(req,res)=>{

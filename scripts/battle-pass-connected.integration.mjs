@@ -38,6 +38,9 @@ try {
   assert.equal((await api('/api/battle-pass/push',{method:'POST',body:{accountId:users[0].id,installationId,subscription:{...sub,endpoint:'https://localhost/x'}}})).status,422);
   assert.equal((await api('/api/battle-pass/push',{who:1,method:'POST',body:{accountId:users[0].id,installationId,subscription:sub}})).status,409);
   assert.equal((await api('/api/battle-pass/push',{method:'POST',body:{accountId:users[0].id,installationId,subscription:sub}})).status,200);
+  const tampered={...sub,keys:{...sub.keys,userId:users[1].id,authSessionId:'not-a-session',installationId:'not-the-browser'}};
+  assert.equal((await api('/api/battle-pass/push',{method:'POST',body:{accountId:users[0].id,installationId,subscription:tampered}})).status,200);
+  const registered=await prisma.webPushSubscription.findFirst();assert.equal(registered.userId,users[0].id);assert.equal(registered.installationId,installationId);assert.notEqual(registered.authSessionId,'not-a-session');
   const config=(await api('/api/battle-pass/push?installationId='+installationId)).data;assert.ok(config.enabled);assert.ok(config.publicKey);assert.equal(config.privateKey,undefined);
   assert.equal((await api('/api/battle-pass/push?installationId='+installationId,{who:1})).data.enabled,false);
   const clientId='87654321-1234-1234-1234-123456789012',id='connected-session-001',device={key:'c'.repeat(64),name:'BEYBLADE_TOOL01'};

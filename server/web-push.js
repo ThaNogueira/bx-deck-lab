@@ -20,7 +20,7 @@ export function vapidKeys() {
   })().catch(error=>{vapidPromise=null;throw error;});
 }
 export async function queuePush(userId,eventKey,payload,{now=new Date()}={}) {
-  const subscriptions=await prisma.webPushSubscription.findMany({where:{userId,authSession:{expiresAt:{gt:now}},user:{status:'ACTIVE'}},select:{id:true}});
+  const subscriptions=await prisma.webPushSubscription.findMany({where:{userId,authSession:{userId,expiresAt:{gt:now}},user:{status:'ACTIVE'}},select:{id:true}});
   await prisma.$transaction(subscriptions.map(subscription=>prisma.webPushDelivery.upsert({
     where:{subscriptionId_eventKey:{subscriptionId:subscription.id,eventKey}},update:{},
     create:{subscriptionId:subscription.id,eventKey,payloadJson:JSON.stringify({...payload,userId}),availableAt:now,expiresAt:new Date(now.getTime()+90000)},
@@ -39,7 +39,7 @@ export async function flushPushQueue({send=(...args)=>webpush.sendNotification(.
     const keys=await vapidKeys();
     await Promise.all(pending.map(async delivery=>{
       const sub=delivery.subscription;
-      if(sub.authSession.expiresAt<=now || sub.user.status!=='ACTIVE') {await prisma.webPushSubscription.deleteMany({where:{id:sub.id}});return;}
+      if(sub.authSession.userId!==sub.userId || sub.authSession.expiresAt<=now || sub.user.status!=='ACTIVE') {await prisma.webPushSubscription.deleteMany({where:{id:sub.id}});return;}
       try {
         await send({endpoint:sub.endpoint,keys:{p256dh:sub.p256dh,auth:sub.auth}},delivery.payloadJson,{
           vapidDetails:{...keys,subject:'https://beyxlab.com.br'},TTL:Math.max(1,Math.floor((delivery.expiresAt-now)/1000)),
