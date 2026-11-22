@@ -845,8 +845,11 @@
       menuBtn.onclick = (e) => { e.stopPropagation(); menu.hidden = !menu.hidden; };
       document.addEventListener('click', (e) => { if (!menu.contains(e.target)) menu.hidden = true; });
       document.getElementById('logoutMenuBtn')?.addEventListener('click', async () => {
+        let owner=window;try{if(parent!==window && parent.BX?.captureHost?.active)owner=parent;}catch{}
+        await owner.BX?.connected?.logout().catch(()=>{});
+        owner.dispatchEvent(new Event('bp-account-logout'));
         await api('/api/auth/logout', { method: 'POST' }).catch(() => {});
-        location.href = '/';
+        owner.location.href = '/';
       });
     }
 
@@ -984,6 +987,7 @@
     report, requireLogin, qs, pathPart, ytEmbed,
   };
 })();
+import('/js/battle-pass/connected.mjs').then(module=>module.initConnected()).catch(()=>{});
 // Tournament pages share the store creation flow without duplicating inline form code.
 if (document.getElementById('store') || document.getElementById('eStore') || location.pathname.startsWith('/torneio/')) {
   const script = document.createElement('script'); script.src = '/js/tournament-store.js'; document.head.appendChild(script);

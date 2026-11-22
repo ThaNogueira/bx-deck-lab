@@ -8,6 +8,8 @@ import { initConnectionGuide } from './connection-guide.mjs';
 import { BattlePassTransport,compatibility } from './transport.mjs';
 import { BattlePassSession } from './session.mjs';
 import { BattlePassStore,BattlePassSync } from './sync.mjs';
+import {initConnected,captureClientId,captureDeviceName} from './connected.mjs';
+import {captureNavigation} from './capture-navigation.mjs';
 
 const $ = id=>document.getElementById(id), esc = BX.esc;
 const number = value=>value==null?'—':Math.round(value).toLocaleString('pt-BR');
@@ -25,6 +27,38 @@ let connectionState='disconnected';
 let lastDisplayed=null,revealTimer,settleTimer,chartValues=[],chartWidth=0,syncNotice=false;
 let initializationFailed=false;
 BX.renderTopbar('/battle-pass');
+const captureHost=captureNavigation({active:()=>connectionState==='connected',onReturn:()=>document.querySelector('[data-tab="training"]').click()});
+let connectedClient;
+let remoteSession=null,ignoreRemote=false;
+const capture=()=>connectionState==='connected' && current?.device && !demo?{id:current.id,clientId:captureClientId,bladeId:spinner.selected?.id??null,deviceName:captureDeviceName()}:null;
+function clearRemote() {
+  remoteSession=null;ignoreRemote=true;$('bpRemoteStatus').hidden=true;
+  history.replaceState(history.state,'','/battle-pass');spinner.initialize(account).then(()=>renderTraining()).catch(()=>{});renderTraining();
+}
+window.addEventListener('bp-remote-select',event=>{
+  if(connectionState==='connected')return;
+  leaveDemo();remoteSession=event.detail;ignoreRemote=false;visibleRows=20;
+  document.querySelector('[data-tab="training"]').click();renderTraining({animate:true});
+});
+$('bpRemoteStop').onclick=clearRemote;
+function closeTools(){$('bpToolsMenu').hidden=true;$('bpToolsBtn').setAttribute('aria-expanded','false');}
+$('bpToolsBtn').onclick=event=>{event.stopPropagation();const open=$('bpToolsMenu').hidden;$('bpToolsMenu').hidden=!open;$('bpToolsBtn').setAttribute('aria-expanded',String(open));};
+document.addEventListener('click',event=>{if(!event.target.closest('.bp-options'))closeTools();});
+document.addEventListener('keydown',event=>{if(event.key==='Escape' && !$('bpToolsMenu').hidden){closeTools();$('bpToolsBtn').focus();}});
+initConnected().then(client=>{
+  connectedClient=client;if(!client)return;
+  client.capture(capture);if(current?.id)client.setCapture(current.id);
+  $('bpPushBtn').onclick=()=>{closeTools();client.openSettings();};
+  $('bpLiveBtn').onclick=()=>{closeTools();const session=client.sessions.find(s=>s.id===current?.id)??client.sessions.find(s=>!s.endedAt);if(session)client.openSession(session.id);};
+  const liveButton=()=>{
+    $('bpLiveBtn').hidden=!client.sessions.some(s=>!s.endedAt);
+    if(remoteSession){const fresh=client.sessions.find(s=>s.id===remoteSession.id);if(fresh){const changed=fresh.launches.at(-1)?.id!==remoteSession.launches.at(-1)?.id;remoteSession=fresh;renderTraining({animate:changed});}}
+    else if(!ignoreRemote && !current && !demo && !document.querySelector('[data-view="training"]').hidden){const session=client.sessions.find(s=>!s.endedAt && s.clientId!==captureClientId);if(session)client.openSession(session.id);}
+  };window.addEventListener('bp-session-update',liveButton);liveButton();
+  $('bpAwakeBtn').hidden=!navigator.wakeLock;
+  $('bpAwakeBtn').onclick=async()=>{closeTools();const value=$('bpAwakeBtn').getAttribute('aria-pressed')!=='true';const enabled=await client.keepAwake(value);$('bpAwakeBtn').setAttribute('aria-pressed',String(enabled));};
+});
+window.addEventListener('bp-account-logout',()=>transport.disconnect());
 
 function notice(message='') { $('notice').textContent=message;$('notice').hidden=!message; }
 function batteryState(battery) {
@@ -39,7 +73,7 @@ function enqueue(action) {
 function beyState(state,text) {
   $('beyState').dataset.state=state;
   $('beyState').title=text;
-  $('beyState').lastElementChild.textContent=state==='attached'?'Bey encaixada':state==='offline' || state==='unknown'?'Bey indisponível':demo?'Bey simulada':'Sem Bey encaixada';
+  $('beyState').querySelector('.bp-bey-label').textContent=state==='attached'?'Bey encaixada':state==='offline' || state==='unknown'?'Bey indisponível':demo?'Bey simulada':'Sem Bey encaixada';
 }
 function connectionPanel(open) {
   $('connectionPanel').classList.toggle('is-collapsed',!open);
@@ -94,6 +128,7 @@ const transport=new BattlePassTransport({
       protocol.flush();protocol.reset();
       beyState('offline','Desconectado · registros preservados');
       const context=current;
+      connectedClient?.setCapture(null);
       if(context && !context.endedAt) {
         context.endedAt=new Date().toISOString();
         enqueue(async()=>{if(context.device) await sync.add(context,context.device,[],cursor(context));});
@@ -168,24 +203,36 @@ function historyRow(row) {
   return `<li><b class="bp-power-number" data-power-tone="${BX.shootPower.tone(row.sp)}">${number(row.sp)} <small>SP</small></b><span class="${row.source==='live'?'bp-source-live':''}">${row.source==='live'?'Ao vivo':'Importado do BX-09'}<time>${row.measuredAt?esc(date(row.measuredAt)):'Horário original indisponível'}</time></span><small>#${row.counter}${row.synced===false?' · local':''}</small></li>`;
 }
 function renderTraining({animate=false}={}) {
-  const list=demo?demoRows:rows, values=list.map(r=>r.sp), recent=values.slice(-10), prior=values.slice(-20,-10);
-  const avg=average(values), recentAvg=average(recent);
+  const remote=demo?null:remoteSession;
+  const list=remote?remote.launches.map(row=>({...row,synced:true})):demo?demoRows:rows, values=list.map(r=>r.sp), recent=values.slice(-10), prior=values.slice(-20,-10);
+  const avg=remote?remote.average:average(values), recentAvg=average(recent),count=remote?remote.count:values.length;
+  $('bpRemoteStatus').hidden=!remote;
+  $('bladeBtn').disabled=!!remote;
+  if(remote){
+    const active=!remote.endedAt && remote.lastSeenAt && Date.now()-Date.parse(remote.lastSeenAt)<60000;
+    $('bpRemoteStatus').dataset.live=String(!!active);
+    $('bpRemoteState').textContent=(remote.endedAt?'Sessão encerrada':active?'Ao vivo':'Sem sinal de captura')+' · '+remote.deviceName;
+    $('bpRemoteBlade').textContent=remote.blade?.name??'';
+    const part=spinner.index?.byId.get(remote.blade?.id);if(part && spinner.selected?.id!==part.id)spinner.select(part,false,{persist:false});
+    if(animate && remote.launches.length)spinner.launch('remote:'+remote.launches.at(-1).id,remote.lastSp);
+  }
   const variation=recent.length>=2 && recentAvg?Math.round(Math.sqrt(average(recent.map(sp=>(sp-recentAvg)**2)))/recentAvg*100):null;
   const trend=prior.length===10 && recent.length===10?(recentAvg-average(prior))/average(prior)*100:null;
   setShootPower(values.at(-1)??null,{animate});
-  $('bestSp').textContent=number(demo?(values.length?Math.max(...values):null):personalBest||null);
-  $('averageSp').textContent=number(values.length?avg:null);$('launchCount').textContent=number(values.length);
-  $('bestSp').dataset.powerTone=BX.shootPower.tone(demo?Math.max(0,...values):personalBest);
+  $('bestSp').textContent=number(demo?(values.length?Math.max(...values):null):Math.max(personalBest,remote?.best??0)||null);
+  $('averageSp').textContent=number(count?avg:null);$('launchCount').textContent=number(count);
+  $('bestSp').dataset.powerTone=BX.shootPower.tone(demo?Math.max(0,...values):Math.max(personalBest,remote?.best??0));
   $('averageSp').dataset.powerTone=BX.shootPower.tone(avg);
   $('minimumSp').textContent=number(values.length?Math.min(...values):null);
   $('recentAverage').textContent=number(recent.length?recentAvg:null);
   $('variation').textContent=variation==null?'—':variation+'%';
   $('trend').textContent=trend==null?'—':(trend>=0?'+':'')+trend.toFixed(1)+'%';
   $('sessionEmpty').hidden=!!list.length;
+  $('sessionEmpty').textContent=remote?'Aguardando lançamento de '+remote.deviceName+'.':'Conecte o Battle Pass para começar.';
   $('currentHistory').innerHTML=list.slice().reverse().slice(0,visibleRows).map(historyRow).join('');
   $('moreCurrent').hidden=list.length<=visibleRows;
   chartValues=values;renderLaunchChart($('chart'),values);
-  $('chartSummary').textContent=values.length?number(values.length)+' lançamentos':'';
+  $('chartSummary').textContent=count?number(count)+' lançamentos'+(remote && count>values.length?' · últimos '+values.length:''):'';
 }
 
 async function request(path,options={}) {
@@ -222,7 +269,7 @@ async function savedSessions() {
   sessionHistory.render(sessions);
   $('pageNumber').textContent=pages>1?`${page} / ${pages}`:'';
   $('previousPage').hidden=page<=1;$('nextPage').hidden=page>=pages;
-  if(!demo) {$('bestSp').textContent=number(personalBest||null);$('bestSp').dataset.powerTone=BX.shootPower.tone(personalBest);}
+  if(!demo && !remoteSession) {$('bestSp').textContent=number(personalBest||null);$('bestSp').dataset.powerTone=BX.shootPower.tone(personalBest);}
 }
 
 async function ranking(sort='best') {
@@ -240,9 +287,11 @@ document.querySelectorAll('[data-tab]').forEach(button=>button.onclick=()=>{
   button.setAttribute('aria-current','page');
   document.querySelectorAll('[data-view]').forEach(view=>view.hidden=view.dataset.view!==button.dataset.tab);
   if(button.dataset.tab==='training') launchFeedback.hide();
+  if(button.dataset.tab==='training' && !remoteSession && !current && !ignoreRemote && !demo){const session=connectedClient?.sessions.find(s=>!s.endedAt && s.clientId!==captureClientId);if(session)connectedClient.openSession(session.id);}
   if(button.dataset.tab==='records') savedSessions().catch(error=>notice(error.message));
   if(button.dataset.tab==='ranking') ranking();
   if(button.dataset.tab==='missions') missions.load();
+  connectedClient?.updateView();
 });
 $('connectBtn').onclick=()=>{
   if(connectionState==='searching' || connectionState==='connecting') {transport.disconnect();return;}
@@ -262,8 +311,10 @@ $('connectBtn').onclick=()=>{
 };
 function startConnection() {
   if(!initialized) return;
+  if(remoteSession)clearRemote();ignoreRemote=true;
   leaveDemo();spinner.stop();notice();protocol.reset();rows=[];visibleRows=20;$('record').textContent='';renderTraining();
   current={id:crypto.randomUUID(),startedAt:new Date().toISOString(),endedAt:null,tracker:new BattlePassSession()};
+  connectedClient?.setCapture(current.id);
   transport.connect().catch(error=>notice(error.message));
 }
 $('disconnectBtn').onclick=()=>transport.disconnect();
@@ -315,17 +366,17 @@ $('demoBtn').onclick=()=>{
   tick();demoTimer=setInterval(tick,2400);
 };
 window.addEventListener('online',()=>{sync?.flush();savedSessions().catch(()=>{});});
-window.addEventListener('pagehide',()=>{clearInterval(demoTimer);clearTimeout(revealTimer);clearTimeout(settleTimer);spinner.stop();transport.disconnect();});
+window.addEventListener('pagehide',()=>{connectedClient?.endCapture(capture());clearInterval(demoTimer);clearTimeout(revealTimer);clearTimeout(settleTimer);spinner.stop();transport.disconnect();});
 connection('disconnected');
 
 try {
   account=await BX.me();
   missions.initialize(account);
-  spinner.initialize(account).catch(()=>{ $('bladeBtn').onclick=()=>spinner.initialize(account).then(()=>spinner.picker()).catch(()=>notice('Não foi possível carregar as Blades. Tente novamente.')); });
+  spinner.initialize(account).then(()=>{if(remoteSession)renderTraining();}).catch(()=>{ $('bladeBtn').onclick=()=>spinner.initialize(account).then(()=>spinner.picker()).catch(()=>notice('Não foi possível carregar as Blades. Tente novamente.')); });
   let owner=account?.id;
   if(!owner) {owner=localStorage.getItem('bx-battle-pass-guest')||'guest-'+crypto.randomUUID();localStorage.setItem('bx-battle-pass-guest',owner);}
   store=new BattlePassStore(owner);await store.read();
-  sync=new BattlePassSync(store,{request,authenticated:!!account,onProgress:data=>missions.receive(data),onStatus:(state,detail)=>{
+  sync=new BattlePassSync(store,{request,authenticated:!!account,getCapture:id=>{const value=capture();return value?.id===id?{clientId:value.clientId,bladeId:value.bladeId,deviceName:value.deviceName}:null;},onProgress:data=>missions.receive(data),onStatus:(state,detail)=>{
     document.querySelector('.bp-page').dataset.sync=state;
     if(state==='pending' && !demo) {syncNotice=true;notice('Sem conexão. Seus lançamentos estão salvos neste aparelho e serão sincronizados.');}
     if(state==='saved' && syncNotice) {syncNotice=false;notice();}

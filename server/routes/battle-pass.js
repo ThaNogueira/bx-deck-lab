@@ -4,6 +4,7 @@ import { requireUser } from '../auth.js';
 import { battlePassStats } from '../battle-pass-stats.js';
 import { advanceMissions,missionState } from '../battle-pass-missions.js';
 import { sessionOverview } from '../battle-pass-sessions.js';
+import {captureValid,trainingChanged} from '../battle-pass-connected.js';
 
 const router = Router();
 const ah = handler => (req,res,next)=>handler(req,res).catch(next);
@@ -91,10 +92,10 @@ router.post('/api/battle-pass/devices',ah(async(req,res)=>{
 }));
 
 router.post('/api/battle-pass/sync',ah(async(req,res)=>{
-  const {device,session,launches} = req.body??{}, userId = req.user.id;
+  const {device,session,launches,capture} = req.body??{}, userId = req.user.id;
   if (!deviceData(device) || !session || !idPattern.test(session.id) ||
     !validDate(session.startedAt) || session.endedAt!==null && !validDate(session.endedAt) ||
-    !Array.isArray(launches) || launches.length>100 || req.body.simulated) {
+    !Array.isArray(launches) || launches.length>100 || req.body.simulated || capture!==undefined && !captureValid(capture)) {
     return res.status(422).json({error:'Sessão inválida.'});
   }
   const start = new Date(session.startedAt), end = session.endedAt ? new Date(session.endedAt) : null;
@@ -114,9 +115,10 @@ router.post('/api/battle-pass/sync',ah(async(req,res)=>{
     const existing = await tx.battlePassTraining.findUnique({where:{id:session.id}});
     if (existing && (existing.userId!==userId || existing.deviceId!==dev.id)) return {forbidden:true};
     const accountProgress=await tx.battlePassProgress.findUnique({where:{userId}});
+    const presence=capture?{captureClientId:capture.clientId,captureBladeId:capture.bladeId??null,captureDeviceName:capture.deviceName??null,liveSeenAt:new Date()}:{};
     const training = await tx.battlePassTraining.upsert({where:{id:session.id},
-      create:{id:session.id,userId,deviceId:dev.id,startedAt:start,endedAt:end,startXp:accountProgress?.totalXp??0,lastXp:accountProgress?.totalXp??0},
-      update:{...(end?{endedAt:end}:{})}});
+      create:{id:session.id,userId,deviceId:dev.id,startedAt:start,endedAt:end,startXp:accountProgress?.totalXp??0,lastXp:accountProgress?.totalXp??0,...presence},
+      update:{...(end?{endedAt:end}:{}),...presence}});
     let inserted = 0;const fresh=[];
     for (const row of launches) {
       const identity = {userId,deviceId:dev.id,epoch:row.epoch,counter:row.counter};
@@ -136,14 +138,15 @@ router.post('/api/battle-pass/sync',ah(async(req,res)=>{
     if (latest) await tx.battlePassDevice.update({where:{id:dev.id},data:{lastCounter:latest.counter,epoch:latest.epoch}});
     const progression=await advanceMissions(tx,userId,fresh,new Date(),training.id);
     await tx.battlePassTraining.update({where:{id:training.id},data:{lastXp:progression?.totalXp??accountProgress?.totalXp??0}});
-    return {inserted,progression};
+    return {inserted,progression,liveLaunchId:fresh.filter(row=>row.source==='live').at(-1)?.id};
   })).catch(error=>{
     if (error.battlePassConflict) return {conflict:error.message};
     throw error;
   });
   if (result.forbidden) return res.status(403).json({error:'Esta sessão pertence a outra conta ou dispositivo.'});
   if (result.conflict) return res.status(409).json({error:result.conflict});
-  res.json(result);
+  await trainingChanged(userId,session.id,{launchId:result.liveLaunchId}).catch(()=>{});
+  res.json({inserted:result.inserted,progression:result.progression});
 }));
 
 export default router;

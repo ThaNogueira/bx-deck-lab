@@ -9,11 +9,57 @@ const IMG_HOSTS = ['cdn.shopify.com', 'img.beybladehub.app', 'static.wikia.nocoo
 const API_SWR = ['/api/parts-index', '/api/parts', '/api/products', '/api/decks-featured', '/api/site'];
 const API_NEVER = ['/api/me', '/api/auth', '/api/oauth', '/api/admin', '/api/cosmetics'];
 
+// Only the account ID is retained here. Bluetooth and private session data never
+// run in a service worker; capture still belongs to the connected browser page.
+function pushAccount(value,{write=false}={}) {
+  return new Promise((resolve,reject)=>{
+    const open=indexedDB.open('bx-push-settings',1);
+    open.onupgradeneeded=()=>open.result.createObjectStore('settings');
+    open.onerror=()=>reject(open.error);
+    open.onsuccess=()=>{
+      const db=open.result,tx=db.transaction('settings',write?'readwrite':'readonly'),store=tx.objectStore('settings');
+      const request=write?store.put(value,'account'):store.get('account');let result;
+      request.onsuccess=()=>{result=request.result;};
+      tx.oncomplete=()=>{db.close();resolve(write?value:result);};
+      tx.onerror=()=>{db.close();reject(tx.error);};
+    };
+  });
+}
+self.addEventListener('message',event=>{
+  if(event.data?.type==='bp-push-account')event.waitUntil(pushAccount(typeof event.data.userId==='string'?event.data.userId:null,{write:true}));
+});
+self.addEventListener('push',event=>{
+  event.waitUntil((async()=>{
+    let data;try{data=event.data.json();}catch{return;}
+    if(!data || !['battle-pass-launch','battle-pass-test'].includes(data.type) || await pushAccount()!==data.userId)return;
+    const fallback='/assets/pwa/icon-192.png';let icon=fallback;
+    try{const url=new URL(data.icon,self.location.origin);if(url.protocol==='https:' || url.origin===self.location.origin)icon=url.href;}catch{}
+    const url=new URL('/battle-pass',self.location.origin);if(typeof data.sessionId==='string')url.searchParams.set('session',data.sessionId);
+    await self.registration.showNotification(String(data.title??'BX Lab').slice(0,120),{
+      body:String(data.body??'').slice(0,220),icon,badge:fallback,
+      tag:'bx-training-'+(data.sessionId??'test'),renotify:false,silent:true,
+      timestamp:Number.isFinite(Date.parse(data.at))?Date.parse(data.at):Date.now(),
+      data:{url:url.href,sessionId:data.sessionId??null,eventId:data.eventId??null,userId:data.userId},
+    });
+  })());
+});
+self.addEventListener('notificationclick',event=>{
+  event.notification.close();
+  event.waitUntil((async()=>{
+    const data=event.notification.data??{},windows=await self.clients.matchAll({type:'window',includeUncontrolled:true});
+    const client=windows.find(w=>w.frameType!=='nested' && new URL(w.url).origin===self.location.origin);
+    if(client){await client.focus();client.postMessage({type:'bp-open-session',sessionId:data.sessionId});return;}
+    const url=new URL('/battle-pass',self.location.origin);if(data.sessionId)url.searchParams.set('session',data.sessionId);
+    await self.clients.openWindow(url.href);
+  })());
+});
+
 self.addEventListener('install', (e) => { self.skipWaiting(); });
 self.addEventListener('activate', (e) => {
   e.waitUntil((async () => {
     for (const k of await caches.keys()) if (![IMG_CACHE, API_CACHE].includes(k)) await caches.delete(k);
     await self.clients.claim();
+    for(const client of await self.clients.matchAll({type:'window',includeUncontrolled:true}))client.postMessage({type:'bp-worker-ready'});
   })());
 });
 

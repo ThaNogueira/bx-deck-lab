@@ -46,6 +46,7 @@ model User {
   battlePassDevices BattlePassDevice[]
   battlePassSessions BattlePassTraining[]
   battlePassLaunches BattlePassLaunch[]
+  webPushSubscriptions WebPushSubscription[]
   battlePassProgress BattlePassProgress?
   battlePassMissionPeriods BattlePassMissionPeriod[]
   battlePassMissionRewards BattlePassMissionReward[]
@@ -104,6 +105,10 @@ model BattlePassTraining {
   bestSp      Int @default(0)
   startXp     Int?
   lastXp      Int?
+  captureClientId String?
+  captureBladeId String?
+  captureDeviceName String?
+  liveSeenAt DateTime?
   user        User @relation(fields:[userId], references:[id], onDelete:Cascade)
   device      BattlePassDevice @relation(fields:[deviceId], references:[id], onDelete:Cascade)
   launches    BattlePassLaunch[]
@@ -195,8 +200,38 @@ model AuthSession {
   expiresAt DateTime
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  webPushSubscriptions WebPushSubscription[]
 
   @@index([userId])
+}
+
+model WebPushSubscription {
+  id String @id @default(cuid())
+  userId String
+  authSessionId String
+  installationId String
+  endpoint String @unique
+  p256dh String
+  auth String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+  authSession AuthSession @relation(fields:[authSessionId],references:[id],onDelete:Cascade)
+  deliveries WebPushDelivery[]
+  @@unique([userId,installationId])
+}
+
+model WebPushDelivery {
+  id String @id @default(cuid())
+  subscriptionId String
+  eventKey String
+  payloadJson String
+  attempts Int @default(0)
+  availableAt DateTime @default(now())
+  expiresAt DateTime
+  subscription WebPushSubscription @relation(fields:[subscriptionId],references:[id],onDelete:Cascade)
+  @@unique([subscriptionId,eventKey])
+  @@index([availableAt])
 }
 
 // ---------------------------------------------------------------------------

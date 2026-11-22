@@ -22,6 +22,8 @@ import communityRoutes from './routes/community.js';
 import homeRoutes from './routes/home.js';
 import stadiumRoutes, { attachStadiumSocket } from './routes/stadium.js';
 import battlePassRoutes from './routes/battle-pass.js';
+import battlePassConnectedRoutes from './routes/battle-pass-connected.js';
+import {schedulePush} from './web-push.js';
 import { scheduleMetaJobs } from './meta.js';
 import { warmModeration } from './moderation.js';
 import { sendSocial, socialMeta, socialRouter } from './social.js';
@@ -99,6 +101,7 @@ app.use(communityRoutes);
 app.use(homeRoutes);
 app.use(stadiumRoutes);
 app.use(battlePassRoutes);
+app.use(battlePassConnectedRoutes);
 app.use(socialRouter);
 // Integration tests use an isolated database and must not start network jobs.
 const isolatedTest = process.env.NODE_ENV === 'test' && process.env.BX_ISOLATED_TEST === '1';
@@ -106,6 +109,7 @@ if (!isolatedTest) {
   warmModeration();
   scheduleMetaJobs();
   scheduleDeckAnalysisJobs();
+  schedulePush();
 }
 
 // Uploads e estáticos

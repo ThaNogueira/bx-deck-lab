@@ -29,8 +29,8 @@ export class BattlePassStore {
 }
 
 export class BattlePassSync {
-  constructor(store,{request,authenticated,onStatus=()=>{},onProgress=()=>{}}) {
-    Object.assign(this,{store,request,authenticated,onStatus,onProgress});
+  constructor(store,{request,authenticated,onStatus=()=>{},onProgress=()=>{},getCapture=()=>null}) {
+    Object.assign(this,{store,request,authenticated,onStatus,onProgress,getCapture});
     this.retry = 0;
   }
 
@@ -75,9 +75,10 @@ export class BattlePassSync {
         if (!pending.length && !session.dirty) continue;
         const rows = pending.slice(0,100);
         this.onStatus('syncing');
+        const capture=this.getCapture(session.id);
         const result=await this.request('/api/battle-pass/sync',{method:'POST',body:{
           accountId:this.store.owner,
-          device:session.device,session:{id:session.id,startedAt:session.startedAt,endedAt:session.endedAt},launches:rows,
+          device:session.device,session:{id:session.id,startedAt:session.startedAt,endedAt:session.endedAt},launches:rows,...(capture?{capture}:{}),
         }});
         if(result?.progression) {try{this.onProgress(result.progression);}catch{/* UI feedback does not invalidate an accepted sync. */}}
         await this.store.change(saved=>{

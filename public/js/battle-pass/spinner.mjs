@@ -58,9 +58,10 @@ export class BattlePassSpinner {
     let saved;try {saved=localStorage.getItem('bx-battle-pass-blade:'+this.owner);}catch{}
     const selected=this.parts.find(p=>p.id===saved)??this.parts.find(p=>p.id===account?.favoritePartId);
     if(selected) this.select(selected,false);
+    else {this.selected=null;delete this.button.dataset.bladeId;this.rotor.querySelector('img').hidden=true;this.rotor.querySelector('.bp-mini-empty').hidden=false;this.button.setAttribute('aria-label','Escolher Blade');}
     this.button.onclick=()=>this.picker();
   }
-  select(part,reset=true) {
+  select(part,reset=true,{persist=true}={}) {
     this.selected=part;
     const root=this.index.byId.get(part.parentId)||part;
     this.direction=broadcastBladeSpin(root)==='left'?-1:1;
@@ -73,7 +74,7 @@ export class BattlePassSpinner {
     image.onerror=()=>{image.hidden=true;fallback.hidden=false;};
     if(part.img) image.src=renderUrl(part.img);
     if(reset) {cancelAnimationFrame(this.frame);this.frame=0;this.model.reset();this.lastTime=0;this.paint();}
-    try {localStorage.setItem('bx-battle-pass-blade:'+this.owner,part.id);}catch{}
+    if(persist)try {localStorage.setItem('bx-battle-pass-blade:'+this.owner,part.id);}catch{}
   }
   launch(token,sp) {
     if(!this.model.impulse(token,sp)) return;

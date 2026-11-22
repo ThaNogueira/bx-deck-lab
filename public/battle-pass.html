@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#10140e"><title>Battle Pass Lab — BX Lab</title>
+  <link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" href="/assets/pwa/icon-192.png"><meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="description" content="Conecte seu Bey Battle Pass BX-09 e acompanhe o Shoot Power dos seus lançamentos no BX Lab.">
   <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'">
@@ -11,6 +12,7 @@
   <link rel="stylesheet" href="/ui/battle-pass-missions.css">
   <link rel="stylesheet" href="/ui/battle-pass-sessions.css">
   <link rel="stylesheet" href="/ui/battle-pass-guide.css">
+  <link rel="stylesheet" href="/ui/battle-pass-connected.css">
 </head>
 <body>
   <div class="noise"></div><header id="topbar"></header>
@@ -20,7 +22,7 @@
     <div class="bp-status-controls" role="group" aria-label="Estado do Battle Pass">
       <button type="button" id="connectBtn" class="bp-status-control" aria-label="Conectar Battle Pass" aria-controls="connectionPanel" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10-5 4V3l5 4L7 17"/></svg><span id="connectionBadge" aria-live="polite">Conectar</span><svg class="bp-connection-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></button>
       <button id="batteryState" type="button" class="bp-status-control" aria-label="Bateria: leitura indisponível. Abrir detalhes." aria-haspopup="dialog" aria-controls="batteryHelp"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="6" width="17" height="12" rx="3"/><path d="M22 10v4M6 12h5"/></svg><span><small>Bateria</small><b aria-live="polite">—</b></span></button>
-      <div id="beyState" class="bp-status-control" role="status" data-state="offline"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 3 8 0 5 6-2 9-7 4-7-4-2-9Z"/><circle cx="12" cy="12" r="4"/></svg><span>Bey indisponível</span></div>
+      <div id="beyState" class="bp-status-control" role="group" aria-label="Estado da Bey e opções" data-state="offline"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 3 8 0 5 6-2 9-7 4-7-4-2-9Z"/><circle cx="12" cy="12" r="4"/></svg><span class="bp-bey-label" role="status">Bey indisponível</span><div class="bp-options"><button type="button" id="bpToolsBtn" aria-label="Opções de treino" title="Opções de treino" aria-expanded="false" aria-controls="bpToolsMenu"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="12" cy="19" r="1.3"/></svg></button><div id="bpToolsMenu" class="bp-tools-menu" role="group" aria-label="Opções de treino" hidden><button type="button" id="bpPushBtn"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg>Notificações</button><button type="button" id="bpLiveBtn" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M6 6a8 8 0 0 0 0 12m12-12a8 8 0 0 1 0 12"/></svg>Sessão ao vivo</button><button type="button" id="bpAwakeBtn" aria-pressed="false" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>Manter tela ligada</button></div></div></div>
     </div>
     <dialog id="batteryHelp" class="bp-blade-picker bp-battery-help" aria-labelledby="batteryHelpTitle"><form method="dialog"><div class="bp-picker-head"><h2 id="batteryHelpTitle">Sobre a bateria</h2><button type="submit" aria-label="Fechar detalhes da bateria">×</button></div><p>O percentual é uma estimativa do sinal enviado pelo Battle Pass, sem calibração da carga restante. Pode oscilar durante os lançamentos.</p></form></dialog>
     <div id="connectionPanel" class="bp-connection-panel is-collapsed" inert aria-hidden="true"><div class="bp-connection-inner">
@@ -30,6 +32,7 @@
     </div></div></div>
     <div id="notice" class="bp-notice" role="status" hidden></div>
     <div data-view="training">
+    <div id="bpRemoteStatus" class="bp-live-status" hidden><span><i aria-hidden="true"></i><b id="bpRemoteState">Ao vivo</b><small id="bpRemoteBlade"></small></span><button type="button" id="bpRemoteStop">Treinar neste aparelho</button></div>
     <section class="bp-dashboard" aria-label="Estatísticas dos lançamentos">
       <article class="bp-latest bp-metal"><span id="powerLabel">ÚLTIMO LANÇAMENTO</span><div class="bp-launch-layout"><div class="bp-power-value"><output id="lastSp" class="bp-power-number" aria-live="polite">—</output><b>SP</b></div><button type="button" class="bp-mini-bey" id="bladeBtn" aria-label="Escolher Blade" title="Escolher Blade"><span class="bp-mini-aura" aria-hidden="true"></span><span class="bp-mini-shadow" aria-hidden="true"></span><span class="bp-mini-body" aria-hidden="true"><span class="bp-mini-rotor"><img alt="" hidden decoding="async"><span class="bp-mini-empty"></span></span></span></button></div><p id="record" role="status"></p></article>
       <div class="bp-stats">
